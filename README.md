@@ -1,0 +1,53 @@
+# Aethor Studio V2
+
+面向 Windows 的 Dummy 六轴机械臂调试与数字孪生工作台。当前仓库已实现 React 展示前端、共享契约和内置模型；真实 C# 串口服务、WebView2 壳和动作编排仍在阶段计划中。
+
+## 当前可用
+
+- 数字孪生：Dummy 六轴实体模型、目标幽灵模型、关节目标预览和显示工具窗。
+- 数据示波：有限静态采集、信号选择、缩放和 CSV 导出。
+- 串口终端：只读示例帧、筛选、导出、会话级专家解锁和离线格式校验。
+- 设备与模型：Profile、URDF、关节映射、限位、来源和 `.aethor-robot` 前端校验预览。
+
+所有当前样例数据均标记 `SHOWCASE DATA / SERIAL OFFLINE`，不会伪造连接、使能、设备回包、命令成功或软件急停成功。
+
+## 工程目录
+
+```text
+apps/
+  studio-web/        React/Vite 前端
+  studio-desktop/    WebView2 边界说明（尚无实现）
+services/
+  robot-gateway/     C# 边界说明（尚无实现）
+shared/
+  contracts/         JSON Schema 与网关契约
+  robot-profiles/    内置 dummy-6dof Profile
+docs/                路线图、协议、决策、验收与交接
+```
+
+仓库根目录拥有 pnpm workspace、统一脚本和唯一锁文件；应用、服务与共享资产不保留旧路径副本。详情见 [架构](docs/architecture.md) 与 [ADR-0001](docs/decisions/0001-repository-layout.md)。
+
+## 开发命令
+
+需要 Node.js 24.15+、pnpm 11.16+ 和 Microsoft Edge：
+
+```powershell
+pnpm install --frozen-lockfile
+pnpm typecheck
+pnpm test
+pnpm build
+pnpm test:e2e
+pnpm dev
+```
+
+开发地址为 `http://127.0.0.1:5173`，生产预览使用 `pnpm preview`（`http://127.0.0.1:4173`）。
+
+## 从这里开始
+
+- [文档中心](docs/README.md)
+- [阶段路线图](docs/roadmap.md)
+- [产品与安全边界](docs/product-boundaries.md)
+- [Dummy ASCII v1](docs/protocols/dummy-ascii-v1.md)
+- [当前交接状态](docs/handoffs/phase-00.md)
+
+当前阶段不会自动打开已连接的 COM4。任何实机操作都必须经过对应阶段的监督验收门。

@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aethor.local/contracts/robot-profile-v1.schema.json",
+  "title": "RobotProfileManifestV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "profileId", "displayName", "protocolAdapterId", "model", "joints", "capabilities", "source"],
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "profileId": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+    "displayName": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "description": { "type": "string", "maxLength": 240 },
+    "protocolAdapterId": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+    "transportDefaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["baudRate", "lineEnding"],
+      "properties": {
+        "baudRate": { "type": "integer", "minimum": 1200, "maximum": 4000000 },
+        "lineEnding": { "enum": ["LF", "CRLF"] }
+      }
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dof", "urdfPath", "upAxis", "lengthUnit"],
+      "properties": {
+        "dof": { "type": "integer", "minimum": 1, "maximum": 32 },
+        "urdfPath": { "$ref": "#/$defs/relativePath" },
+        "upAxis": { "enum": ["X", "Y", "Z"] },
+        "lengthUnit": { "const": "m" },
+        "showcasePoseDeg": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 1,
+          "maxItems": 32
+        }
+      }
+    },
+    "joints": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["jointId", "displayName", "urdfJointName", "protocolIndex", "lowerDeg", "upperDeg"],
+        "properties": {
+          "jointId": { "type": "string", "pattern": "^j[1-9][0-9]*$" },
+          "displayName": { "type": "string", "minLength": 1, "maxLength": 24 },
+          "urdfJointName": { "type": "string", "minLength": 1, "maxLength": 80 },
+          "protocolIndex": { "type": "integer", "minimum": 0, "maximum": 31 },
+          "lowerDeg": { "type": "number", "minimum": -3600, "maximum": 3600 },
+          "upperDeg": { "type": "number", "minimum": -3600, "maximum": 3600 }
+        }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": { "type": "boolean" },
+      "required": ["jointPositionFeedback", "jointGroupCommand", "enable", "disable", "home", "reset", "controlModes", "rawTerminal"]
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["urdfSha256", "license", "protocolReference"],
+      "properties": {
+        "urdfSha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" },
+        "license": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "protocolReference": { "type": "string", "minLength": 1, "maxLength": 160 }
+      }
+    }
+  },
+  "$defs": {
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 240,
+      "not": { "pattern": "(^[A-Za-z]:)|(^/)|(^\\\\)|(\\.\\.)|(:/{2})" }
+    }
+  }
+}
+

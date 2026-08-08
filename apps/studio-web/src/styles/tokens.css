@@ -1,0 +1,28 @@
+:root {
+  color-scheme: dark;
+  --bg-deep: #080a0c;
+  --bg-app: #0c0f11;
+  --bg-panel: #101316;
+  --bg-panel-raised: #15191c;
+  --bg-control: #191d21;
+  --bg-control-hover: #22272c;
+  --line-subtle: #20252a;
+  --line-default: #2b3137;
+  --line-strong: #3a424a;
+  --text-primary: #edf0f2;
+  --text-secondary: #a4abb2;
+  --text-muted: #6e777f;
+  --white-action: #e8eaec;
+  --green: #59bd76;
+  --yellow: #d3aa4b;
+  --red: #d8555d;
+  --blue: #91b9cf;
+  --sidebar-width: 208px;
+  --chrome-height: 31px;
+  --status-height: 76px;
+  --radius-sm: 3px;
+  --radius-md: 5px;
+  --font-ui: "Segoe UI Variable", "Microsoft YaHei UI", "Segoe UI", sans-serif;
+  --font-mono: "Cascadia Mono", "Consolas", monospace;
+  --shadow-float: 0 18px 48px rgba(0, 0, 0, .42);
+}

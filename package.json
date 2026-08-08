@@ -1,0 +1,14 @@
+{
+  "name": "@aethor/studio-v2",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@11.16.0",
+  "scripts": {
+    "dev": "pnpm --filter @aethor/studio-web dev",
+    "preview": "pnpm --filter @aethor/studio-web preview",
+    "typecheck": "pnpm --filter @aethor/studio-web typecheck",
+    "test": "pnpm --filter @aethor/studio-web test",
+    "build": "pnpm --filter @aethor/studio-web build",
+    "test:e2e": "pnpm --filter @aethor/studio-web test:e2e"
+  }
+}

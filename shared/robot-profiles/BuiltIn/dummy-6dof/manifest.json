@@ -1,0 +1,42 @@
+{
+  "schemaVersion": "1.0",
+  "profileId": "dummy-6dof",
+  "displayName": "Dummy",
+  "description": "Six-axis Dummy manipulator profile for Aethor Studio V2.",
+  "protocolAdapterId": "dummy-ascii-v1",
+  "transportDefaults": {
+    "baudRate": 115200,
+    "lineEnding": "LF"
+  },
+  "model": {
+    "dof": 6,
+    "urdfPath": "model/dummy.urdf",
+    "upAxis": "Z",
+    "lengthUnit": "m",
+    "showcasePoseDeg": [12.4, -36.2, 18.6, 45.0, -22.3, 90.0]
+  },
+  "joints": [
+    { "jointId": "j1", "displayName": "J1", "urdfJointName": "joint_1", "protocolIndex": 0, "lowerDeg": -179.91, "upperDeg": 179.91 },
+    { "jointId": "j2", "displayName": "J2", "urdfJointName": "joint_2", "protocolIndex": 1, "lowerDeg": -74.48, "upperDeg": 124.90 },
+    { "jointId": "j3", "displayName": "J3", "urdfJointName": "joint_3", "protocolIndex": 2, "lowerDeg": -93.39, "upperDeg": 91.67 },
+    { "jointId": "j4", "displayName": "J4", "urdfJointName": "joint_4", "protocolIndex": 3, "lowerDeg": -179.91, "upperDeg": 179.91 },
+    { "jointId": "j5", "displayName": "J5", "urdfJointName": "joint_5", "protocolIndex": 4, "lowerDeg": -100.84, "upperDeg": 100.84 },
+    { "jointId": "j6", "displayName": "J6", "urdfJointName": "joint_6", "protocolIndex": 5, "lowerDeg": -179.91, "upperDeg": 179.91 }
+  ],
+  "capabilities": {
+    "jointPositionFeedback": true,
+    "jointGroupCommand": true,
+    "enable": true,
+    "disable": true,
+    "home": true,
+    "reset": true,
+    "controlModes": true,
+    "rawTerminal": true
+  },
+  "source": {
+    "urdfSha256": "37F91DC8F8576A4421F7CA165465C33DB094557AF49A69023455C183D6437DAA",
+    "license": "BSD-3-Clause",
+    "protocolReference": "dummy_ref@5b9b602d8013799895c03f288e98ad72f38193be"
+  }
+}
+

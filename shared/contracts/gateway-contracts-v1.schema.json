@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aethor.local/contracts/gateway-contracts-v1.schema.json",
+  "title": "Aethor Studio V2 Gateway Contracts V1",
+  "$defs": {
+    "DataSource": { "enum": ["showcase", "measured", "commanded", "computed", "unavailable"] },
+    "Validity": { "enum": ["valid", "stale", "invalid", "unavailable"] },
+    "RobotSessionSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sessionId", "profileId", "connectionState", "motorState", "controlMode", "timestampUtc", "source", "validity"],
+      "properties": {
+        "sessionId": { "type": "string", "minLength": 1 },
+        "profileId": { "type": "string", "minLength": 1 },
+        "connectionState": { "enum": ["offline", "connecting", "connected", "reconnecting"] },
+        "motorState": { "enum": ["unknown", "disabled", "enabled"] },
+        "controlMode": { "type": ["integer", "null"], "minimum": 1, "maximum": 5 },
+        "timestampUtc": { "type": "string", "format": "date-time" },
+        "source": { "$ref": "#/$defs/DataSource" },
+        "validity": { "$ref": "#/$defs/Validity" }
+      }
+    },
+    "JointStateFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sequence", "profileId", "timestampUtc", "positionsDeg", "source", "validity"],
+      "properties": {
+        "sequence": { "type": "integer", "minimum": 0 },
+        "profileId": { "type": "string", "minLength": 1 },
+        "timestampUtc": { "type": "string", "format": "date-time" },
+        "positionsDeg": { "type": "array", "minItems": 1, "maxItems": 32, "items": { "type": "number" } },
+        "source": { "$ref": "#/$defs/DataSource" },
+        "validity": { "$ref": "#/$defs/Validity" }
+      }
+    },
+    "JointGroupCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commandId", "sessionId", "profileId", "positionsDeg"],
+      "properties": {
+        "commandId": { "type": "string", "minLength": 1 },
+        "sessionId": { "type": "string", "minLength": 1 },
+        "profileId": { "type": "string", "minLength": 1 },
+        "positionsDeg": { "type": "array", "minItems": 1, "maxItems": 32, "items": { "type": "number" } },
+        "speedDegS": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "CommandResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commandId", "status", "message"],
+      "properties": {
+        "commandId": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["unsupported", "rejected", "accepted", "completed", "failed", "timedOut", "cancelled"] },
+        "message": { "type": "string" },
+        "deviceReply": { "type": "string" }
+      }
+    },
+    "ProtocolFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "timestampUtc", "direction", "raw", "parsedKind", "source"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "timestampUtc": { "type": "string", "format": "date-time" },
+        "direction": { "enum": ["tx", "rx", "error"] },
+        "raw": { "type": "string", "maxLength": 4096 },
+        "parsedKind": { "type": "string", "minLength": 1 },
+        "source": { "$ref": "#/$defs/DataSource" },
+        "correlationId": { "type": "string" }
+      }
+    },
+    "SignalDescriptor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["signalId", "displayName", "unit", "source", "color"],
+      "properties": {
+        "signalId": { "type": "string", "minLength": 1 },
+        "displayName": { "type": "string", "minLength": 1 },
+        "unit": { "enum": ["deg", "deg/s", "ms", "Hz"] },
+        "source": { "$ref": "#/$defs/DataSource" },
+        "color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "dashed": { "type": "boolean" },
+        "jointId": { "type": "string" }
+      }
+    },
+    "SignalSample": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["timestampUtc", "value", "validity"],
+      "properties": {
+        "timestampUtc": { "type": "string", "format": "date-time" },
+        "value": { "type": ["number", "null"] },
+        "validity": { "$ref": "#/$defs/Validity" }
+      }
+    },
+    "DesktopBridgeCapabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["available", "minimize", "toggleMaximize", "close"],
+      "properties": {
+        "available": { "type": "boolean" },
+        "minimize": { "type": "boolean" },
+        "toggleMaximize": { "type": "boolean" },
+        "close": { "type": "boolean" }
+      }
+    }
+  }
+}
