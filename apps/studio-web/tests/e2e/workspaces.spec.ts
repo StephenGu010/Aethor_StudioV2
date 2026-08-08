@@ -36,10 +36,45 @@ test.describe('Aethor Studio V2 workspaces', () => {
       await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible();
       await expect(page.getByText('SERIAL OFFLINE', { exact: false }).first()).toBeVisible();
     }
+    await expect(page.locator('.sidebarBrandLockup')).toHaveAccessibleName('Aethor Studio V2');
+    await expect(page.locator('.wordmarkVersion')).toHaveText('V2');
+    await expect(page.getByText('ROBOTICS ENGINEERING', { exact: false })).toHaveCount(0);
+    await expect(page.getByText('CONTROL WORKSPACE', { exact: false })).toHaveCount(0);
+
+    const typography = await page.evaluate(() => {
+      const title = document.querySelector<HTMLElement>('.pageIdentity h1');
+      const navigation = document.querySelector<HTMLElement>('.navItem strong');
+      const chrome = document.querySelector<HTMLElement>('.desktopChromeIdentity');
+      if (!title || !navigation || !chrome) throw new Error('Shell typography elements are missing');
+      return {
+        title: Number.parseFloat(getComputedStyle(title).fontSize),
+        navigation: Number.parseFloat(getComputedStyle(navigation).fontSize),
+        chrome: Number.parseFloat(getComputedStyle(chrome).fontSize)
+      };
+    });
+
+    expect(typography.title).toBeGreaterThanOrEqual(21);
+    expect(typography.navigation).toBeGreaterThanOrEqual(14);
+    expect(typography.chrome).toBeGreaterThanOrEqual(13);
+
     await page.goto('/devices');
-    await expect(page.getByText('#CMDMODE 1–3 · PROFILE ALLOWED')).toBeVisible();
+    await expect(page.getByText('#CMDMODE 1–3 · PHASE 5')).toBeVisible();
     await expect(page.locator('.modeControl button')).toHaveCount(3);
     expect(consoleErrors).toEqual([]);
+  });
+
+  test('does not enumerate or connect serial when the read-only gateway is not configured', async ({ page }) => {
+    const hardwareRequests: string[] = [];
+    page.on('request', (request) => {
+      if (['fetch', 'xhr', 'websocket'].includes(request.resourceType())) hardwareRequests.push(request.url());
+    });
+    await page.goto('/devices');
+
+    await expect(page.getByText('BACKEND ABSENT')).toBeVisible();
+    await expect(page.getByLabel('串口')).toBeDisabled();
+    await expect(page.getByRole('button', { name: /只读连接/ })).toBeDisabled();
+    await expect(page.getByText('UNAVAILABLE', { exact: true }).first()).toBeVisible();
+    expect(hardwareRequests).toEqual([]);
   });
 
   test('separates target preview from feedback and disables hardware submission', async ({ page }) => {

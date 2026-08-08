@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/AethorStudioV2.Domain/AethorStudioV2.Domain.csproj" />
+    <ProjectReference Include="../../src/AethorStudioV2.Application/AethorStudioV2.Application.csproj" />
+    <ProjectReference Include="../../src/AethorStudioV2.Infrastructure/AethorStudioV2.Infrastructure.csproj" />
+    <ProjectReference Include="../../src/AethorStudioV2.Api/AethorStudioV2.Api.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="../../../../shared/contracts/conformance/dummy-ascii-v1.vectors.json" Link="Conformance/dummy-ascii-v1.vectors.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../../../shared/contracts/gateway-contracts-v1.schema.json" Link="Conformance/gateway-contracts-v1.schema.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

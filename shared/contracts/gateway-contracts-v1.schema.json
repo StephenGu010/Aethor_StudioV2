@@ -20,6 +20,45 @@
         "validity": { "$ref": "#/$defs/Validity" }
       }
     },
+    "SerialPortDescriptor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["portName", "hardwareId", "displayName"],
+      "properties": {
+        "portName": { "type": "string", "pattern": "^COM[1-9][0-9]{0,3}$" },
+        "hardwareId": { "type": ["string", "null"], "maxLength": 512 },
+        "displayName": { "type": ["string", "null"], "maxLength": 256 }
+      }
+    },
+    "ReadOnlyConnectRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["portName", "profileId"],
+      "properties": {
+        "portName": { "type": "string", "pattern": "^COM[1-9][0-9]{0,3}$" },
+        "profileId": { "const": "dummy-6dof" }
+      }
+    },
+    "ReadOnlyGatewayCapabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contractVersion", "protocolAdapterId", "serialEnumeration", "readOnlyConnection", "liveTelemetry", "hardwareCommands", "allowedQueries"],
+      "properties": {
+        "contractVersion": { "const": "1.0" },
+        "protocolAdapterId": { "const": "dummy-ascii-v1" },
+        "serialEnumeration": { "type": "boolean" },
+        "readOnlyConnection": { "type": "boolean" },
+        "liveTelemetry": { "type": "boolean" },
+        "hardwareCommands": { "const": false },
+        "allowedQueries": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": { "enum": ["#GETJPOS", "#GETMODE", "#GETENABLE"] }
+        }
+      }
+    },
     "JointStateFrame": {
       "type": "object",
       "additionalProperties": false,

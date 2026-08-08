@@ -1,15 +1,68 @@
-import { Archive, CheckCircle2, CircleAlert, Cpu, FileCheck2, HardDrive, Info, Link2Off, PackageCheck, RefreshCw, ShieldCheck, Upload, Waypoints } from 'lucide-react';
-import { useState } from 'react';
-import { SourceTag } from '../../components/ui/SourceTag';
+import type { JointStateFrame, RobotSessionSnapshot, SerialPortDescriptor } from '@aethor/contracts';
+import { Archive, CheckCircle2, CircleAlert, Cpu, FileCheck2, HardDrive, Link2Off, PackageCheck, RefreshCw, ShieldCheck, Upload, Waypoints } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { Hint } from '../../components/ui/Hint';
+import { SourceTag } from '../../components/ui/SourceTag';
 import type { ProfilePackageValidation } from '../../domain/profilePackage';
 import { validateProfilePackage } from '../../domain/profilePackage';
+import { showcaseSession } from '../../fixtures/showcase';
+import { robotGateway } from '../../integrations/gatewayInstance';
+import type { RobotGatewayV1 } from '../../integrations/robotGateway';
 import { dummyProfile } from '../../profile/dummyProfile';
 
-export function DeviceModelPage() {
+export function DeviceModelPage({ gateway = robotGateway }: { gateway?: RobotGatewayV1 }) {
   const [packageResult, setPackageResult] = useState<ProfilePackageValidation | null>(null);
   const [packageName, setPackageName] = useState('');
   const [validating, setValidating] = useState(false);
+  const [ports, setPorts] = useState<SerialPortDescriptor[]>([]);
+  const [selectedPort, setSelectedPort] = useState('');
+  const [session, setSession] = useState<RobotSessionSnapshot>(showcaseSession);
+  const [jointState, setJointState] = useState<JointStateFrame | null>(null);
+  const [gatewayBusy, setGatewayBusy] = useState(false);
+  const [gatewayError, setGatewayError] = useState<string | null>(null);
+  const [telemetryWarning, setTelemetryWarning] = useState<string | null>(null);
+  const gatewayAvailable = gateway.capabilities.readOnlyConnection;
+  const sessionActive = ['connecting', 'connected', 'reconnecting', 'disconnecting'].includes(session.connectionState);
+
+  useEffect(() => {
+    if (!gatewayAvailable) return;
+    let mounted = true;
+    let closeTelemetry: (() => Promise<void>) | undefined;
+    const load = async () => {
+      try {
+        const [nextPorts, nextSession, nextJointState] = await Promise.all([
+          gateway.listSerialPorts(),
+          gateway.getSession(),
+          gateway.getJointState()
+        ]);
+        if (!mounted) return;
+        setPorts(nextPorts);
+        setSession(nextSession);
+        setJointState(nextJointState);
+        setGatewayError(null);
+      } catch (error) {
+        if (mounted) setGatewayError(error instanceof Error ? error.message : '只读网关不可用');
+        return;
+      }
+
+      try {
+        const close = await gateway.openTelemetry({
+          onSession: (value) => mounted && setSession(value),
+          onJointState: (value) => mounted && setJointState(value),
+          onTransportError: (message) => mounted && setTelemetryWarning(message)
+        });
+        if (mounted) closeTelemetry = close;
+        else await close();
+      } catch (error) {
+        if (mounted) setTelemetryWarning(error instanceof Error ? error.message : '实时遥测不可用；可继续手动刷新 REST 快照');
+      }
+    };
+    void load();
+    return () => {
+      mounted = false;
+      if (closeTelemetry) void closeTelemetry();
+    };
+  }, [gateway, gatewayAvailable]);
 
   const inspectPackage = async (file: File | undefined) => {
     if (!file) return;
@@ -19,6 +72,52 @@ export function DeviceModelPage() {
       setPackageResult(await validateProfilePackage(file));
     } finally {
       setValidating(false);
+    }
+  };
+
+  const refreshGateway = async () => {
+    if (!gatewayAvailable || gatewayBusy) return;
+    setGatewayBusy(true);
+    setGatewayError(null);
+    try {
+      const [nextPorts, nextSession, nextJointState] = await Promise.all([
+        gateway.listSerialPorts(), gateway.getSession(), gateway.getJointState()
+      ]);
+      setPorts(nextPorts);
+      setSession(nextSession);
+      setJointState(nextJointState);
+      if (selectedPort && !nextPorts.some((port) => port.portName === selectedPort)) setSelectedPort('');
+    } catch (error) {
+      setGatewayError(error instanceof Error ? error.message : '刷新只读网关失败');
+    } finally {
+      setGatewayBusy(false);
+    }
+  };
+
+  const connectReadOnly = async () => {
+    if (!gatewayAvailable || !selectedPort || gatewayBusy || sessionActive) return;
+    setGatewayBusy(true);
+    setGatewayError(null);
+    try {
+      setSession(await gateway.connectReadOnly({ portName: selectedPort, profileId: 'dummy-6dof' }));
+    } catch (error) {
+      setGatewayError(error instanceof Error ? error.message : '只读串口连接失败');
+    } finally {
+      setGatewayBusy(false);
+    }
+  };
+
+  const disconnectGateway = async () => {
+    if (!gatewayAvailable || gatewayBusy || !sessionActive) return;
+    setGatewayBusy(true);
+    setGatewayError(null);
+    try {
+      setSession(await gateway.disconnect());
+      setJointState(await gateway.getJointState());
+    } catch (error) {
+      setGatewayError(error instanceof Error ? error.message : '断开只读串口失败');
+    } finally {
+      setGatewayBusy(false);
     }
   };
 
@@ -33,27 +132,39 @@ export function DeviceModelPage() {
         <div className="overviewGrid">
           <InfoCard icon={<Waypoints />} label="MODEL" value="dummy.urdf" detail="Z-UP · METERS" />
           <InfoCard icon={<Cpu />} label="PROTOCOL" value={dummyProfile.protocolAdapterId} detail="ASCII · LF" />
-          <InfoCard icon={<HardDrive />} label="TRANSPORT" value="115200 baud" detail="SERIAL OFFLINE" warning />
+          <InfoCard icon={<HardDrive />} label="TRANSPORT" value={gatewayAvailable ? `${ports.length} PORT${ports.length === 1 ? '' : 'S'}` : '115200 baud'} detail={session.connectionState.toUpperCase()} warning={session.connectionState !== 'connected'} />
           <InfoCard icon={<ShieldCheck />} label="LICENSE" value={dummyProfile.source.license} detail="SOURCE RECORDED" />
         </div>
       </section>
 
       <section className="deviceControls panelSurface">
-        <div className="cardHeading"><div><span>HARDWARE OPERATIONS</span><h2>设备控制</h2></div><div className="offlinePill"><Link2Off size={13} /> BACKEND ABSENT</div></div>
-        <div className="hardwareNotice"><CircleAlert size={16} /><span>真实硬件动作由未来 C# 服务独占。当前所有操作均禁用，且不会模拟成功结果。</span></div>
-        <div className="operationGrid">
-          <DisabledOperation label="连接串口" meta="CONNECT" />
-          <DisabledOperation label="断开连接" meta="DISCONNECT" />
-          <DisabledOperation label="刷新状态" meta="REFRESH" icon={<RefreshCw size={14} />} />
-          <DisabledOperation label="使能设备" meta="ENABLE" />
-          <DisabledOperation label="停止并去使能" meta="STOP → ZERO → DISABLE → VERIFY" danger />
-          <DisabledOperation label="回零" meta="HOME · SAFETY UNKNOWN" danger />
-          <DisabledOperation label="复位" meta="RESET" />
+        <div className="cardHeading"><div><span>READ-ONLY HARDWARE SESSION</span><h2>设备连接与状态</h2></div><div className={`offlinePill gateway-${session.connectionState}`}><Link2Off size={13} /> {gatewayAvailable ? session.connectionState.toUpperCase() : 'BACKEND ABSENT'}</div></div>
+        <div className={gatewayError ? 'hardwareNotice gatewayError' : 'hardwareNotice'}><CircleAlert size={16} /><span>{gatewayError ?? (gatewayAvailable ? 'Phase 4 只允许 #GETJPOS / #GETMODE / #GETENABLE；选择端口后仍需手动连接。' : `${gateway.unavailableReason ?? '只读网关未配置'}；静态数据不会提升为在线状态。`)}</span></div>
+        <div className="serialConnectRow">
+          <label><span>SERIAL PORT</span><select aria-label="串口" value={selectedPort} disabled={!gatewayAvailable || gatewayBusy || sessionActive} onChange={(event) => setSelectedPort(event.currentTarget.value)}><option value="">手动选择端口</option>{ports.map((port) => <option key={port.portName} value={port.portName}>{port.displayName ?? port.portName}</option>)}</select></label>
+          <button className="gatewayOperation primaryReadOnly" type="button" disabled={!gatewayAvailable || !selectedPort || gatewayBusy || sessionActive} onClick={() => void connectReadOnly()}><strong>只读连接</strong><small>CONNECT + QUERY ONLY</small></button>
+          <button className="gatewayOperation" type="button" disabled={!gatewayAvailable || gatewayBusy || !sessionActive} onClick={() => void disconnectGateway()}><strong>断开连接</strong><small>RELEASE SERIAL</small></button>
+          <button className="gatewayOperation" type="button" disabled={!gatewayAvailable || gatewayBusy} onClick={() => void refreshGateway()}><RefreshCw size={13} /><strong>刷新状态</strong><small>REST SNAPSHOT</small></button>
+        </div>
+        <div className="gatewaySessionGrid">
+          <StatusDatum label="CONNECTION" value={session.connectionState.toUpperCase()} tone={session.connectionState === 'connected' ? 'ok' : session.connectionState === 'faulted' ? 'error' : 'warning'} />
+          <StatusDatum label="VALIDITY" value={session.validity.toUpperCase()} tone={session.validity === 'valid' ? 'ok' : session.validity === 'invalid' ? 'error' : 'warning'} />
+          <StatusDatum label="MOTOR" value={session.motorState.toUpperCase()} tone={session.motorState === 'enabled' ? 'warning' : session.motorState === 'disabled' ? 'ok' : 'neutral'} />
+          <StatusDatum label="MODE" value={session.controlMode === null ? 'UNKNOWN' : String(session.controlMode)} tone="neutral" />
+          <StatusDatum label="SOURCE" value={session.source.toUpperCase()} tone={session.source === 'measured' ? 'ok' : 'neutral'} />
+          <StatusDatum label="FEEDBACK (J1–J6 DEG)" value={jointState?.validity === 'valid' ? jointState.positionsDeg.map((value) => value.toFixed(1)).join(' / ') : 'UNAVAILABLE'} tone={jointState?.validity === 'valid' ? 'ok' : 'neutral'} wide />
+        </div>
+        {telemetryWarning && <div className="telemetryWarning"><CircleAlert size={13} />{telemetryWarning}</div>}
+        <div className="operationGrid phaseFiveOperations">
+          <DisabledOperation label="使能设备" meta="PHASE 5 · NOT AVAILABLE" />
+          <DisabledOperation label="停止并去使能" meta="PHASE 5 · NOT AVAILABLE" danger />
+          <DisabledOperation label="回零" meta="PHASE 5 · SAFETY UNKNOWN" danger />
+          <DisabledOperation label="复位" meta="PHASE 5 · NOT AVAILABLE" />
         </div>
         <div className="modeControl">
-          <div><strong>控制模式</strong><span>#CMDMODE 1–3 · PROFILE ALLOWED</span></div>
+          <div><strong>控制模式</strong><span>#CMDMODE 1–3 · PHASE 5</span></div>
           {dummyProfile.capabilities.controlModes.map((mode) => (
-            <Hint content="SERIAL OFFLINE · 需要 C# 设备服务与有效会话" key={mode}>
+            <Hint content="Phase 4 严格只读；模式切换属于 Phase 5" key={mode}>
               <button type="button" disabled><span>MODE</span><strong>{mode}</strong></button>
             </Hint>
           ))}
@@ -106,11 +217,15 @@ function InfoCard({ icon, label, value, detail, warning = false }: { icon: React
   return <div className="infoCard"><span className={warning ? 'warning' : ''}>{icon}</span><div><small>{label}</small><strong>{value}</strong><em>{detail}</em></div></div>;
 }
 
-function DisabledOperation({ label, meta, icon, danger = false }: { label: string; meta: string; icon?: React.ReactNode; danger?: boolean }) {
+function StatusDatum({ label, value, tone, wide = false }: { label: string; value: string; tone: 'ok' | 'warning' | 'error' | 'neutral'; wide?: boolean }) {
+  return <div className={wide ? `gatewayDatum ${tone} wide` : `gatewayDatum ${tone}`}><small>{label}</small><strong>{value}</strong></div>;
+}
+
+function DisabledOperation({ label, meta, danger = false }: { label: string; meta: string; danger?: boolean }) {
   return (
-    <Hint content="SERIAL OFFLINE · C# 设备服务尚未连接">
+    <Hint content="Phase 4 严格只读；该硬件操作属于 Phase 5">
       <button className={danger ? 'disabledOperation danger' : 'disabledOperation'} type="button" disabled>
-        {icon}<span><strong>{label}</strong><small>{meta}</small></span>
+        <span><strong>{label}</strong><small>{meta}</small></span>
       </button>
     </Hint>
   );

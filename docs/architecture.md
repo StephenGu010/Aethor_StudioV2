@@ -2,14 +2,14 @@
 
 ## 当前状态
 
-仓库已经包含可运行的 React/Vite 展示前端、可执行的共享 TypeScript/JSON Schema 契约、内置 Dummy Profile，以及 C#/WebView2 的边界说明。真实串口、C# 服务和桌面壳尚未实现；动作编排已有信息架构入口，但编辑器、文档 Schema 和执行器仍属于阶段 6。阶段 0–3 已将代码统一为：
+仓库已经包含可运行的 React/Vite 前端、可执行的共享 TypeScript/JSON Schema 契约、内置 Dummy Profile，以及 Phase 4 的 .NET 10 只读网关。网关的软件门已实现，但 COM4 尚未打开，真实 Dummy 回包仍待现场监督验收；WebView2 壳尚未实现。动作编排已有信息架构入口，但编辑器、文档 Schema 和执行器仍属于阶段 6。当前代码统一为：
 
 ```text
 apps/
   studio-web/               React、Three.js、ECharts UI
-  studio-desktop/           WebView2 壳（后续阶段）
+  studio-desktop/           WebView2 壳边界（Phase 8）
 services/
-  robot-gateway/            C# .NET 10 服务（后续阶段）
+  robot-gateway/            C# .NET 10 Domain/Application/Infrastructure/API 与测试
 shared/
   contracts/                JSON Schema、TS 类型、协议纯函数、状态机与 conformance vectors
   robot-profiles/
@@ -17,12 +17,12 @@ shared/
 docs/
 ```
 
-根目录拥有 pnpm workspace、统一脚本和唯一锁文件。Vite/Vitest/TypeScript 统一从 `shared/robot-profiles/BuiltIn` 读取 Profile；仓库不保留迁移前的兼容目录。阶段 0–3 已完成工程治理、协议契约、工业 UI 系统和 Dummy 六轴直接关节预览。
+根目录拥有 pnpm workspace、统一 Web/C# 脚本和唯一 pnpm 锁文件。Vite/Vitest/TypeScript 统一从 `shared/robot-profiles/BuiltIn` 读取 Profile；仓库不保留迁移前的兼容目录。阶段 0–3 已完成工程治理、协议契约、工业 UI 系统和 Dummy 六轴直接关节预览；阶段 4 保持 `IN PROGRESS`，直到监督下只读 COM4 门通过。
 
 ## 前端信息架构与视觉系统
 
 - 五个工作区固定为 `/twin`、`/scope`、`/terminal`、`/devices` 和 `/actions`；页面模块按路由懒加载。
-- 石墨深色主题、字号、间距、栏宽和语义状态由 `apps/studio-web/src/styles/tokens.css` 统一定义，不依赖在线字体。
+- 石墨深色主题、字号、间距、栏宽和语义状态由 `apps/studio-web/src/styles/tokens.css` 统一定义，不依赖在线字体；标题优先使用 Windows 本地 `Segoe UI Variable Display`，正文使用 `Segoe UI Variable Text / Microsoft YaHei UI`，工程状态和数值使用 `Cascadia Mono`。
 - 1366×768 使用紧凑密度和工作区内部滚动；1920×1080 为设计基准；2560×1440 提升有效画布与数据密度。
 - 顶栏、导航、关键状态、软件急停和主下发区保持可达。禁用操作由可聚焦说明容器暴露原因，浏览器模式不伪造桌面窗口能力。
 - `/actions` 当前只声明未来交付边界，所有编辑、导入和执行入口均禁用；它不拥有动作契约或硬件命令路径。
@@ -48,7 +48,7 @@ studio-desktop ──> DesktopBridgeV1
 ```
 
 - 页面只依赖 `RobotGatewayV1`，不直接访问 HTTP、SignalR 或串口。
-- C# 服务独占串口、命令队列、超时、取消、确认和审计状态。
+- C# 服务独占串口、只读查询循环、超时、取消和协议诊断；Phase 5 的命令仲裁/确认/审计必须扩展同一所有者，不能另建前端命令通道。
 - 桌面壳只负责窗口生命周期、进程启动、会话令牌和能力声明，不拥有机器人业务状态。
 - Profile 是设备描述和资源来源，不能承载运行时连接状态。
 - `shared/contracts` 不拥有串口；其中的 transport 只是端口，fake 只用于无硬件测试。Phase 4 的 C# adapter 才拥有真实 SerialPort 生命周期。
@@ -57,7 +57,8 @@ studio-desktop ──> DesktopBridgeV1
 
 | 状态 | 所有者 | 生命周期 |
 |---|---|---|
-| 连接、使能、模式、最新反馈、命令在途 | Robot session | 当前设备会话 |
+| 连接、使能、模式、最新反馈 | C# `ReadOnlyRobotGateway` | 当前唯一只读设备会话 |
+| Phase 5 之后的命令在途与审计 | C# command owner（规划） | 当前设备会话 |
 | 目标关节角与动作编辑草稿 | studio-web draft | 当前页面/编辑会话 |
 | 页面、筛选、选中信号 | URL | 可分享导航状态 |
 | 工具窗布局、显示偏好 | Versioned local storage | 本机用户 |
@@ -68,18 +69,22 @@ studio-desktop ──> DesktopBridgeV1
 
 ## 网关边界
 
-`RobotGatewayV1` 当前由只读 `StaticShowcaseSource` 实现；所有命令返回“不支持/后端未连接”。后续适配保持页面 API 不变：
+`RobotGatewayV1` 有两个实现，页面不直接依赖 HTTP、SignalR 或串口：
 
-- REST：低频命令、设备枚举、连接和配置校验。
-- SignalR：遥测、协议帧、命令状态和故障事件。
-- Loopback-only 监听，并校验桌面壳创建的会话令牌。
-- 所有可改变硬件状态的调用必须有命令 ID、设备会话 ID、超时和明确结果。
+- `StaticShowcaseSource`：未配置网关时的安全默认值；不枚举/连接串口，命令返回 `unsupported`，展示数据永不提升为真实状态。
+- `HttpRobotGateway`：仅接受 loopback URL 和 32–256 字符令牌；REST 负责能力、枚举、手动只读连接/断开和权威快照，SignalR 负责 session、关节帧和协议帧通知。
+- C# API 使用 `ListenLocalhost`，`/api/v1` 与 `/hubs/robot-v1` 校验同一 opaque session token。Development token 不能用于非 Development 环境。
+- `ReadOnlyRobotGateway` 独占 transport 和轮询；Phase 4 串口 adapter 只允许 `#GETJPOS/#GETMODE/#GETENABLE`，没有任何状态改变端点。
+- REST session/joint state 是权威值；容量 128 的 SignalR 事件队列拥塞时丢弃最旧通知，容量 256 的协议历史限制诊断内存增长。
+- 串口打开后先显示 `connected + stale`，完整有效查询循环后才是 `valid`；连续三次查询超时、拔线或 I/O 错误进入 `faulted` 并释放 transport，不自动重连。
+
+前端只有在 `VITE_AETHOR_GATEWAY_URL` 和 `VITE_AETHOR_GATEWAY_SESSION_TOKEN` 同时有效时才创建 `HttpRobotGateway`；否则显式回退为 `BACKEND ABSENT`。Phase 8 的桌面壳才负责生产令牌和进程守护。
 
 ## 资源与故障边界
 
 - URDF、mesh 和配置包导入必须拒绝路径穿越、外部 URL、重复关节、DOF 不匹配、缺失资源和非法限位。
 - Three.js 场景切换/卸载时释放 geometry、material、texture、controls 和 renderer 资源。
-- 串口断开、帧解析失败、反馈过期或命令超时均进入可见故障状态，不能回退成“成功”。
+- 串口断开、帧解析失败、反馈过期或查询超时均进入可见降级/故障状态，不能回退成“成功”。轮询取消、手动断开、打开失败、进程退出和 dispose 都收束到唯一 transport 释放路径。
 - 软件急停不能替代物理急停；只有后端明确确认去使能后，UI 才能显示完成。
 
-关键目录决策见 [ADR-0001](decisions/0001-repository-layout.md)。
+关键目录决策见 [ADR-0001](decisions/0001-repository-layout.md)，协议白名单见 [ADR-0002](decisions/0002-dummy-protocol-boundary.md)，Phase 4 只读进程边界见 [ADR-0003](decisions/0003-readonly-gateway-boundary.md)。

@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../AethorStudioV2.Domain/AethorStudioV2.Domain.csproj" />
+    <ProjectReference Include="../AethorStudioV2.Application/AethorStudioV2.Application.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="System.IO.Ports" Version="10.0.0" />
+  </ItemGroup>
+</Project>

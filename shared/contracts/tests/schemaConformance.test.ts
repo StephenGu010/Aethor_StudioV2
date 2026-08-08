@@ -71,6 +71,17 @@ describe('JSON Schema and TypeScript contract conformance', () => {
       sequence: 1, profileId: 'dummy-6dof', timestampUtc: '2026-08-08T00:00:00.000Z',
       positionsDeg: [0, 1, 2, 3, 4, 5], source: 'measured', validity: 'valid'
     }],
+    ['SerialPortDescriptor', {
+      portName: 'COM4', hardwareId: null, displayName: 'Dummy USB Serial'
+    }],
+    ['ReadOnlyConnectRequest', {
+      portName: 'COM4', profileId: 'dummy-6dof'
+    }],
+    ['ReadOnlyGatewayCapabilities', {
+      contractVersion: '1.0', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
+      readOnlyConnection: true, liveTelemetry: true, hardwareCommands: false,
+      allowedQueries: ['#GETJPOS', '#GETMODE', '#GETENABLE']
+    }],
     ['JointGroupCommand', {
       commandId: 'cmd-1', sessionId: 'session-1', profileId: 'dummy-6dof',
       positionsDeg: [0, 1, 2, 3, 4, 5], speedDegS: 10

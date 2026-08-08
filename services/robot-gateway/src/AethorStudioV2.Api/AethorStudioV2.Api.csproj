@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <ItemGroup>
+    <ProjectReference Include="../AethorStudioV2.Domain/AethorStudioV2.Domain.csproj" />
+    <ProjectReference Include="../AethorStudioV2.Application/AethorStudioV2.Application.csproj" />
+    <ProjectReference Include="../AethorStudioV2.Infrastructure/AethorStudioV2.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

@@ -9,7 +9,7 @@ export function DesktopChrome() {
     <header className="desktopChrome">
       <div className="desktopChromeIdentity">
         <span className="brandGlyph" aria-hidden="true" />
-        <span>Aethor Studio V2</span>
+        <span className="desktopChromeProduct">Aethor Studio <strong>V2</strong></span>
         <span className="desktopChromeMode">FRONTEND SHOWCASE</span>
       </div>
       <div className="desktopWindowControls" aria-label="窗口控制">
@@ -46,4 +46,3 @@ function WindowControl({
     </Hint>
   );
 }
-

@@ -2,7 +2,7 @@
 
 ## 首版目标
 
-`Aethor Studio V2` 首版只服务 `dummy-6dof` 六轴机械臂，是面向 Windows、兼顾展示效果与现场实用性的硬件调试平台。当前先完善前端和工程契约，再按阶段接入 C# 串口服务与 WebView2。
+`Aethor Studio V2` 首版只服务 `dummy-6dof` 六轴机械臂，是面向 Windows、兼顾展示效果与现场实用性的硬件调试平台。React 前端、共享契约和 Phase 4 的 C# 只读网关软件边界已经落盘；COM4 实机读取仍待监督验收，WebView2 属于 Phase 8。
 
 ## 首版工作区
 
@@ -21,6 +21,15 @@
 - 静态展示数据永远不能产生 `CONNECTED`、`ENABLED`、`COMMAND ACCEPTED` 或 `E-STOP SUCCEEDED`。
 - 允许的 Dummy 结构化模式仅为 1–3；详情以 [Dummy ASCII v1](protocols/dummy-ascii-v1.md) 为准。
 - 动作“暂停”不能伪装成固件队列暂停。首版必须采用诚实的逐点调度和确认语义。
+
+## Phase 4 只读边界
+
+- 启动前端或网关不得自动打开任何串口；枚举到 COM4 只说明 Windows 当前可见该端口。
+- 只有设备页的人工“只读连接”意图可以打开所选端口。当前 transport 只能写出 `#GETJPOS`、`#GETMODE`、`#GETENABLE` 三个完整 LF 查询。
+- Phase 4 API 不提供 raw、使能、停止、回零、复位、模式切换或关节运动端点；前端对应入口保持禁用并说明 Phase 5 边界。
+- 串口刚打开时允许显示 `CONNECTED / STALE`，但关节值必须保持 `UNAVAILABLE`，直到收到契约有效的新鲜六轴反馈。
+- 查询超时、拔线、I/O 错误或不支持的模式不得触发自动串口重连；网关释放端口并要求操作者重新评估后手动连接。
+- COM4 只有在操作者、机械臂净空、物理急停、供电、当前姿态、端口身份和查询范围全部现场确认后才能打开。
 
 ## 软件停止语义
 

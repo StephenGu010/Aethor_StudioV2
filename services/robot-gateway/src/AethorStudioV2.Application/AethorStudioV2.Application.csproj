@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../AethorStudioV2.Domain/AethorStudioV2.Domain.csproj" />
+  </ItemGroup>
+</Project>

@@ -12,7 +12,7 @@
 6. [验收矩阵](testing/acceptance-matrix.md)：自动化、模拟串口和实机监督验收。
 7. [阶段提示词](prompts/README.md)：可直接交给下一位工程师或 Codex 的执行任务。
 8. [交接模板](handoffs/TEMPLATE.md)：每阶段结束时记录真实结果、证据和剩余风险。
-9. [当前交接：Phase 3](handoffs/phase-03.md)：六轴直接操作、状态隔离、降级/资源证据和只读网关下一阶段入口。
+9. [当前交接：Phase 4](handoffs/phase-04.md)：只读 C# 网关的软件证据、未打开 COM4 的安全事实和现场监督恢复入口。
 
 ## 状态约定
 
@@ -21,4 +21,4 @@
 - `NOT STARTED`：仅有规划，尚未实现。
 - `BLOCKED`：已记录外部阻塞与恢复条件。
 
-当前状态以 [阶段路线图](roadmap.md) 为准。协议只在 `protocols/` 维护；接口 Schema 只在 `shared/contracts/` 维护，阶段提示词不复制这些定义。
+当前状态以 [阶段路线图](roadmap.md) 为准。Phase 4 仍为 `IN PROGRESS`：软件门已落盘，真实 COM4 只读验收未执行。协议只在 `protocols/` 维护；接口 Schema 只在 `shared/contracts/` 维护，阶段提示词不复制这些定义。

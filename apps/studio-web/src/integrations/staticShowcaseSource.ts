@@ -1,13 +1,38 @@
-import type { CommandResult, JointGroupCommand } from '@aethor/contracts';
+import type { CommandResult, JointGroupCommand, ReadOnlyConnectRequest, RobotSessionSnapshot } from '@aethor/contracts';
 import { showcaseJointFrame, showcaseProtocolFrames, showcaseSession } from '../fixtures/showcase';
 import type { RobotGatewayV1 } from './robotGateway';
 
 export class StaticShowcaseSource implements RobotGatewayV1 {
+  constructor(readonly unavailableReason = '未配置只读 C# 网关') {}
+
   readonly capabilities = {
+    source: 'showcase',
+    serialEnumeration: false,
+    readOnlyConnection: false,
     hardwareCommands: false,
     rawCommand: false,
     liveTelemetry: false
   } as const;
+
+  async getReadOnlyCapabilities() {
+    return null;
+  }
+
+  async listSerialPorts() {
+    return [];
+  }
+
+  async connectReadOnly(_request: ReadOnlyConnectRequest): Promise<RobotSessionSnapshot> {
+    throw new Error('后端未配置；静态展示源不能连接串口');
+  }
+
+  async disconnect() {
+    return showcaseSession;
+  }
+
+  async openTelemetry() {
+    return async () => {};
+  }
 
   async getSession() {
     return showcaseSession;
@@ -37,5 +62,3 @@ export class StaticShowcaseSource implements RobotGatewayV1 {
 function unsupported(commandId: string, message: string): CommandResult {
   return { commandId, status: 'unsupported', message, timestampUtc: new Date().toISOString() };
 }
-
-export const robotGateway = new StaticShowcaseSource();

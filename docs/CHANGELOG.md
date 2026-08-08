@@ -1,5 +1,41 @@
 # 变更记录
 
+## 2026-08-08 - 阶段 4：只读网关软件门（IN PROGRESS）
+
+需求：
+- 建立工业级 .NET 10 串口边界，在监督实机前只允许读取 Dummy 六轴状态，不提前引入任何硬件状态改变或运动权限。
+
+改动：
+- 新增 Domain/Application/Infrastructure/API 分层、单一串口 session owner、fake transport、Windows SerialPort adapter 和 25 项 C# 测试。
+- 将 Phase 4 写入限制固化为 Domain formatter 与 Infrastructure payload 双重白名单，仅允许 `#GETJPOS/#GETMODE/#GETENABLE`。
+- 新增 loopback REST/SignalR、opaque session token、Development/desktop token source、显式失败状态、有界事件队列/协议历史和无自动重连策略。
+- 修正协议帧来源语义：TX 查询标记为 `commanded`，RX 回包为 `measured`，解析/超时错误为 `unavailable`；不再把网关写出的查询误标为设备测量。
+- 前端增加 `HttpRobotGateway`、loopback/Zod trust-boundary 校验、安全 static fallback、设备页人工只读连接/断开/刷新与真实来源/有效性显示；所有 Phase 5 动作保持禁用。
+- 完成 Phase 4 视觉修订：移除侧栏 `ROBOTICS ENGINEERING / CONTROL WORKSPACE` 副标并保留清晰的 `V2` 版本标识；将标题、正文和工程数值拆分为 Windows 本地 Display/Text/Mono 字体角色，重新校准标题栏、导航、状态带和三档视口字号比例。
+- 修正项目本地 `dotnet.ps1` 的参数透传；`--info/--version` 等根级 SDK 诊断参数不再被 PowerShell advanced-script 公共参数抢占，现有 restore/build/test/run 调用保持兼容。
+- 同步运行手册、RobotGatewayV1 接口、架构、产品边界、ADR-0003、路线图、验收矩阵和 Phase 4 handoff。
+
+验证：
+- `pnpm typecheck` 通过；`pnpm test` 为 shared 80 + frontend 61 + C# 25，共 166 项通过。
+- `pnpm build` 通过：Vite 2612 modules、Profile 10 项资源；.NET Release 0 warning/0 error。
+- `pnpm test:e2e` 在 Edge 三档视口 36/36 通过；覆盖精简品牌锁定、主标题层级、无裁切/溢出和更新后的 Win32 视觉基线；未配置网关时没有端口枚举、连接、fetch 或 WebSocket 硬件路径。
+- loopback smoke 验证 live、未认证 401、只读 capabilities、COM1/COM4 枚举、offline session 与 SignalR connect/stop，未调用连接端点。
+
+踩坑：
+- 设备页在 1366×768 曾让根 document 多出滚动；根因是内部工作区高度/contain 边界不完整，现由 shell 内部滚动并由全量三档 E2E 固化。
+- 本机无系统 .NET SDK；使用官方 SDK 10.0.302 的项目本地、gitignored 安装，并由 `global.json` 与 wrapper 保持可复现。
+- 自动 smoke 重跑命令被本机策略在启动前拒绝；未将该尝试写成成功，也未因此打开 COM4。
+- 最初的协议帧记录将所有非 error 方向统一标成 `measured`；通过先失败的 C# 回归断言定位到唯一映射点，未在 UI 做补偿。
+- `dotnet.ps1` 原先使用 `[CmdletBinding()]`，导致 `--info` 与 `InformationAction/InformationVariable` 发生模糊匹配；改为直接透传 `$args`，没有为每个 SDK flag 建立重复参数表。
+- 首轮以 8 workers 并发加载三档 WebGL 场景时，2K 用例发生资源竞争超时；旧视觉快照差异符合预期。新基线逐张审阅后，以 4 workers 完整复验 36/36 通过，没有放宽 READY 或快照断言。
+
+待完善：
+- 监督下核对 COM4 的三个真实回包、超时/拔线和断开句柄释放；通过前阶段保持 `IN PROGRESS` 且不创建完成提交。
+- Windows catalog 目前只保证端口名；硬件 ID 允许为空，实机 handoff 使用操作系统 PnP 身份记录。
+
+新增约定：
+- Phase 4 不存在 raw 或状态改变 API；REST 是权威快照，SignalR 只是有界通知；串口故障不自动重连。
+
 ## 2026-08-08 - 阶段 3：Dummy 六轴直接关节数字孪生
 
 需求：

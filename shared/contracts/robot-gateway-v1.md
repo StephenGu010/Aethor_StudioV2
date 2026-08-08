@@ -1,31 +1,84 @@
 # RobotGatewayV1
 
-## 所有权
+## 版本与所有权
 
-未来 C# 服务独占串口、设备连接、命令排队、回包关联和实时反馈。前端只能通过此契约发送意图和消费归一化状态；静态展示源永远不能成为硬件状态源。
+Wire contract 版本为 `1.0`，JSON 使用 camelCase，枚举使用 Schema 中的小写字符串，时间使用 UTC ISO 8601。JSON Schema 是跨语言 wire contract 的权威来源；C# 内部类型和 `SerialPort` 类型不得直接暴露给前端。
 
-## 核心消息
+Phase 4 的 C# 服务独占串口、轮询任务、session、最新反馈和协议历史。前端只通过 `RobotGatewayV1` 发送连接意图并消费归一化状态；`StaticShowcaseSource` 永远不能成为硬件状态源。REST 快照是权威状态，SignalR 仅是有界的低延迟通知通道。
 
+## Phase 4 消息
+
+- `SerialPortDescriptor`：`portName` 与可空 `hardwareId/displayName`。端口存在不等于已连接；当前 Windows adapter 保证端口名，硬件 ID 允许为空。
+- `ReadOnlyConnectRequest`：`portName/profileId`；Phase 4 只接受 `dummy-6dof` 和当前枚举到的合法 Windows COM 名称。
+- `ReadOnlyGatewayCapabilities`：contract/adapter 版本、端口枚举、只读连接、实时遥测和命令能力。Phase 4 的 `hardwareCommands` 固定为 `false`。
 - `RobotSessionSnapshot`：`sessionId/profileId/connectionState/motorState/controlMode/timestampUtc/source/validity`。
-- `JointStateFrame`：递增 `sequence`、UTC 时间、`positionsDeg[]`、来源与有效性；数组顺序按 Profile 的 `protocolIndex`。
+- `JointStateFrame`：递增 `sequence`、UTC 时间、六个 `positionsDeg`、来源与有效性；顺序按 Profile `protocolIndex`。
+- `ProtocolFrame`：`tx/rx/error`、UTC 时间、有界原始 ASCII、解析类别、来源和可选 `correlationId`。来源与方向固定映射为 `tx → commanded`、`rx → measured`、`error → unavailable`，不得把网关发出的查询标成设备测量值。
+
+Phase 4 capabilities 只允许以下查询，顺序轮询：
+
+```text
+#GETJPOS
+#GETMODE
+#GETENABLE
+```
+
+串口写入 adapter 对编码后的完整 payload 再做一次精确白名单校验；其他字节序列不能通过公共 API 或内部 transport 写出。
+
+## REST
+
+所有 `/api/v1/*` 请求必须携带 `X-Aethor-Session`。健康检查不需要认证。
+
+| Method | Path | Request | Response | 说明 |
+|---|---|---|---|---|
+| `GET` | `/health/live` | — | process/contract 状态 | 仅表示进程存活 |
+| `GET` | `/health/ready` | — | `ready`, `serialRequired=false` | 不表示设备已连接 |
+| `GET` | `/api/v1/gateway/capabilities` | — | `ReadOnlyGatewayCapabilities` | 当前能力声明 |
+| `GET` | `/api/v1/serial/ports` | — | `SerialPortDescriptor[]` | 只枚举，不打开端口 |
+| `GET` | `/api/v1/session` | — | `RobotSessionSnapshot` | 权威 session 快照 |
+| `GET` | `/api/v1/joint-state` | — | `JointStateFrame` | 权威最新关节帧；不可用时 validity/source 明确降级 |
+| `GET` | `/api/v1/protocol-frames?limit=N` | — | `ProtocolFrame[]` | `N` 为 1–500；历史容量默认 256 |
+| `POST` | `/api/v1/session/connect` | `ReadOnlyConnectRequest` | `RobotSessionSnapshot` | 手动打开唯一串口会话并启动只读轮询 |
+| `POST` | `/api/v1/session/disconnect` | — | `RobotSessionSnapshot` | 取消轮询并释放 transport；重复调用安全 |
+
+Phase 4 不存在 raw、运动、使能、停止、模式、回零或复位端点。前端对应方法必须在本地返回 `unsupported`，不得试探未声明 URL。
+
+### HTTP 失败
+
+- `401`：会话令牌缺失或错误。
+- `400`：非法 Profile、COM 名称、未枚举端口或协议历史 limit。
+- `409`：另一个 session 正在连接、已连接或正在断开；不会创建第二个串口所有者。
+- `503`：端口枚举失败、端口占用/拒绝访问或串口打开失败。
+- 请求取消不会转换为成功或自动重试。前端 REST 请求默认 5 s 超时，连接失败后保留人工重试入口。
+
+## SignalR
+
+- Hub：`/hubs/robot-v1`。
+- 认证：`Authorization: Bearer <token>`；SignalR WebSocket transport 可按客户端约定使用 `access_token` query 参数。
+- Server-to-client events：
+  - `sessionSnapshot(RobotSessionSnapshot)`
+  - `jointStateFrame(JointStateFrame)`
+  - `protocolFrame(ProtocolFrame)`
+- 没有 client-to-server hub method。
+
+服务端事件队列默认容量 128，拥塞时丢弃最旧事件，REST 状态不受影响。前端自动重连等待为 0/1/3 秒；重连耗尽后显示遥测断开，不能继续把旧值显示成新鲜反馈。
+
+## 串口与状态语义
+
+- 串口参数固定为 115200、8-N-1、ASCII、LF、无 handshake、DTR/RTS 关闭。
+- 打开串口后 session 可进入 `connected + stale`，表示 transport 已打开但尚未完成有效状态循环；这不是反馈已确认。
+- 每个查询默认 2 s 超时。任一超时将已有反馈降为 `stale`；连续三次查询超时、拔线或 I/O 故障将 session 置为 `faulted`、反馈置为 `unavailable` 并释放 transport。
+- 网关不会自动重连；恢复必须由操作者重新选择并连接。
+- 未知、畸形、非 ASCII、超长和半帧保留为有界诊断，不得被当作成功响应。
+
+## 后续命令契约
+
+Schema 已定义但 Phase 4 尚未提供网络端点的类型包括：
+
 - `JointGroupCommand`：唯一 `commandId/sessionId/profileId/positionsDeg[]`，可选且经过验证的 `speedDegS`。
-- `CommandResult`：`unsupported/rejected/accepted/completed/failed/timedOut/cancelled/unconfirmed`，包含 UTC 时间、安全的用户消息与可选设备回包。
-- `ProtocolFrame`：`tx/rx/error`、UTC 时间、原始 ASCII、解析类别和可选 `correlationId`。
-- `SignalSample`：信号 ID、UTC 时间、数值、单位、`showcase/measured/commanded/computed/unavailable` 来源与有效性。
+- `CommandResult`：`unsupported/rejected/accepted/completed/failed/timedOut/cancelled/unconfirmed`，含 UTC 时间、安全消息与可选设备证据。
+- `SignalDescriptor/SignalSample`：信号 ID、时间、值、单位、来源与有效性。
 
-## 失败语义
+Phase 5 后任何运动下发仍必须满足会话/Profile 匹配、连接有效、反馈新鲜、设备已使能、六轴目标合法且无互斥命令。设备 FIFO 数字或通用 `ok` 只能增加 evidence，不能单独证明物理运动完成。
 
-- 缺少后端：命令返回 `unsupported`，不得产生 TX、RX 或设备状态变化。
-- 反馈过期：服务将会话标记为 stale；前端禁用运动下发。
-- 重复 `commandId`：服务返回同一终态或明确冲突，不重复执行。
-- 超时或串口断开：不能显示成功；是否可重试由具体命令的幂等性决定。
-- 设备 FIFO 数字和通用 `ok` 只把命令推进到 `accepted` 并增加 evidence；只有查询读回或新鲜反馈收敛能产生 `completed`。
-- `HOME/RESET` 没有可信完成信号时以 `unconfirmed` 结束，不能用固定 sleep 或 ACK 冒充完成。
-
-## 安全边界
-
-- 运动下发必须满足：会话匹配、Profile 匹配、已连接、反馈新鲜、设备已使能、目标在每个关节限位内、无互斥命令。
-- 软件急停不弹确认框。服务执行 `!STOP`、内部 best-effort `$0,0,0,0,0,0`、`!DISABLE`、`#GETENABLE`；`$0...` 不等待 ACK，最终读回不是 `0` 时必须返回未确认停机。
-- 服务仅绑定 loopback，并由桌面壳提供每次启动生成的短生命周期会话令牌。
-
-公共命令只能构造 Dummy 模式 1–3、核心系统/查询命令和 `>` 六轴关节组。RGB、模式 4/5、`&`、`@`、通用 `$`、标定、PID 和 reboot 不得通过 raw terminal 绕过。
+规划中的软件停止链仍为 `!STOP → internal best-effort $0,0,0,0,0,0 → !DISABLE → #GETENABLE`；它在 Phase 4 不可调用，未来也只有最终读回去使能为 `0` 才能显示完成。软件停止不能替代物理急停。

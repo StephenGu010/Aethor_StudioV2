@@ -5,9 +5,10 @@ export function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="sidebarBrand">
-        <div className="wordmark">AETHOR STUDIO</div>
-        <div className="wordmarkVersion">V2</div>
-        <p>ROBOTICS ENGINEERING<br />CONTROL WORKSPACE</p>
+        <div className="sidebarBrandLockup" aria-label="Aethor Studio V2">
+          <div className="wordmark">AETHOR STUDIO</div>
+          <div className="wordmarkVersion">V2</div>
+        </div>
       </div>
       <nav className="primaryNav" aria-label="主要工作区">
         {routes.map((route) => {

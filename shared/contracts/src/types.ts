@@ -77,6 +77,27 @@ export interface RobotSessionSnapshot {
   validity: Validity;
 }
 
+export interface SerialPortDescriptor {
+  portName: string;
+  hardwareId: string | null;
+  displayName: string | null;
+}
+
+export interface ReadOnlyConnectRequest {
+  portName: string;
+  profileId: 'dummy-6dof';
+}
+
+export interface ReadOnlyGatewayCapabilities {
+  contractVersion: '1.0';
+  protocolAdapterId: 'dummy-ascii-v1';
+  serialEnumeration: boolean;
+  readOnlyConnection: boolean;
+  liveTelemetry: boolean;
+  hardwareCommands: false;
+  allowedQueries: Array<'#GETJPOS' | '#GETMODE' | '#GETENABLE'>;
+}
+
 export interface JointStateFrame {
   sequence: number;
   profileId: string;

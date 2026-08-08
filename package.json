@@ -7,8 +7,14 @@
     "dev": "pnpm --filter @aethor/studio-web dev",
     "preview": "pnpm --filter @aethor/studio-web preview",
     "typecheck": "pnpm -r --if-present typecheck",
-    "test": "pnpm -r --if-present test",
-    "build": "pnpm --filter @aethor/studio-web build",
-    "test:e2e": "pnpm --filter @aethor/studio-web test:e2e"
+    "test:web": "pnpm -r --if-present test",
+    "test": "pnpm test:web && pnpm gateway:test",
+    "build:web": "pnpm --filter @aethor/studio-web build",
+    "build": "pnpm build:web && pnpm gateway:build",
+    "test:e2e": "pnpm --filter @aethor/studio-web test:e2e",
+    "gateway:restore": "powershell -NoProfile -ExecutionPolicy Bypass -File services/robot-gateway/dotnet.ps1 restore services/robot-gateway/AethorStudioV2.RobotGateway.slnx",
+    "gateway:build": "powershell -NoProfile -ExecutionPolicy Bypass -File services/robot-gateway/dotnet.ps1 build services/robot-gateway/AethorStudioV2.RobotGateway.slnx --configuration Release",
+    "gateway:test": "powershell -NoProfile -ExecutionPolicy Bypass -File services/robot-gateway/dotnet.ps1 test services/robot-gateway/AethorStudioV2.RobotGateway.slnx --configuration Release",
+    "gateway:dev": "powershell -NoProfile -ExecutionPolicy Bypass -File services/robot-gateway/dotnet.ps1 run --project services/robot-gateway/src/AethorStudioV2.Api/AethorStudioV2.Api.csproj"
   }
 }

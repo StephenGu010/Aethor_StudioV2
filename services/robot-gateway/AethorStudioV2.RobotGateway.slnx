@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AethorStudioV2.Domain/AethorStudioV2.Domain.csproj" />
+    <Project Path="src/AethorStudioV2.Application/AethorStudioV2.Application.csproj" />
+    <Project Path="src/AethorStudioV2.Infrastructure/AethorStudioV2.Infrastructure.csproj" />
+    <Project Path="src/AethorStudioV2.Api/AethorStudioV2.Api.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AethorStudioV2.Tests/AethorStudioV2.Tests.csproj" />
+  </Folder>
+</Solution>

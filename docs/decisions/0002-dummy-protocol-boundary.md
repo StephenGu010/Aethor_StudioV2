@@ -12,7 +12,7 @@
 - 公共结构化命令只包含核心系统命令、三个只读查询、模式 1–3 和 `>` 六轴关节组。
 - 固件中的 `&` 与 `>` 在模式 1–3 执行代码等价；V2 只生成 `>`，避免两个入口表达同一产品语义。
 - `$0,0,0,0,0,0` 只作为未来停止链的内部兼容步骤，不能由 UI、raw terminal 或公共命令 DTO 构造。固件成功路径无 ACK，写入后必须继续执行 `!DISABLE` 和 `#GETENABLE`。
-- JSON Schema 是跨进程 wire contract；TypeScript 类型、Zod 的 Profile 交叉字段校验和语言无关 conformance vectors共同防漂移。Phase 4 的 C# 类型与适配器必须消费相同 Schema 和 vectors。
+- JSON Schema 是跨进程 wire contract；TypeScript 类型、Zod 的 Profile 交叉字段校验和语言无关 conformance vectors 共同防漂移。Phase 4 的 C# 类型与 adapter 已复用相同 Schema 资产和 vectors；后续破坏性变化仍必须新增版本。
 - 设备队列整数和通用 `ok` 只属于证据，不等于物理完成。关节组只有经新鲜反馈收敛确认后才能进入 `completed`；无法确认时进入 `unconfirmed`。
 - 静态展示源不能产生连接、使能、设备 ACK 或完成事件。
 
@@ -25,7 +25,7 @@
 
 ## 后果
 
-优点是 UI、未来 C# 服务和固件证据之间只有一条可审计入口，且不会把 ACK 提升为运动成功。代价是固件已有的高级/维护功能不能通过首版专家终端绕过；若未来确需开放，必须新增能力版本、危险操作设计和实机验收，而不是扩大 raw whitelist。
+优点是 UI、C# 服务和固件证据之间只有一条可审计入口，且不会把 ACK 提升为运动成功。代价是固件已有的高级/维护功能不能通过首版专家终端绕过；若未来确需开放，必须新增能力版本、危险操作设计和实机验收，而不是扩大 raw whitelist。
 
 ## 回滚
 
