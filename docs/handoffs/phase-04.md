@@ -5,6 +5,7 @@
 - 实施者：Codex
 - 仓库/分支：`Aethor_StudioV2 / main`
 - 开始基线提交：`246b9996e43eb19e1be155e27cef10a5d5d38eca`
+- 当前软件检查点：`472725dfcdeebe151fccec1c5a12704579a82112`（已推送 `origin/main`，不代表实机门完成）
 - 预期完成提交主题：`phase(04): deliver supervised readonly gateway`（只有监督实机门通过后才能创建）
 
 ## 本阶段目标
@@ -24,6 +25,7 @@
 - 修复 1366×768 设备页根滚动溢出：工作区固定在 shell 内部滚动，导航和关键状态仍保持可达。
 - 重整应用壳字体和比例：移除侧栏工程副标、保留 `AETHOR STUDIO / V2` 锁定，采用 Windows 本地 Display/Text/Mono 字体分工，并提高窗口标题、导航、工作区标题和状态值层级；三档视觉基线已逐张复核。
 - `dotnet.ps1` 直接透传任意 SDK 参数；`--info/--version` 与原有 restore/build/test/run 均可使用同一项目本地 SDK 选择逻辑。
+- 新增不可连接的 `preflight-readonly.ps1` 和唯一 [监督验收手册](../runbooks/phase-04-supervised-readonly-com4.md)：先校验 COM 身份、PnP 状态、残留进程/listener，再分离现场授权、只读连接、证据和清理；预检没有 `SerialPort` 或 HTTP 调用。
 
 ## 未完成与恢复入口
 
@@ -32,7 +34,7 @@
 1. 记录在场操作者；机械臂周围净空。
 2. 物理急停可立即触达；确认供电状态与当前姿态安全。
 3. 核对 COM4 身份为 `USB\VID_1209&PID_0D32&MI_00\7&2BF1B17E&0&0000`。
-4. 明确授权本次只发送三个查询，不发送使能、停止、模式或运动命令。
+4. 明确授权本次只轮询三种查询类型，不发送使能、停止、模式或运动命令。
 5. 保存时间、原始 TX/RX、session 终态和断开后句柄/进程检查；任何异常立即断开。
 
 实机门通过前，路线图保持 `IN PROGRESS`，工作树不创建误导性的阶段完成提交。
@@ -70,6 +72,7 @@
 | 无硬件 API smoke | loopback 5127/5128、显式开发令牌 | live、未认证 401、capabilities `hardwareCommands=false`、COM1/COM4 枚举、session offline、SignalR connect/stop；未调用 connect endpoint | 当前代码对应 API/Hub 与安全测试；无持久化 token 日志 |
 | 运行环境 | Windows 10.0.26200 x64 | SDK 10.0.302；ASP.NET/.NET runtime 10.0.10 | `global.json`、`dotnet.ps1 --info`（本机 SDK 不提交） |
 | SDK wrapper | `dotnet.ps1 --info/--version`；`pnpm gateway:restore/test/build` | 根级参数透传成功；25/25 测试、Release 0 warning/0 error | `services/robot-gateway/dotnet.ps1` |
+| 只读预检 | `pnpm gateway:preflight`；正确/错误 Instance ID | 当前 COM4 身份与 PnP `OK` 匹配时 exit 0；错误身份 exit 2；JSON 明确 `serialPortOpened=false`、`networkRequestSent=false` | `services/robot-gateway/preflight-readonly.ps1` |
 | 清理 | 端口/进程只读检查 | 5127/5128/5131 无 listener，无 Aethor gateway host；残留仅为可关闭的 MSBuild build-server 节点 | 本次收口命令输出 |
 
 本次收口曾尝试再次自动启动 smoke host，但命令在进程创建前被本机策略拒绝，因此没有计入通过证据，也没有触碰串口。
@@ -86,6 +89,7 @@
 
 - 真实固件的三个回包、时序、拔线和断开释放尚未现场验证；fake serial 和 API smoke 不能替代该证据。
 - Windows catalog 当前只保证 `portName`，API 的 `hardwareId` 可能为 null；本 handoff 的 COM4 Instance ID 来自操作系统只读 PnP 检查。
+- PnP 可见性不能证明第三方程序没有占用串口，也不能直接证明手动断开后的 OS handle；监督手册要求保留该限制、在可用时使用受控的只读 handle 工具，并以进程/轮询清理证据补充，禁止为探测句柄而重新打开 COM4。
 - C# DTO 当前显式维护，并非由 JSON Schema 自动生成；Schema 变更必须同步两端测试。
 - SignalR 队列采用 DropOldest 且协议历史有界，慢客户端可能漏中间事件；REST 快照是恢复来源。
 - 控制台日志没有持久化保留策略；Phase 7/8 需补发布环境日志根、retention 和故障导出。
@@ -93,9 +97,9 @@
 
 ## 下一步启动清单
 
-- [ ] 阅读公共上下文、路线图、本 handoff、ADR-0003、Dummy ASCII v1 与网关运行手册。
+- [ ] 阅读公共上下文、路线图、本 handoff、ADR-0003、Dummy ASCII v1 与 [Phase 4 监督手册](../runbooks/phase-04-supervised-readonly-com4.md)。
 - [ ] 检查 Git 状态并复现 `pnpm typecheck`、`pnpm test`、`pnpm build`、`pnpm test:e2e`。
 - [ ] 重新取得现场操作者、净空、物理急停、供电、姿态、COM4 身份和三查询范围确认。
-- [ ] 只执行 Phase 4 监督 runbook；保存原始查询/回包和释放证据，异常立即断开。
+- [ ] 只执行 Phase 4 监督手册；保存原始查询/回包和释放证据，异常立即断开。
 - [ ] 通过实机门后更新本 handoff 为 `DONE`、路线图和变更记录，再创建本地 Phase 4 完成提交；禁止 push。
 - [ ] 在 Phase 4 完成提交存在前，不开始 Phase 5 的任何硬件状态改变功能。

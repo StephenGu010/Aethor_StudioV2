@@ -53,6 +53,7 @@ pnpm dev
 - [产品与安全边界](docs/product-boundaries.md)
 - [Dummy ASCII v1](docs/protocols/dummy-ascii-v1.md)
 - [当前交接状态](docs/handoffs/phase-04.md)
+- [Phase 4 监督只读 COM4 验收](docs/runbooks/phase-04-supervised-readonly-com4.md)
 
 当前阶段不会自动打开已连接的 COM4。任何实机操作都必须经过对应阶段的监督验收门。
 

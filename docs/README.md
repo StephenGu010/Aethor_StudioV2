@@ -10,9 +10,10 @@
 4. [系统架构](architecture.md)：当前结构、目标结构、依赖方向和状态所有权。
 5. [Dummy ASCII v1](protocols/dummy-ascii-v1.md)：固件协议证据、允许命令和响应语义。
 6. [验收矩阵](testing/acceptance-matrix.md)：自动化、模拟串口和实机监督验收。
-7. [阶段提示词](prompts/README.md)：可直接交给下一位工程师或 Codex 的执行任务。
-8. [交接模板](handoffs/TEMPLATE.md)：每阶段结束时记录真实结果、证据和剩余风险。
-9. [当前交接：Phase 4](handoffs/phase-04.md)：只读 C# 网关的软件证据、未打开 COM4 的安全事实和现场监督恢复入口。
+7. [Phase 4 监督只读 COM4 验收](runbooks/phase-04-supervised-readonly-com4.md)：不可连接预检、现场授权、唯一连接动作、证据与清理步骤。
+8. [阶段提示词](prompts/README.md)：可直接交给下一位工程师或 Codex 的执行任务。
+9. [交接模板](handoffs/TEMPLATE.md)：每阶段结束时记录真实结果、证据和剩余风险。
+10. [当前交接：Phase 4](handoffs/phase-04.md)：只读 C# 网关的软件证据、未打开 COM4 的安全事实和现场监督恢复入口。
 
 ## 状态约定
 

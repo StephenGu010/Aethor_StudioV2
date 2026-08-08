@@ -39,6 +39,18 @@ pnpm gateway:test
 powershell -NoProfile -ExecutionPolicy Bypass -File services/robot-gateway/dotnet.ps1 --info
 ```
 
+## 不可连接预检
+
+`gateway:preflight` 只读取 Windows PnP、Aethor gateway 进程和指定 loopback 端口的 listener，输出 `aethor.phase4.preflight.v1` JSON；脚本没有 `SerialPort` 实例或 HTTP client，不能打开 COM4。
+
+```powershell
+$env:AETHOR_PREFLIGHT_PORT_NAME = 'COM4'
+$env:AETHOR_PREFLIGHT_EXPECTED_INSTANCE_ID = '<operator-verified Windows PnP instance ID>'
+pnpm gateway:preflight
+```
+
+身份不匹配、PnP 状态异常、网关进程残留或 listener 占用时返回 exit code 2。硬件 Instance ID 通过进程环境而非 package-runner 参数传递，避免 ID 中的 `&` 被 `cmd.exe` 解释。完整现场流程只执行 [Phase 4 监督只读 COM4 验收手册](../../docs/runbooks/phase-04-supervised-readonly-com4.md)。
+
 ## 本地开发启动
 
 为每次开发会话生成一个至少 32 字符的随机令牌，不要提交到仓库：
@@ -61,7 +73,7 @@ pnpm gateway:dev
 
 前端复制 `apps/studio-web/.env.example` 为被忽略的 `.env.local`，并让 URL、令牌与网关进程一致。若 Vite 临时使用 5174，必须同时把该 origin 加入 `AETHOR_GATEWAY_DEV_ORIGINS`。
 
-启动网关不会枚举或打开串口；前端设备页加载时只调用枚举和 REST 快照。只有操作者选择端口并点击“只读连接”后，网关才会打开端口并开始三个查询。Phase 4 在 COM4 实机门通过前不得执行该动作。
+启动网关不会枚举或打开串口；前端设备页加载时只调用枚举和 REST 快照。只有操作者完成监督手册的现场授权门并调用“只读连接”后，网关才会打开端口并开始三个查询。Phase 4 在 COM4 实机门通过前不得把该动作写入自动启动流程。
 
 ## 公共接口
 
