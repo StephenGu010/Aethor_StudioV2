@@ -1,0 +1,10 @@
+phase(NN): concise verified outcome
+
+# Why:
+# - requirement or defect being addressed
+#
+# Verified:
+# - command or supervised check
+#
+# Safety:
+# - serial/hardware access: none, or exact approved scope

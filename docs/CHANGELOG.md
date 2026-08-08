@@ -1,5 +1,24 @@
 # 变更记录
 
+## 2026-08-08 - 阶段 0：工程治理与本地 Git 流程
+
+需求：
+- 所有 V2 工程文件只保存在 D 盘权威仓库；建立可交接的系统工程、计划、handoff 和 Git 流程。
+
+改动：
+- 新增根 `AGENTS.md`、项目内 `aethor-studio-workflow` skill 和阶段制工程工作流文档。
+- 新增 `.gitattributes`、`.editorconfig` 与 `.gitmessage`，统一文本、编辑和提交约定。
+- 明确完成阶段自动创建本地 commit，但绝不自动 push；远端推送由用户手动执行。
+- 保留规范的 `apps/services/shared/docs` 结构，只借鉴 `Aethor_Studio` 的分层边界，不恢复旧目录。
+- 清理阶段 0 迁移留在仓库外的 `node_modules` 备份和 skill 生成临时文件，均移入 Windows 回收站。
+
+验证：
+- Git 远端为 `StephenGu010/Aethor_StudioV2.git`，当前分支为 `main`。
+- 项目 skill 通过官方 `quick_validate.py`，界面 YAML 可解析。
+- Node.js 24.14.0 / pnpm 11.16.0 下 typecheck、23 项单元测试和生产构建通过。
+- 指定 `Aether_matlabv3` 参考仓库因网络/公开访问不可用，未臆造其内容。
+- 本次只修改工程治理文件和文档，未改产品代码、未打开 COM4、未发送硬件命令。
+
 ## 2026-08-08 - Dummy 分阶段路线图与交接体系
 
 需求：

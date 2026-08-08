@@ -4,13 +4,14 @@
 
 ## 阅读顺序
 
-1. [阶段路线图](roadmap.md)：阶段 0–8 的目标、交付物和验收门槛。
-2. [产品与安全边界](product-boundaries.md)：首版范围、硬件动作约束和明确排除项。
-3. [系统架构](architecture.md)：当前结构、目标结构、依赖方向和状态所有权。
-4. [Dummy ASCII v1](protocols/dummy-ascii-v1.md)：固件协议证据、允许命令和响应语义。
-5. [验收矩阵](testing/acceptance-matrix.md)：自动化、模拟串口和实机监督验收。
-6. [阶段提示词](prompts/README.md)：可直接交给下一位工程师或 Codex 的执行任务。
-7. [交接模板](handoffs/template.md)：每阶段结束时记录真实结果、证据和剩余风险。
+1. [阶段制工程与 Git 工作流](engineering-workflow.md)：计划、实施、验证、handoff、本地提交和人工 push 的统一流程。
+2. [阶段路线图](roadmap.md)：阶段 0–8 的目标、交付物和验收门槛。
+3. [产品与安全边界](product-boundaries.md)：首版范围、硬件动作约束和明确排除项。
+4. [系统架构](architecture.md)：当前结构、目标结构、依赖方向和状态所有权。
+5. [Dummy ASCII v1](protocols/dummy-ascii-v1.md)：固件协议证据、允许命令和响应语义。
+6. [验收矩阵](testing/acceptance-matrix.md)：自动化、模拟串口和实机监督验收。
+7. [阶段提示词](prompts/README.md)：可直接交给下一位工程师或 Codex 的执行任务。
+8. [交接模板](handoffs/template.md)：每阶段结束时记录真实结果、证据和剩余风险。
 
 ## 状态约定
 

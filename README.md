@@ -45,9 +45,12 @@ pnpm dev
 ## 从这里开始
 
 - [文档中心](docs/README.md)
+- [阶段制工程与 Git 工作流](docs/engineering-workflow.md)
 - [阶段路线图](docs/roadmap.md)
 - [产品与安全边界](docs/product-boundaries.md)
 - [Dummy ASCII v1](docs/protocols/dummy-ascii-v1.md)
 - [当前交接状态](docs/handoffs/phase-00.md)
 
 当前阶段不会自动打开已连接的 COM4。任何实机操作都必须经过对应阶段的监督验收门。
+
+每个阶段在验收和 handoff 完成后创建本地 Git 提交；仓库不会自动 push，远端推送由用户手动执行。

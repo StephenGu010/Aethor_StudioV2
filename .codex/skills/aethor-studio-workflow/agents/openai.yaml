@@ -1,0 +1,4 @@
+interface:
+  display_name: "Aethor Studio Workflow"
+  short_description: "Phase engineering, verification, handoff, and local Git commits"
+  default_prompt: "Use $aethor-studio-workflow to execute the next Aethor Studio V2 phase with verified handoff and a local commit."
