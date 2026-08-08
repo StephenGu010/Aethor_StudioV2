@@ -11,8 +11,8 @@
 5. [Dummy ASCII v1](protocols/dummy-ascii-v1.md)：固件协议证据、允许命令和响应语义。
 6. [验收矩阵](testing/acceptance-matrix.md)：自动化、模拟串口和实机监督验收。
 7. [阶段提示词](prompts/README.md)：可直接交给下一位工程师或 Codex 的执行任务。
-8. [交接模板](handoffs/template.md)：每阶段结束时记录真实结果、证据和剩余风险。
-9. [当前交接：Phase 1](handoffs/phase-01.md)：共享协议、状态机、验证结果和下一阶段入口。
+8. [交接模板](handoffs/TEMPLATE.md)：每阶段结束时记录真实结果、证据和剩余风险。
+9. [当前交接：Phase 2](handoffs/phase-02.md)：工业 UI 系统、五工作区信息架构、视觉证据和下一阶段入口。
 
 ## 状态约定
 

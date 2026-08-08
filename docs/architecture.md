@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-仓库已经包含可运行的 React/Vite 展示前端、可执行的共享 TypeScript/JSON Schema 契约、内置 Dummy Profile，以及 C#/WebView2 的边界说明。真实串口、C# 服务、桌面壳和动作编排尚未实现。阶段 0–1 已将代码统一为：
+仓库已经包含可运行的 React/Vite 展示前端、可执行的共享 TypeScript/JSON Schema 契约、内置 Dummy Profile，以及 C#/WebView2 的边界说明。真实串口、C# 服务和桌面壳尚未实现；动作编排已有信息架构入口，但编辑器、文档 Schema 和执行器仍属于阶段 6。阶段 0–2 已将代码统一为：
 
 ```text
 apps/
@@ -18,6 +18,14 @@ docs/
 ```
 
 根目录拥有 pnpm workspace、统一脚本和唯一锁文件。Vite/Vitest/TypeScript 统一从 `shared/robot-profiles/BuiltIn` 读取 Profile；仓库不保留迁移前的兼容目录。
+
+## 前端信息架构与视觉系统
+
+- 五个工作区固定为 `/twin`、`/scope`、`/terminal`、`/devices` 和 `/actions`；页面模块按路由懒加载。
+- 石墨深色主题、字号、间距、栏宽和语义状态由 `apps/studio-web/src/styles/tokens.css` 统一定义，不依赖在线字体。
+- 1366×768 使用紧凑密度和工作区内部滚动；1920×1080 为设计基准；2560×1440 提升有效画布与数据密度。
+- 顶栏、导航、关键状态、软件急停和主下发区保持可达。禁用操作由可聚焦说明容器暴露原因，浏览器模式不伪造桌面窗口能力。
+- `/actions` 当前只声明未来交付边界，所有编辑、导入和执行入口均禁用；它不拥有动作契约或硬件命令路径。
 
 ## 依赖方向
 

@@ -6,6 +6,7 @@ const DeviceModelPage = lazy(() => import('./pages/device-model/DeviceModelPage'
 const DigitalTwinPage = lazy(() => import('./pages/digital-twin/DigitalTwinPage').then((module) => ({ default: module.DigitalTwinPage })));
 const ScopePage = lazy(() => import('./pages/scope/ScopePage').then((module) => ({ default: module.ScopePage })));
 const TerminalPage = lazy(() => import('./pages/terminal/TerminalPage').then((module) => ({ default: module.TerminalPage })));
+const ActionProgrammingPage = lazy(() => import('./pages/action-programming/ActionProgrammingPage').then((module) => ({ default: module.ActionProgrammingPage })));
 
 export function App() {
   return (
@@ -15,6 +16,7 @@ export function App() {
         <Route path="/scope" element={<PageBoundary><ScopePage /></PageBoundary>} />
         <Route path="/terminal" element={<PageBoundary><TerminalPage /></PageBoundary>} />
         <Route path="/devices" element={<PageBoundary><DeviceModelPage /></PageBoundary>} />
+        <Route path="/actions" element={<PageBoundary><ActionProgrammingPage /></PageBoundary>} />
         <Route path="/" element={<Navigate replace to="/twin" />} />
         <Route path="*" element={<Navigate replace to="/twin" />} />
       </Route>

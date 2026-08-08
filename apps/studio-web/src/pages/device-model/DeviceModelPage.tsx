@@ -1,6 +1,7 @@
 import { Archive, CheckCircle2, CircleAlert, Cpu, FileCheck2, HardDrive, Info, Link2Off, PackageCheck, RefreshCw, ShieldCheck, Upload, Waypoints } from 'lucide-react';
 import { useState } from 'react';
 import { SourceTag } from '../../components/ui/SourceTag';
+import { Hint } from '../../components/ui/Hint';
 import type { ProfilePackageValidation } from '../../domain/profilePackage';
 import { validateProfilePackage } from '../../domain/profilePackage';
 import { dummyProfile } from '../../profile/dummyProfile';
@@ -51,7 +52,11 @@ export function DeviceModelPage() {
         </div>
         <div className="modeControl">
           <div><strong>控制模式</strong><span>#CMDMODE 1–3 · PROFILE ALLOWED</span></div>
-          {dummyProfile.capabilities.controlModes.map((mode) => <button type="button" disabled key={mode}><span>MODE</span><strong>{mode}</strong></button>)}
+          {dummyProfile.capabilities.controlModes.map((mode) => (
+            <Hint content="SERIAL OFFLINE · 需要 C# 设备服务与有效会话" key={mode}>
+              <button type="button" disabled><span>MODE</span><strong>{mode}</strong></button>
+            </Hint>
+          ))}
         </div>
       </section>
 
@@ -102,7 +107,13 @@ function InfoCard({ icon, label, value, detail, warning = false }: { icon: React
 }
 
 function DisabledOperation({ label, meta, icon, danger = false }: { label: string; meta: string; icon?: React.ReactNode; danger?: boolean }) {
-  return <button className={danger ? 'disabledOperation danger' : 'disabledOperation'} type="button" disabled>{icon}<span><strong>{label}</strong><small>{meta}</small></span></button>;
+  return (
+    <Hint content="SERIAL OFFLINE · C# 设备服务尚未连接">
+      <button className={danger ? 'disabledOperation danger' : 'disabledOperation'} type="button" disabled>
+        {icon}<span><strong>{label}</strong><small>{meta}</small></span>
+      </button>
+    </Hint>
+  );
 }
 
 function formatBytes(bytes: number) {

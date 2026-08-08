@@ -6,7 +6,7 @@ html,
 body,
 #root {
   width: 100%;
-  min-width: 1120px;
+  min-width: 1180px;
   height: 100%;
   margin: 0;
   overflow: hidden;
@@ -16,8 +16,10 @@ body {
   background: var(--bg-deep);
   color: var(--text-primary);
   font-family: var(--font-ui);
-  font-size: 13px;
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 button,
@@ -25,6 +27,16 @@ input,
 select {
   color: inherit;
   font: inherit;
+}
+
+input[type="number"] {
+  appearance: textfield;
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
 }
 
 button {
@@ -43,14 +55,14 @@ button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 a:focus-visible {
-  outline: 1px solid var(--blue);
+  outline: 2px solid var(--blue);
   outline-offset: 2px;
 }
 
 button:disabled {
-  color: #5c6268;
+  color: #737a80;
   cursor: not-allowed;
-  opacity: .74;
+  opacity: .78;
 }
 
 input,
@@ -64,6 +76,7 @@ code,
 time,
 .mono {
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 h1,
@@ -95,4 +108,15 @@ table {
 
 ::selection {
   background: rgba(145, 185, 207, .25);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }

@@ -10,13 +10,15 @@ export function StatusHeader({ route }: { route: RouteMeta }) {
         <h1>{route.title}</h1>
         <span>{route.subtitle}</span>
       </div>
-      <button className="deviceSelector" type="button" aria-label="当前机器人配置" disabled>
-        <span>
-          <small>CURRENT PROFILE</small>
-          <strong>{dummyProfile.displayName.toUpperCase()} · {dummyProfile.model.dof}-DOF</strong>
-        </span>
-        <ChevronDown size={15} />
-      </button>
+      <Hint content="首版仅提供 Dummy 内置 Profile；设备切换将在第二台机械臂资料完成后开放。">
+        <button className="deviceSelector" type="button" aria-label="当前机器人配置" disabled>
+          <span>
+            <small>CURRENT PROFILE</small>
+            <strong>{dummyProfile.displayName.toUpperCase()} · {dummyProfile.model.dof}-DOF</strong>
+          </span>
+          <ChevronDown size={15} />
+        </button>
+      </Hint>
       <div className="headerTelemetry">
         <StatusMetric label="SERIAL" value="OFFLINE" tone="muted" />
         <StatusMetric label="MOTOR" value="UNKNOWN" tone="muted" />
@@ -42,4 +44,3 @@ function StatusMetric({ label, value, tone }: { label: string; value: string; to
     </div>
   );
 }
-

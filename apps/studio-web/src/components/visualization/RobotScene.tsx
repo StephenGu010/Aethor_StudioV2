@@ -40,7 +40,7 @@ interface JointLike extends THREE.Object3D {
 export function RobotScene(props: RobotSceneProps) {
   return (
     <Canvas
-      shadows={props.settings.showShadows}
+      shadows={props.settings.showShadows ? 'percentage' : false}
       camera={{ position: [0.78, 0.58, 0.84], fov: 39, near: 0.01, far: 40 }}
       dpr={[1, 1.75]}
       gl={{ antialias: true, powerPreference: 'high-performance' }}
@@ -133,12 +133,44 @@ function Axes({ scale, position }: { scale: number; position?: [number, number, 
 
 function RobotModels(props: RobotSceneProps) {
   const [models, setModels] = useState<LoadedModels | null>(null);
+  const readyFrameCount = useRef(0);
+
+  useFrame(() => {
+    if (!models || readyFrameCount.current >= 2) return;
+    readyFrameCount.current += 1;
+    if (readyFrameCount.current === 2) props.onModelState('ready');
+  });
 
   useEffect(() => {
     let cancelled = false;
+    let loadFailed = false;
+    let resourcesLoaded = false;
+    let parsedRobot: THREE.Object3D | null = null;
     props.onModelState('loading');
     const manager = new THREE.LoadingManager();
     const loader = new URDFLoader(manager);
+
+    const finalizeLoadedModels = () => {
+      if (!resourcesLoaded || !parsedRobot) return;
+      const loadedRobot = parsedRobot;
+      parsedRobot = null;
+      if (cancelled || loadFailed) {
+        disposeRoot(loadedRobot);
+        return;
+      }
+      readyFrameCount.current = 0;
+      setModels(createLoadedModels(loadedRobot));
+    };
+
+    manager.onError = () => {
+      loadFailed = true;
+      if (!cancelled) props.onModelState('error');
+    };
+    manager.onLoad = () => {
+      resourcesLoaded = true;
+      finalizeLoadedModels();
+    };
+
     loader.parseCollision = true;
     loader.loadMeshCb = (path, loadManager, _urdfMaterial, done) => {
       new STLLoader(loadManager).load(
@@ -159,54 +191,22 @@ function RobotModels(props: RobotSceneProps) {
     loader.load(
       props.urdfUrl,
       (loadedRobot) => {
-        if (cancelled) {
-          disposeRoot(loadedRobot);
-          return;
-        }
-        const target = loadedRobot.clone(true);
-        const ghostMaterials: THREE.Material[] = [];
-        target.traverse((child) => {
-          const mesh = child as THREE.Mesh;
-          if (!mesh.isMesh) return;
-          const ghost = new THREE.MeshStandardMaterial({
-            color: '#b6d3df',
-            emissive: '#6f9fb2',
-            emissiveIntensity: 0.28,
-            transparent: true,
-            opacity: 0.18,
-            wireframe: true,
-            depthWrite: false
-          });
-          mesh.material = ghost;
-          mesh.castShadow = false;
-          mesh.receiveShadow = false;
-          mesh.renderOrder = 3;
-          ghostMaterials.push(ghost);
-        });
-        loadedRobot.traverse((child) => {
-          const mesh = child as THREE.Mesh;
-          if (mesh.isMesh) {
-            mesh.castShadow = true;
-            mesh.receiveShadow = true;
-          }
-        });
-        setModels({
-          actual: loadedRobot,
-          target,
-          actualJoints: collectJoints(loadedRobot),
-          targetJoints: collectJoints(target),
-          ghostMaterials
-        });
-        props.onModelState('ready');
+        parsedRobot = loadedRobot;
+        finalizeLoadedModels();
       },
       undefined,
       () => {
+        loadFailed = true;
         if (!cancelled) props.onModelState('error');
       }
     );
 
     return () => {
       cancelled = true;
+      if (resourcesLoaded && parsedRobot) {
+        disposeRoot(parsedRobot);
+        parsedRobot = null;
+      }
       setModels((current) => {
         if (current) {
           disposeRoot(current.actual);
@@ -265,6 +265,43 @@ function RobotModels(props: RobotSceneProps) {
       <primitive object={models.target} />
     </group>
   );
+}
+
+function createLoadedModels(loadedRobot: THREE.Object3D): LoadedModels {
+  const target = loadedRobot.clone(true);
+  const ghostMaterials: THREE.Material[] = [];
+  target.traverse((child) => {
+    const mesh = child as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const ghost = new THREE.MeshStandardMaterial({
+      color: '#b6d3df',
+      emissive: '#6f9fb2',
+      emissiveIntensity: 0.28,
+      transparent: true,
+      opacity: 0.18,
+      wireframe: true,
+      depthWrite: false
+    });
+    mesh.material = ghost;
+    mesh.castShadow = false;
+    mesh.receiveShadow = false;
+    mesh.renderOrder = 3;
+    ghostMaterials.push(ghost);
+  });
+  loadedRobot.traverse((child) => {
+    const mesh = child as THREE.Mesh;
+    if (mesh.isMesh) {
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+    }
+  });
+  return {
+    actual: loadedRobot,
+    target,
+    actualJoints: collectJoints(loadedRobot),
+    targetJoints: collectJoints(target),
+    ghostMaterials
+  };
 }
 
 function collectJoints(root: THREE.Object3D): Map<string, JointLike> {
