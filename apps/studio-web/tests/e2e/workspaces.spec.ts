@@ -34,6 +34,8 @@ test.describe('Aethor Studio V2 workspaces', () => {
       await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible();
       await expect(page.getByText('SERIAL OFFLINE', { exact: false }).first()).toBeVisible();
     }
+    await expect(page.getByText('#CMDMODE 1–3 · PROFILE ALLOWED')).toBeVisible();
+    await expect(page.locator('.modeControl button')).toHaveCount(3);
     expect(consoleErrors).toEqual([]);
   });
 
@@ -47,8 +49,15 @@ test.describe('Aethor Studio V2 workspaces', () => {
 
   test('terminal validates locally without creating a live send path', async ({ page }) => {
     await page.goto('/terminal');
-    await page.getByLabel('Dummy ASCII 命令').fill('#CMDMODE 5');
+    await expect(page.getByLabel('Dummy ASCII 命令')).toHaveAttribute('readonly', '');
+    await page.getByRole('button', { name: /#CMDMODE 3/ }).click();
     await expect(page.getByText('MODE · FORMAT VALID')).toBeVisible();
+    await expect(page.getByRole('button', { name: '真实发送' })).toBeDisabled();
+    await page.getByRole('button', { name: '解锁专家输入' }).click();
+    await page.getByRole('textbox', { name: /输入/ }).fill('UNLOCK');
+    await page.getByRole('button', { name: '确认解锁' }).click();
+    await page.getByLabel('Dummy ASCII 命令').fill('#CMDMODE 5');
+    await expect(page.getByText('INVALID', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: '真实发送' })).toBeDisabled();
   });
 });

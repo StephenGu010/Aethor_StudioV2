@@ -5,56 +5,71 @@
 - 仓库：`D:\Aethor_robot\dummy_ref`
 - 固定提交：`5b9b602d8013799895c03f288e98ad72f38193be`
 - 人类说明：根 `README.md`
-- 解析实现：`dummy-ref-core-fw/UserApp/protocols/ascii_protocol.cpp`
-- 停止实现：`dummy-ref-core-fw/Robot/instances/dummy_robot.cpp`
+- 行解析：`dummy-ref-core-fw/Bsp/communication/ascii_processor.cpp`
+- 命令分支：`dummy-ref-core-fw/UserApp/protocols/ascii_protocol.cpp`
+- 执行与停止：`dummy-ref-core-fw/Robot/instances/dummy_robot.cpp`、`dummy_robot.h`
 
-如 README 与代码不一致，先记录冲突并用固件代码和监督台架测试确认，不能由前端猜测。Safety First 的 RGB/回包描述不是 V2 的协议依据。
+README 与代码冲突时，以固定提交代码和后续监督台架证据为准，并保留冲突记录。Safety First 的 RGB/回包定义不是 V2 的协议依据。
 
-## 传输
+## 传输与边界
 
-- 当前设备：手动选择串口；已发现 COM4 不代表已授权打开。
-- 串口：115200 baud，按行 ASCII，发送以 `\n` 结束。
-- 后端必须处理分片、粘包、空行、超长行、未知行、拔线和超时；前端不得直接持有串口。
+- UART4/USB CDC：115200 baud，ASCII 按行处理；V2 统一发送 LF（`\n`）。固件接收 CR 或 LF。
+- 固件声明 `MAX_LINE_LENGTH=256`，但解析循环在索引达到 256 后丢弃该行，因此 V2 最大有效 payload 是 255 个 ASCII 字符。
+- 运动 FIFO 为 16 项、每项 64 bytes；V2 formatter 要求 `>` 命令不超过 63 个 ASCII 字符，保留 NUL 终止空间。
+- 后端必须处理分片、粘包、空行、非 ASCII、超长行、未知行、不完整尾帧、拔线、取消和超时；所有队列、监听器和历史必须有界。
+- COM4 只代表当前枚举结果。本阶段不打开端口；未来仍由用户手动连接。
 
-## V2 结构化白名单
+## V2 公共白名单
 
-| 类别 | 命令 | 典型成功响应 | V2 语义 |
+| 类别 | 命令 | 固件响应 | V2 完成策略 |
 |---|---|---|---|
-| 使能 | `!START` | `Started ok` | 已接收使能动作；随后用 `#GETENABLE` 确认 |
-| 停止 | `!STOP` | `Stopped ok` | 固件当前实现保持当前位、清电流、去使能并清 FIFO；仍需读回确认 |
-| 去使能 | `!DISABLE` | `Disabled ok` | 已接收；随后用 `#GETENABLE` 确认 |
-| 回零 | `!HOME` | `Homing ok` | 已开始/接受，不等于物理回零完成 |
-| 复位 | `!RESET` | `Started ok` | ACK 不等于完整恢复成功 |
-| 查询关节 | `#GETJPOS` | `ok j1 j2 j3 j4 j5 j6` | 六轴反馈帧 |
-| 查询模式 | `#GETMODE` | `ok <num> <name>` | 只接受适配器允许的模式 1–3 |
-| 查询使能 | `#GETENABLE` | `ok 0/1` | 状态确认来源 |
-| 设模式 | `#CMDMODE <1..3>` | `ok Set command mode...` | 仅 1–3 暴露为结构化能力 |
-| 关节组 | `>j1,...,j6[,speed]` / `&...` | 立即队列余量，随后可能 `ok` | 显式整组六轴下发；按模式解释完成语义 |
+| 使能 | `!START` | `Started ok` | ACK 仅表示已处理；`#GETENABLE=1` 后才完成 |
+| 停止 | `!STOP` | `Stopped ok` | ACK 不是最终确认；`#GETENABLE=0` 后才确认去使能 |
+| 去使能 | `!DISABLE` | `Disabled ok` | `#GETENABLE=0` 后才完成 |
+| 回零 | `!HOME` | `Homing ok` | 无可信完成帧，不能仅凭 ACK 宣称物理回零成功 |
+| 复位 | `!RESET` | `Started ok` | 无可信完整恢复确认，结果保持 accepted/unconfirmed |
+| 查询关节 | `#GETJPOS` | `ok j1 j2 j3 j4 j5 j6` | 六个有限数值解析成功后完成 |
+| 查询模式 | `#GETMODE` | `ok <num> <name>` | 仅 1–3 且编号/名称一致时有效 |
+| 查询使能 | `#GETENABLE` | `ok 0/1` | 合法读回即完成 |
+| 设模式 | `#CMDMODE <1..3>` | `ok Set command mode to [m] (<name>)` | ACK 后仍以 `#GETMODE` 匹配为完成 |
+| 关节组 | `>j1,...,j6[,speed]` | 先返回 FIFO 余量，随后可能 `ok` | 只在新鲜反馈收敛到目标后完成 |
 
-`@` 笛卡尔流不是 V2 能力。虽然固件支持模式 4/5、`$` 电流流、RGB、标定、PID 和 reboot，首版 UI/API 均不提供其结构化入口。
+`shared/contracts/src/dummyAsciiV1.ts` 是 TypeScript 可执行规范；`shared/contracts/conformance/dummy-ascii-v1.vectors.json` 是未来 C# 适配器必须复用的语言无关样例。
 
-## 模式和回包语义
+## 内部停止链例外
 
-| 模式 | 固件名称 | 首版 | `ok` 解释 |
+规划的停止链仍为 `!STOP → $0,0,0,0,0,0 → !DISABLE → #GETENABLE`，但 `$0...` 不是公共白名单命令：
+
+- 固件代码在 `$` 格式正确时只调用 `SetJointCurrentsCached`，没有发送成功 ACK；README 所写成功 `ok` 与该提交代码不一致。
+- 电流实际应用仍受模式 5、使能和 compliant active 条件约束；V2 不进入模式 5，也不把这个步骤当作停机证据。
+- 未来后端只允许生成固定的全零内部命令。写入失败要记录，但不得阻塞后续 `!DISABLE` 和 `#GETENABLE`。
+- 唯一可向 UI 宣称的停机确认是最终读回 `#GETENABLE=0`；否则为 `unconfirmed`，并提示使用物理急停。
+
+## 模式与运动前缀
+
+| 模式 | 固件名称 | 首版 | `ok` 的证据等级 |
 |---|---|---|---|
-| 1 | `SEQ_POINT` | 支持 | 固件执行路径等待运动结束后返回 |
-| 2 | `INT_POINT` | 支持 | 解析后即可返回，不能解释为物理到位 |
-| 3 | `CONT_TRAJ` | 支持 | 固件执行路径等待运动结束后返回；不等于 V2 提供轨迹规划 |
-| 4 | `MOTOR_TUNE` | 排除 | 不适用 |
-| 5 | `COMP_CURRENT` | 排除 | 不适用 |
+| 1 | `SEQ_POINT` | 支持 | 执行循环退出后发送；去使能也会让循环退出，仍需反馈确认 |
+| 2 | `INT_POINT` | 支持 | 解析目标后立即发送，绝不表示到位 |
+| 3 | `CONT_TRAJ` | 支持 | 执行循环退出后发送；不等于 V2 提供轨迹规划或平滑保证 |
+| 4 | `MOTOR_TUNE` | 排除 | 不解析为有效会话模式 |
+| 5 | `COMP_CURRENT` | 排除 | 不解析为有效会话模式 |
 
-运动流入队成功先返回整数队列余量；内部失败值可能表现为 `255`，另有 `error CMD FIFO FULL` 路径。适配器必须把“已入队”“已 ACK”“已完成/到位”分开建模。
+固件对 `>` 与 `&` 的关节代码路径相同，V2 只生成 `>`。`&` 仅作为固件遗留别名记录，不进入 UI、DTO 或动作编排。`@` 笛卡尔流、通用 `$` 电流流、RGB、标定、PID 和 reboot 均不提供公共构造入口。
 
-## 停止与安全
+## 回包分类
 
-固件当前 `EmergencyStop()` 会保持当前位置目标、清零关节电流、设置 `isEnabled=false` 并清空 FIFO。README 仍建议 `!STOP → $0,0,0,0,0,0 → !DISABLE`；其中 `$0...` 只有模式 5 才解析，且 V2 不暴露模式 5。因此后端将该项视为兼容性的 best-effort 防御步骤，最终权威仍是 `#GETENABLE` 读回为 `0`。
+- `0..15`：成功入队后的剩余 FIFO 空间，属于 accepted 证据；`0` 表示本次已入队但队列已满。
+- `255`：固件内部失败哨兵；当前入口通常转换为 `error CMD FIFO FULL`，解析器仍显式识别该值。
+- `error ...`：设备错误，保留首 token 作为 code、完整行作为诊断证据。
+- `ok`：通用设备 ACK，只推进 evidence，不直接进入 `completed`。
+- 未知/非 ASCII/数值错误/超长/不完整行：保留为可诊断分类，不更新可信状态。
 
-任何 ACK、超时或串口断开都不能让 UI 显示“急停成功”。软件停止不能替代物理急停；实机验收前必须让物理急停可达。
+命令状态只允许从 `created` 进入 `accepted/rejected/unsupported`，再进入 `completed/failed/timedOut/cancelled/unconfirmed`。终态不可被迟到 ACK 覆盖。
 
-## 待阶段 1 固化
+## 固件实现风险与未知项
 
-- 用 formatter/parser 测试固定所有已允许帧及错误帧。
-- 明确 `>` 与 `&` 在各模式下的产品选择，避免重复入口。
-- 将 accepted/completed/unconfirmed 与反馈新鲜度纳入共享 Schema。
-- 验证无 mode 5 时 `$0...` 的响应/超时处理，停止链不能因此阻塞去使能与读回。
-
+- `!` 和 `#` 分支大量使用 substring 匹配；V2 必须发送精确白名单，禁止 `!NOTSTOP` 一类文本触发意外命令。
+- 固件 `#CMDMODE` 会回显请求数字，范围外输入不一定返回错误；V2 在 formatter 和 Schema 层先拒绝 4/5 及其他值，并通过 `#GETMODE` 复核。
+- 固件没有可信的速度上限、安全回位姿态、统一运动完成事件或已验证的反馈收敛容差。不得从 README、URDF 零 velocity 或旧上位机默认值推断。
+- `HOME/RESET` 的物理完成、模式 3 的点列连续性和停止链在真实硬件上的时序仍需后续监督验收。

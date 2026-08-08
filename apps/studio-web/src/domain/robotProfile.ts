@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { RobotProfileManifestV1 } from '../contracts/types';
+import type { RobotProfileManifestV1 } from '@aethor/contracts';
 
 const safeRelativePath = z
   .string()
@@ -17,7 +17,7 @@ const jointSchema = z.object({
   protocolIndex: z.number().int().min(0).max(31),
   lowerDeg: z.number().min(-3600).max(3600),
   upperDeg: z.number().min(-3600).max(3600)
-});
+}).strict();
 
 export const robotProfileSchema = z
   .object({
@@ -31,6 +31,7 @@ export const robotProfileSchema = z
         baudRate: z.number().int().min(1200).max(4_000_000),
         lineEnding: z.enum(['LF', 'CRLF'])
       })
+      .strict()
       .optional(),
     model: z.object({
       dof: z.number().int().min(1).max(32),
@@ -38,15 +39,27 @@ export const robotProfileSchema = z
       upAxis: z.enum(['X', 'Y', 'Z']),
       lengthUnit: z.literal('m'),
       showcasePoseDeg: z.array(z.number()).min(1).max(32).optional()
-    }),
+    }).strict(),
     joints: z.array(jointSchema).min(1).max(32),
-    capabilities: z.record(z.string(), z.boolean()),
+    capabilities: z.object({
+      jointPositionFeedback: z.boolean(),
+      jointGroupCommand: z.boolean(),
+      enable: z.boolean(),
+      stop: z.boolean(),
+      disable: z.boolean(),
+      home: z.boolean(),
+      reset: z.boolean(),
+      controlModes: z.array(z.union([z.literal(1), z.literal(2), z.literal(3)])).min(1)
+        .refine((modes) => new Set(modes).size === modes.length, '控制模式不能重复'),
+      rawTerminal: z.boolean()
+    }).strict(),
     source: z.object({
       urdfSha256: z.string().regex(/^[a-fA-F0-9]{64}$/),
       license: z.string().min(1).max(80),
       protocolReference: z.string().min(1).max(160)
-    })
+    }).strict()
   })
+  .strict()
   .superRefine((profile, context) => {
     if (profile.joints.length !== profile.model.dof) {
       context.addIssue({ code: 'custom', path: ['joints'], message: '关节数量必须等于模型 DOF' });
@@ -88,4 +101,3 @@ export function isPositionWithinLimits(profile: RobotProfileManifestV1, position
     return value !== undefined && Number.isFinite(value) && value >= joint.lowerDeg && value <= joint.upperDeg;
   });
 }
-

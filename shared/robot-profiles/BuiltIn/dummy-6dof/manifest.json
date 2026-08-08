@@ -27,10 +27,11 @@
     "jointPositionFeedback": true,
     "jointGroupCommand": true,
     "enable": true,
+    "stop": true,
     "disable": true,
     "home": true,
     "reset": true,
-    "controlModes": true,
+    "controlModes": [1, 2, 3],
     "rawTerminal": true
   },
   "source": {
@@ -39,4 +40,3 @@
     "protocolReference": "dummy_ref@5b9b602d8013799895c03f288e98ad72f38193be"
   }
 }
-

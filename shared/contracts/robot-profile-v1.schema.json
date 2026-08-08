@@ -57,8 +57,24 @@
     },
     "capabilities": {
       "type": "object",
-      "additionalProperties": { "type": "boolean" },
-      "required": ["jointPositionFeedback", "jointGroupCommand", "enable", "disable", "home", "reset", "controlModes", "rawTerminal"]
+      "additionalProperties": false,
+      "required": ["jointPositionFeedback", "jointGroupCommand", "enable", "stop", "disable", "home", "reset", "controlModes", "rawTerminal"],
+      "properties": {
+        "jointPositionFeedback": { "type": "boolean" },
+        "jointGroupCommand": { "type": "boolean" },
+        "enable": { "type": "boolean" },
+        "stop": { "type": "boolean" },
+        "disable": { "type": "boolean" },
+        "home": { "type": "boolean" },
+        "reset": { "type": "boolean" },
+        "controlModes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": [1, 2, 3] }
+        },
+        "rawTerminal": { "type": "boolean" }
+      }
     },
     "source": {
       "type": "object",
@@ -80,4 +96,3 @@
     }
   }
 }
-

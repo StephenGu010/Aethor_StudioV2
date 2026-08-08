@@ -1,4 +1,4 @@
-import type { SignalSample } from '../contracts/types';
+import type { SignalSample } from '@aethor/contracts';
 
 export class BoundedSignalBuffer {
   readonly maxSamples: number;

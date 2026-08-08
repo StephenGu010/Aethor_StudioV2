@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-仓库已经包含可运行的 React/Vite 展示前端、共享 Schema、内置 Dummy Profile，以及 C#/WebView2 的边界说明。真实串口、C# 服务、桌面壳和动作编排尚未实现。阶段 0 已将代码统一为：
+仓库已经包含可运行的 React/Vite 展示前端、可执行的共享 TypeScript/JSON Schema 契约、内置 Dummy Profile，以及 C#/WebView2 的边界说明。真实串口、C# 服务、桌面壳和动作编排尚未实现。阶段 0–1 已将代码统一为：
 
 ```text
 apps/
@@ -11,7 +11,7 @@ apps/
 services/
   robot-gateway/            C# .NET 10 服务（后续阶段）
 shared/
-  contracts/                JSON Schema 与跨进程 DTO
+  contracts/                JSON Schema、TS 类型、协议纯函数、状态机与 conformance vectors
   robot-profiles/
     BuiltIn/dummy-6dof/     URDF、STL、manifest、来源与许可
 docs/
@@ -35,6 +35,7 @@ studio-desktop ──> DesktopBridgeV1
 - C# 服务独占串口、命令队列、超时、取消、确认和审计状态。
 - 桌面壳只负责窗口生命周期、进程启动、会话令牌和能力声明，不拥有机器人业务状态。
 - Profile 是设备描述和资源来源，不能承载运行时连接状态。
+- `shared/contracts` 不拥有串口；其中的 transport 只是端口，fake 只用于无硬件测试。Phase 4 的 C# adapter 才拥有真实 SerialPort 生命周期。
 
 ## 运行时状态所有权
 

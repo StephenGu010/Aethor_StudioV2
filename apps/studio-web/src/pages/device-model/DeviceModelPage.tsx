@@ -45,13 +45,13 @@ export function DeviceModelPage() {
           <DisabledOperation label="断开连接" meta="DISCONNECT" />
           <DisabledOperation label="刷新状态" meta="REFRESH" icon={<RefreshCw size={14} />} />
           <DisabledOperation label="使能设备" meta="ENABLE" />
-          <DisabledOperation label="停止并去使能" meta="STOP → ZERO → DISABLE" danger />
+          <DisabledOperation label="停止并去使能" meta="STOP → ZERO → DISABLE → VERIFY" danger />
           <DisabledOperation label="回零" meta="HOME · SAFETY UNKNOWN" danger />
           <DisabledOperation label="复位" meta="RESET" />
         </div>
         <div className="modeControl">
-          <div><strong>控制模式</strong><span>#CMDMODE 1–5</span></div>
-          {[1, 2, 3, 4, 5].map((mode) => <button type="button" disabled key={mode}><span>MODE</span><strong>{mode}</strong></button>)}
+          <div><strong>控制模式</strong><span>#CMDMODE 1–3 · PROFILE ALLOWED</span></div>
+          {dummyProfile.capabilities.controlModes.map((mode) => <button type="button" disabled key={mode}><span>MODE</span><strong>{mode}</strong></button>)}
         </div>
       </section>
 

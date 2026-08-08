@@ -1,5 +1,5 @@
 import { strFromU8, unzipSync } from 'fflate';
-import type { RobotProfileManifestV1 } from '../contracts/types';
+import type { RobotProfileManifestV1 } from '@aethor/contracts';
 import { parseRobotProfile } from './robotProfile';
 
 export interface ProfilePackageValidation {
@@ -105,4 +105,3 @@ function resolveRelativePath(baseDirectory: string, relativePath: string): strin
   }
   return stack.join('/');
 }
-

@@ -12,9 +12,9 @@
       "properties": {
         "sessionId": { "type": "string", "minLength": 1 },
         "profileId": { "type": "string", "minLength": 1 },
-        "connectionState": { "enum": ["offline", "connecting", "connected", "reconnecting"] },
+        "connectionState": { "enum": ["offline", "connecting", "connected", "reconnecting", "disconnecting", "faulted"] },
         "motorState": { "enum": ["unknown", "disabled", "enabled"] },
-        "controlMode": { "type": ["integer", "null"], "minimum": 1, "maximum": 5 },
+        "controlMode": { "oneOf": [{ "enum": [1, 2, 3] }, { "type": "null" }] },
         "timestampUtc": { "type": "string", "format": "date-time" },
         "source": { "$ref": "#/$defs/DataSource" },
         "validity": { "$ref": "#/$defs/Validity" }
@@ -48,12 +48,13 @@
     "CommandResult": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["commandId", "status", "message"],
+      "required": ["commandId", "status", "message", "timestampUtc"],
       "properties": {
         "commandId": { "type": "string", "minLength": 1 },
-        "status": { "enum": ["unsupported", "rejected", "accepted", "completed", "failed", "timedOut", "cancelled"] },
-        "message": { "type": "string" },
-        "deviceReply": { "type": "string" }
+        "status": { "enum": ["unsupported", "rejected", "accepted", "completed", "failed", "timedOut", "cancelled", "unconfirmed"] },
+        "message": { "type": "string", "maxLength": 500 },
+        "timestampUtc": { "type": "string", "format": "date-time" },
+        "deviceReply": { "type": "string", "maxLength": 4096 }
       }
     },
     "ProtocolFrame": {
@@ -92,6 +93,19 @@
         "timestampUtc": { "type": "string", "format": "date-time" },
         "value": { "type": ["number", "null"] },
         "validity": { "$ref": "#/$defs/Validity" }
+      }
+    },
+    "OperationEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "timestampUtc", "severity", "title", "detail", "source"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "timestampUtc": { "type": "string", "format": "date-time" },
+        "severity": { "enum": ["info", "warning", "error"] },
+        "title": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "detail": { "type": "string", "maxLength": 1000 },
+        "source": { "$ref": "#/$defs/DataSource" }
       }
     },
     "DesktopBridgeCapabilities": {

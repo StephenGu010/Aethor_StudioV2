@@ -9,7 +9,7 @@ import {
   TooltipComponent
 } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
-import type { SignalSeries } from '../../contracts/types';
+import type { SignalSeries } from '@aethor/contracts';
 
 echarts.use([
   LineChart,

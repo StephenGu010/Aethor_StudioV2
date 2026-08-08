@@ -2,13 +2,13 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { Check, Clipboard, Download, Filter, LockKeyhole, Search, Send, ShieldAlert, Trash2, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { SourceTag } from '../../components/ui/SourceTag';
-import type { ProtocolFrame } from '../../contracts/types';
+import type { ProtocolFrame } from '@aethor/contracts';
 import { validateDummyCommand } from '../../domain/dummyCommand';
 import { showcaseProtocolFrames } from '../../fixtures/showcase';
 import { useRobotSessionStore } from '../../stores/useRobotSessionStore';
 
 type DirectionFilter = 'all' | ProtocolFrame['direction'];
-const quickCommands = ['#GETJPOS', '#GETMODE', '#GETENABLE', '#CMDMODE 1', '#CMDMODE 2', '!START', '!STOP', '!DISABLE', '!HOME', '!RESET'];
+const quickCommands = ['#GETJPOS', '#GETMODE', '#GETENABLE', '#CMDMODE 1', '#CMDMODE 2', '#CMDMODE 3', '!START', '!STOP', '!DISABLE', '!HOME', '!RESET'];
 
 export function TerminalPage() {
   const [query, setQuery] = useState('');
@@ -77,7 +77,7 @@ export function TerminalPage() {
           </div>
           <div className="commandEntry">
             <code>&gt;</code>
-            <input aria-label="Dummy ASCII 命令" value={command} onChange={(event) => setCommand(event.currentTarget.value)} spellCheck={false} />
+            <input aria-label="Dummy ASCII 命令" value={command} onChange={(event) => setCommand(event.currentTarget.value)} readOnly={!expertUnlocked} spellCheck={false} />
             <button type="button" disabled title="C# 串口服务未连接"><Send size={15} />真实发送</button>
           </div>
           <div className={`validationLine ${validation.valid ? `risk-${validation.risk}` : 'invalid'}`}>

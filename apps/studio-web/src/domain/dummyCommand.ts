@@ -1,3 +1,5 @@
+import { validateDummyRawCommand } from '@aethor/contracts/dummy-ascii-v1';
+
 export interface CommandValidation {
   valid: boolean;
   kind: string;
@@ -5,52 +7,37 @@ export interface CommandValidation {
   risk: 'low' | 'medium' | 'high';
 }
 
-const bangCommands = new Set([
-  '!START', '!STOP', '!DISABLE', '!HOME', '!RESET', '!CALIBRATION',
-  '!LEDON', '!LEDOFF', '!RGBON', '!RGBOFF'
-]);
-const queryCommands = new Set(['#GETJPOS', '#GETLPOS', '#GETMODE', '#GETENABLE', '#GETRGB']);
+const invalidMessages = {
+  EMPTY: '命令不能为空',
+  TOO_LONG: '命令超过 Dummy 固件行长度上限',
+  MULTILINE: '每次只能校验一条命令',
+  NON_ASCII: '命令只能包含可打印 ASCII 字符',
+  MODE_NOT_ALLOWED: 'Aethor Studio V2 仅允许 Dummy 模式 1–3',
+  COMMAND_NOT_ALLOWED: '命令不在 V2 结构化白名单内',
+  ARGUMENT_COUNT: '关节组命令必须包含六个关节值和可选速度',
+  INVALID_NUMBER: '关节组命令包含非法数值或非正速度',
+  MOTION_LINE_TOO_LONG: '运动命令超过固件 FIFO 单项容量'
+} as const;
+
+const kindNames = {
+  system: 'SYSTEM',
+  query: 'QUERY',
+  mode: 'MODE',
+  jointGroup: 'JOINT GROUP'
+} as const;
 
 export function validateDummyCommand(raw: string): CommandValidation {
-  const command = raw.trim();
-  if (!command) return invalid('命令不能为空');
-  if (command.length > 256) return invalid('命令超过 256 字符');
-  if (!/^[\x20-\x7E]+$/.test(command)) return invalid('命令只能包含可打印 ASCII 字符');
-
-  if (bangCommands.has(command)) {
-    const highRisk = ['!STOP', '!DISABLE', '!HOME', '!CALIBRATION'].includes(command);
-    return valid('SYSTEM', highRisk ? '系统控制命令；真实发送需要后端确认' : '系统控制命令格式有效', highRisk ? 'high' : 'medium');
+  const validation = validateDummyRawCommand(raw);
+  if (!validation.valid || validation.kind === 'invalid') {
+    return {
+      valid: false,
+      kind: 'INVALID',
+      message: invalidMessages[validation.code as keyof typeof invalidMessages] ?? '命令格式无效',
+      risk: 'low'
+    };
   }
-  if (queryCommands.has(command)) return valid('QUERY', '状态查询命令格式有效', 'low');
-  if (/^#CMDMODE [1-5]$/.test(command)) return valid('MODE', '控制模式命令格式有效', 'medium');
-  if (/^#RGBMODE [0-7]$/.test(command)) return valid('RGB', 'RGB 模式命令格式有效', 'low');
-  if (/^#RGBCOLOR (?:\d{1,3} ){2}\d{1,3}$/.test(command)) {
-    const channels = command.split(' ').slice(1).map(Number);
-    return channels.every((value) => value >= 0 && value <= 255)
-      ? valid('RGB', 'RGB 颜色命令格式有效', 'low')
-      : invalid('RGB 通道必须在 0..255');
-  }
-  if (/^#(?:SET_DCE_KP|SET_DCE_KI|SET_DCE_KD) [1-6] -?\d+(?:\.\d+)?$/.test(command)) {
-    return valid('MOTOR_TUNE', '电机维护命令格式有效；真实发送属于高风险操作', 'high');
-  }
-  if (/^#REBOOT [1-6]$/.test(command)) return valid('MOTOR_REBOOT', '电机重启命令格式有效；真实发送属于高风险操作', 'high');
-
-  const prefix = command[0];
-  if (prefix === '>' || prefix === '&' || prefix === '@' || prefix === '$') {
-    const expected = prefix === '$' ? 6 : [6, 7];
-    const values = command.slice(1).split(',').map((value) => Number(value.trim()));
-    const lengthValid = Array.isArray(expected) ? expected.includes(values.length) : values.length === expected;
-    if (!lengthValid || values.some((value) => !Number.isFinite(value))) return invalid('运动/电流流命令参数数量或数字格式无效');
-    return valid(prefix === '$' ? 'CURRENT_STREAM' : 'MOTION_STREAM', '流命令格式有效；离线状态不会发送', 'high');
-  }
-  return invalid('未识别的 Dummy ASCII v1 命令');
+  const message = validation.kind === 'query'
+    ? '只读查询格式有效；离线状态不会发送'
+    : '命令格式有效；真实发送仍需后端权限与安全门';
+  return { valid: true, kind: kindNames[validation.kind], message, risk: validation.risk };
 }
-
-function valid(kind: string, message: string, risk: CommandValidation['risk']): CommandValidation {
-  return { valid: true, kind, message, risk };
-}
-
-function invalid(message: string): CommandValidation {
-  return { valid: false, kind: 'INVALID', message, risk: 'low' };
-}
-

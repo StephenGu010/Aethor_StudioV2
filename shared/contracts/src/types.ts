@@ -1,7 +1,14 @@
 export type DataSource = 'showcase' | 'measured' | 'commanded' | 'computed' | 'unavailable';
 export type Validity = 'valid' | 'stale' | 'invalid' | 'unavailable';
-export type ConnectionState = 'offline' | 'connecting' | 'connected' | 'reconnecting';
+export type ConnectionState =
+  | 'offline'
+  | 'connecting'
+  | 'connected'
+  | 'reconnecting'
+  | 'disconnecting'
+  | 'faulted';
 export type MotorState = 'unknown' | 'disabled' | 'enabled';
+export type DummyControlMode = 1 | 2 | 3;
 export type CommandStatus =
   | 'unsupported'
   | 'rejected'
@@ -9,7 +16,8 @@ export type CommandStatus =
   | 'completed'
   | 'failed'
   | 'timedOut'
-  | 'cancelled';
+  | 'cancelled'
+  | 'unconfirmed';
 
 export interface RobotJointProfile {
   jointId: string;
@@ -18,6 +26,18 @@ export interface RobotJointProfile {
   protocolIndex: number;
   lowerDeg: number;
   upperDeg: number;
+}
+
+export interface RobotProfileCapabilitiesV1 {
+  jointPositionFeedback: boolean;
+  jointGroupCommand: boolean;
+  enable: boolean;
+  stop: boolean;
+  disable: boolean;
+  home: boolean;
+  reset: boolean;
+  controlModes: DummyControlMode[];
+  rawTerminal: boolean;
 }
 
 export interface RobotProfileManifestV1 {
@@ -38,7 +58,7 @@ export interface RobotProfileManifestV1 {
     showcasePoseDeg?: number[];
   };
   joints: RobotJointProfile[];
-  capabilities: Record<string, boolean>;
+  capabilities: RobotProfileCapabilitiesV1;
   source: {
     urdfSha256: string;
     license: string;
@@ -51,7 +71,7 @@ export interface RobotSessionSnapshot {
   profileId: string;
   connectionState: ConnectionState;
   motorState: MotorState;
-  controlMode: number | null;
+  controlMode: DummyControlMode | null;
   timestampUtc: string;
   source: DataSource;
   validity: Validity;
@@ -78,6 +98,7 @@ export interface CommandResult {
   commandId: string;
   status: CommandStatus;
   message: string;
+  timestampUtc: string;
   deviceReply?: string;
 }
 
@@ -127,4 +148,3 @@ export interface DesktopBridgeCapabilities {
   toggleMaximize: boolean;
   close: boolean;
 }
-

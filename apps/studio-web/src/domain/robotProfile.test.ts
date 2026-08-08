@@ -15,6 +15,11 @@ describe('RobotProfileManifestV1', () => {
     expect(() => parseRobotProfile({ ...dummyProfile, model: { ...dummyProfile.model, dof: 7 } })).toThrow();
     const duplicate = dummyProfile.joints.map((joint, index) => index === 1 ? { ...joint, urdfJointName: 'joint_1' } : joint);
     expect(() => parseRobotProfile({ ...dummyProfile, joints: duplicate })).toThrow();
+    expect(() => parseRobotProfile({
+      ...dummyProfile,
+      capabilities: { ...dummyProfile.capabilities, controlModes: [1, 2, 3, 5] }
+    })).toThrow();
+    expect(() => parseRobotProfile({ ...dummyProfile, unexpectedOnlineState: true })).toThrow();
   });
 
   it('validates every joint limit without inferring speed or effort limits', () => {

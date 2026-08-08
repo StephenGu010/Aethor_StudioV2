@@ -4,7 +4,7 @@ import type {
   ProtocolFrame,
   RobotSessionSnapshot,
   SignalSeries
-} from '../contracts/types';
+} from '@aethor/contracts';
 
 const captureStartMs = Date.parse('2026-08-07T06:31:40.000Z');
 const baseActual = [12.4, -36.1, 18.55, 44.85, -22.35, 89.9];

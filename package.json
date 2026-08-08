@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "pnpm --filter @aethor/studio-web dev",
     "preview": "pnpm --filter @aethor/studio-web preview",
-    "typecheck": "pnpm --filter @aethor/studio-web typecheck",
-    "test": "pnpm --filter @aethor/studio-web test",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test": "pnpm -r --if-present test",
     "build": "pnpm --filter @aethor/studio-web build",
     "test:e2e": "pnpm --filter @aethor/studio-web test:e2e"
   }

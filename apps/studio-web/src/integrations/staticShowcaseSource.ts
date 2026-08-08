@@ -1,4 +1,4 @@
-import type { CommandResult, JointGroupCommand } from '../contracts/types';
+import type { CommandResult, JointGroupCommand } from '@aethor/contracts';
 import { showcaseJointFrame, showcaseProtocolFrames, showcaseSession } from '../fixtures/showcase';
 import type { RobotGatewayV1 } from './robotGateway';
 
@@ -35,8 +35,7 @@ export class StaticShowcaseSource implements RobotGatewayV1 {
 }
 
 function unsupported(commandId: string, message: string): CommandResult {
-  return { commandId, status: 'unsupported', message };
+  return { commandId, status: 'unsupported', message, timestampUtc: new Date().toISOString() };
 }
 
 export const robotGateway = new StaticShowcaseSource();
-

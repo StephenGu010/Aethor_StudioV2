@@ -12,6 +12,7 @@
 6. [验收矩阵](testing/acceptance-matrix.md)：自动化、模拟串口和实机监督验收。
 7. [阶段提示词](prompts/README.md)：可直接交给下一位工程师或 Codex 的执行任务。
 8. [交接模板](handoffs/template.md)：每阶段结束时记录真实结果、证据和剩余风险。
+9. [当前交接：Phase 1](handoffs/phase-01.md)：共享协议、状态机、验证结果和下一阶段入口。
 
 ## 状态约定
 

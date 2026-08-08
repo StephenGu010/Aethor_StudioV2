@@ -1,6 +1,6 @@
 # Aethor Studio V2
 
-面向 Windows 的 Dummy 六轴机械臂调试与数字孪生工作台。当前仓库已实现 React 展示前端、共享契约和内置模型；真实 C# 串口服务、WebView2 壳和动作编排仍在阶段计划中。
+面向 Windows 的 Dummy 六轴机械臂调试与数字孪生工作台。当前仓库已实现 React 展示前端、共享协议/状态契约和内置模型；真实 C# 串口服务、WebView2 壳和动作编排仍在阶段计划中。
 
 ## 当前可用
 
@@ -8,6 +8,7 @@
 - 数据示波：有限静态采集、信号选择、缩放和 CSV 导出。
 - 串口终端：只读示例帧、筛选、导出、会话级专家解锁和离线格式校验。
 - 设备与模型：Profile、URDF、关节映射、限位、来源和 `.aethor-robot` 前端校验预览。
+- 工程契约：Dummy 模式 1–3 白名单、有界 ASCII parser/formatter、会话/命令状态机、fake transport 和跨语言 conformance vectors。
 
 所有当前样例数据均标记 `SHOWCASE DATA / SERIAL OFFLINE`，不会伪造连接、使能、设备回包、命令成功或软件急停成功。
 
@@ -29,7 +30,7 @@ docs/                路线图、协议、决策、验收与交接
 
 ## 开发命令
 
-需要 Node.js 24.15+、pnpm 11.16+ 和 Microsoft Edge：
+需要 Node.js 24.x、pnpm 11.16+ 和 Microsoft Edge：
 
 ```powershell
 pnpm install --frozen-lockfile
@@ -49,7 +50,7 @@ pnpm dev
 - [阶段路线图](docs/roadmap.md)
 - [产品与安全边界](docs/product-boundaries.md)
 - [Dummy ASCII v1](docs/protocols/dummy-ascii-v1.md)
-- [当前交接状态](docs/handoffs/phase-00.md)
+- [当前交接状态](docs/handoffs/phase-01.md)
 
 当前阶段不会自动打开已连接的 COM4。任何实机操作都必须经过对应阶段的监督验收门。
 

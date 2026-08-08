@@ -9,7 +9,7 @@
 - `RobotSessionSnapshot`：`sessionId/profileId/connectionState/motorState/controlMode/timestampUtc/source/validity`。
 - `JointStateFrame`：递增 `sequence`、UTC 时间、`positionsDeg[]`、来源与有效性；数组顺序按 Profile 的 `protocolIndex`。
 - `JointGroupCommand`：唯一 `commandId/sessionId/profileId/positionsDeg[]`，可选且经过验证的 `speedDegS`。
-- `CommandResult`：`unsupported/rejected/accepted/completed/failed/timedOut/cancelled`，包含安全的用户消息与可选设备回包。
+- `CommandResult`：`unsupported/rejected/accepted/completed/failed/timedOut/cancelled/unconfirmed`，包含 UTC 时间、安全的用户消息与可选设备回包。
 - `ProtocolFrame`：`tx/rx/error`、UTC 时间、原始 ASCII、解析类别和可选 `correlationId`。
 - `SignalSample`：信号 ID、UTC 时间、数值、单位、`showcase/measured/commanded/computed/unavailable` 来源与有效性。
 
@@ -19,10 +19,13 @@
 - 反馈过期：服务将会话标记为 stale；前端禁用运动下发。
 - 重复 `commandId`：服务返回同一终态或明确冲突，不重复执行。
 - 超时或串口断开：不能显示成功；是否可重试由具体命令的幂等性决定。
+- 设备 FIFO 数字和通用 `ok` 只把命令推进到 `accepted` 并增加 evidence；只有查询读回或新鲜反馈收敛能产生 `completed`。
+- `HOME/RESET` 没有可信完成信号时以 `unconfirmed` 结束，不能用固定 sleep 或 ACK 冒充完成。
 
 ## 安全边界
 
 - 运动下发必须满足：会话匹配、Profile 匹配、已连接、反馈新鲜、设备已使能、目标在每个关节限位内、无互斥命令。
-- 软件急停不弹确认框。服务执行 `!STOP`、`$0,0,0,0,0,0`、`!DISABLE`，逐步记录结果；任一步失败都必须返回未确认停机。
+- 软件急停不弹确认框。服务执行 `!STOP`、内部 best-effort `$0,0,0,0,0,0`、`!DISABLE`、`#GETENABLE`；`$0...` 不等待 ACK，最终读回不是 `0` 时必须返回未确认停机。
 - 服务仅绑定 loopback，并由桌面壳提供每次启动生成的短生命周期会话令牌。
 
+公共命令只能构造 Dummy 模式 1–3、核心系统/查询命令和 `>` 六轴关节组。RGB、模式 4/5、`&`、`@`、通用 `$`、标定、PID 和 reboot 不得通过 raw terminal 绕过。

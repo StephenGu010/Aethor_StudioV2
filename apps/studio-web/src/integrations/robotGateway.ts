@@ -4,7 +4,7 @@ import type {
   JointStateFrame,
   ProtocolFrame,
   RobotSessionSnapshot
-} from '../contracts/types';
+} from '@aethor/contracts';
 
 export interface RobotGatewayCapabilities {
   hardwareCommands: boolean;
@@ -21,4 +21,3 @@ export interface RobotGatewayV1 {
   sendRaw(commandId: string, raw: string): Promise<CommandResult>;
   emergencyStop(commandId: string): Promise<CommandResult>;
 }
-

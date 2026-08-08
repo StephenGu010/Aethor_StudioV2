@@ -1,0 +1,22 @@
+{
+  "name": "@aethor/contracts",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./dummy-ascii-v1": "./src/dummyAsciiV1.ts",
+    "./testing": "./src/testing.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit --pretty false",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
+  },
+  "packageManager": "pnpm@11.16.0"
+}

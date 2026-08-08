@@ -1,0 +1,39 @@
+{
+  "schemaVersion": "1.0",
+  "source": "dummy_ref@5b9b602d8013799895c03f288e98ad72f38193be",
+  "formatCases": [
+    { "name": "query joints", "command": { "type": "queryJointPositions" }, "expectedLine": "#GETJPOS" },
+    { "name": "query mode", "command": { "type": "queryMode" }, "expectedLine": "#GETMODE" },
+    { "name": "query enable", "command": { "type": "queryEnable" }, "expectedLine": "#GETENABLE" },
+    { "name": "set supported mode", "command": { "type": "setMode", "mode": 3 }, "expectedLine": "#CMDMODE 3" },
+    { "name": "six joint target", "command": { "type": "jointGroup", "positionsDeg": [0, -1.25, 2, 3, 4, 5], "speedDegS": 10 }, "expectedLine": ">0,-1.25,2,3,4,5,10" }
+  ],
+  "invalidRawCases": [
+    { "raw": "#CMDMODE 4", "expectedCode": "MODE_NOT_ALLOWED" },
+    { "raw": "#CMDMODE 5", "expectedCode": "MODE_NOT_ALLOWED" },
+    { "raw": "#RGBMODE 1", "expectedCode": "COMMAND_NOT_ALLOWED" },
+    { "raw": "!CALIBRATION", "expectedCode": "COMMAND_NOT_ALLOWED" },
+    { "raw": "#SET_DCE_KP 1 10", "expectedCode": "COMMAND_NOT_ALLOWED" },
+    { "raw": "#REBOOT 1", "expectedCode": "COMMAND_NOT_ALLOWED" },
+    { "raw": "@0,0,0,0,0,0", "expectedCode": "COMMAND_NOT_ALLOWED" },
+    { "raw": "&0,0,0,0,0,0", "expectedCode": "COMMAND_NOT_ALLOWED" },
+    { "raw": "$0,0,0,0,0,0", "expectedCode": "COMMAND_NOT_ALLOWED" }
+  ],
+  "responseCases": [
+    { "raw": "Started ok", "expectedKind": "systemAck" },
+    { "raw": "Stopped ok", "expectedKind": "systemAck" },
+    { "raw": "Disabled ok", "expectedKind": "systemAck" },
+    { "raw": "Homing ok", "expectedKind": "systemAck" },
+    { "raw": "ok 1.00 -2.50 3.00 4.25 5.00 6.00", "expectedKind": "jointPositions" },
+    { "raw": "ok 2 INT_POINT", "expectedKind": "mode" },
+    { "raw": "ok 1", "expectedKind": "enable" },
+    { "raw": "ok Set command mode to [3] (CONT_TRAJ)", "expectedKind": "modeAck" },
+    { "raw": "15", "expectedKind": "queue" },
+    { "raw": "255", "expectedKind": "queue" },
+    { "raw": "16", "expectedKind": "malformed" },
+    { "raw": "ok", "expectedKind": "genericAck" },
+    { "raw": "error CMD FIFO FULL", "expectedKind": "error" },
+    { "raw": "ok 1 2 BAD 4 5 6", "expectedKind": "malformed" },
+    { "raw": "boot banner", "expectedKind": "unknown" }
+  ]
+}

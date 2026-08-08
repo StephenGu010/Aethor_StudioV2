@@ -1,5 +1,30 @@
 # 变更记录
 
+## 2026-08-08 - 阶段 1：Dummy 协议、契约与安全状态机
+
+需求：
+- 以固定 `dummy_ref` 提交为证据，将 Dummy 六轴协议收敛为工业可审计的共享契约，不访问 COM4。
+
+改动：
+- 将 `shared/contracts` 建为 `@aethor/contracts` workspace，前端删除重复类型并改为消费共享类型。
+- 新增模式 1–3 公共白名单、`>` 六轴 formatter、response parser、255 字符有界行解码、命令/会话纯状态机和有界 fake transport。
+- JSON Schema 新增 `unconfirmed`、UTC 结果时间、完整 Profile capabilities、模式 1–3 限制和 `OperationEvent`；Dummy manifest 同步为明确能力数组。
+- 新增跨语言 conformance vectors 与 ADR-0002；前端离线校验不再接受 RGB、模式 4/5、标定、PID、reboot、`&`、`@` 或通用 `$`。
+- 固化源码差异：运动 FIFO 单项 64 bytes；固件有效行上限实际为 255；`$0...` 成功路径没有 ACK，只能作为未来停止链内部 best-effort 写入。
+
+验证：
+- `pnpm typecheck`：共享契约与前端均通过。
+- `pnpm test`：共享契约 77 项、前端 33 项通过。
+- `pnpm build`：通过，Dummy Profile 10 项资源复制成功。
+- `pnpm test:e2e`：Edge 三档视口 12 项通过，离线发送保持禁用，模式 5 显示 INVALID。
+- 未打开 COM4，未发送查询、使能、停止或运动命令。
+
+待完善：
+- C# DTO 生成和 adapter 对 vectors 的复用在 Phase 4 落地；速度上限、反馈收敛容差、HOME/RESET 完成语义仍待后续监督验收。
+
+新增约定：
+- 设备 FIFO 数字或 `ok` 只增加命令 evidence，不直接等于物理完成；终态不能被迟到 ACK 覆盖。
+
 ## 2026-08-08 - 阶段 0：工程治理与本地 Git 流程
 
 需求：

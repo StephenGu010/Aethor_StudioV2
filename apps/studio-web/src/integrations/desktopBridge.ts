@@ -1,4 +1,4 @@
-import type { DesktopBridgeCapabilities } from '../contracts/types';
+import type { DesktopBridgeCapabilities } from '@aethor/contracts';
 
 export interface DesktopBridgeV1 {
   readonly capabilities: DesktopBridgeCapabilities;
