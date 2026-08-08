@@ -1,5 +1,5 @@
 import { Maximize2, Minimize2, X } from 'lucide-react';
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { type ToolWindowId, useWorkbenchStore } from '../../stores/useWorkbenchStore';
 
 export function FloatingToolWindow({
@@ -16,11 +16,14 @@ export function FloatingToolWindow({
   const toggleMaximized = useWorkbenchStore((store) => store.toggleMaximized);
   const toggleWindow = useWorkbenchStore((store) => store.toggleWindow);
   const windowRef = useRef<HTMLDivElement>(null);
+  const dragCleanupRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => () => dragCleanupRef.current?.(), []);
 
   if (!state.open) return null;
 
   const beginDrag = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (state.maximized || event.button !== 0) return;
+    if (state.maximized || event.button !== 0 || (event.target as HTMLElement).closest('button')) return;
     const panel = windowRef.current;
     const stage = panel?.closest<HTMLElement>('.sceneStage');
     if (!panel || !stage) return;
@@ -46,7 +49,10 @@ export function FloatingToolWindow({
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', finish);
       window.removeEventListener('pointercancel', finish);
+      if (dragCleanupRef.current === finish) dragCleanupRef.current = null;
     };
+    dragCleanupRef.current?.();
+    dragCleanupRef.current = finish;
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', finish, { once: true });
     window.addEventListener('pointercancel', finish, { once: true });
@@ -79,4 +85,3 @@ export function FloatingToolWindow({
 function clamp(value: number, minimum: number, maximum: number) {
   return Math.min(maximum, Math.max(minimum, value));
 }
-

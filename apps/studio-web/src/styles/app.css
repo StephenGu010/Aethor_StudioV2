@@ -333,6 +333,36 @@
 .scenePanel { min-width: 0; min-height: 0; border-right: 1px solid var(--line-subtle); }
 .sceneStage { position: relative; width: 100%; height: 100%; overflow: hidden; background: #080a0c; }
 .sceneStage > div:first-of-type:not(.sceneToolbar) { width: 100%; height: 100%; }
+.robotSceneHost { position: absolute; inset: 0; width: 100%; height: 100%; }
+.robotSceneHost > div:first-child,
+.robotSceneHost canvas { width: 100% !important; height: 100% !important; }
+.sceneModuleLoading { display: grid; width: 100%; height: 100%; place-items: center; color: #7f888e; font: var(--font-size-micro) var(--font-mono); }
+.sceneFallback {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-content: center;
+  gap: 8px;
+  padding: 24px;
+  background: radial-gradient(circle at center, #161b1f 0, #080a0c 55%);
+  color: #9ba4aa;
+  text-align: center;
+}
+.sceneFallback strong { color: #d1a8a8; font: 600 var(--font-size-label) var(--font-mono); letter-spacing: .08em; }
+.sceneFallback span { color: var(--red); font: var(--font-size-micro) var(--font-mono); }
+.sceneFallback small { max-width: 420px; color: #7f888e; line-height: 1.6; }
+.sceneQualityNotice {
+  position: absolute;
+  z-index: 6;
+  right: 14px;
+  bottom: 54px;
+  padding: 6px 9px;
+  border: 1px solid #57472c;
+  border-radius: 3px;
+  background: rgba(28, 23, 15, .86);
+  color: #c8aa60;
+  font: var(--font-size-micro) var(--font-mono);
+}
 
 .sceneToolbar {
   position: absolute;
@@ -353,6 +383,8 @@
 
 .feedbackHud,
 .sceneLegend,
+.jointManipulatorHud,
+.sceneModelError,
 .modelLoadState {
   position: absolute;
   z-index: 5;
@@ -368,6 +400,35 @@
 .feedbackHud span { color: #7e878e; font: var(--font-size-micro) var(--font-mono); }
 .feedbackHud strong { color: #d4d8db; font: var(--font-size-caption) var(--font-mono); font-weight: 550; font-variant-numeric: tabular-nums; }
 .feedbackHud > div:first-child strong { color: #ccb064; font-size: var(--font-size-micro); }
+
+.jointManipulatorHud {
+  top: 154px;
+  left: 16px;
+  display: grid;
+  width: 236px;
+  grid-template-columns: 1fr auto;
+  gap: 4px 10px;
+  padding: 10px 13px;
+  outline: none;
+}
+.jointManipulatorHud:focus-visible { border-color: #b89545; box-shadow: 0 0 0 2px rgba(224, 185, 92, .16); }
+.jointManipulatorHud span { color: #c5a75f; font: var(--font-size-micro) var(--font-mono); }
+.jointManipulatorHud strong { color: #e7d8ad; font: 600 var(--font-size-caption) var(--font-mono); font-variant-numeric: tabular-nums; }
+.jointManipulatorHud small { grid-column: 1 / 3; color: #7f888f; font-size: var(--font-size-micro); }
+.sceneModelError {
+  top: 50%;
+  left: 50%;
+  display: grid;
+  width: min(390px, calc(100% - 48px));
+  gap: 8px;
+  padding: 18px;
+  transform: translate(-50%, -50%);
+  border-color: #633b3b;
+  color: #9d8585;
+  text-align: center;
+}
+.sceneModelError strong { color: #d49b9b; font: 600 var(--font-size-caption) var(--font-mono); }
+.sceneModelError span { font-size: var(--font-size-micro); line-height: 1.6; }
 
 .sceneLegend { bottom: 14px; left: 16px; display: grid; gap: var(--space-2); width: 206px; padding: 11px 13px; color: #90989e; font: var(--font-size-micro) var(--font-mono); }
 .legendLine { display: inline-block; width: 25px; margin-right: 7px; border-top: 1px solid #cbd0d3; vertical-align: middle; }
@@ -390,7 +451,8 @@
 .toolWindowHeader > div { display: flex; gap: 3px; }
 .toolWindowHeader button { display: grid; width: 24px; height: 23px; place-items: center; padding: 0; border-color: transparent; background: transparent; color: #767e85; }
 .toolWindowBody { max-height: calc(100% - 40px); padding: 10px; overflow: auto; }
-.treeNode { display: grid; height: 31px; align-items: center; grid-template-columns: 20px 1fr auto; color: #b8bec2; }
+.treeNode { display: grid; width: 100%; height: 31px; align-items: center; grid-template-columns: 20px 1fr auto; padding: 0; border: 0; border-radius: 2px; background: transparent; color: #b8bec2; text-align: left; }
+.treeNode.selected { background: #2b2a24; color: #ead9ab; }
 .treeNode svg { color: #6d767d; }
 .treeNode small { color: #798188; font: var(--font-size-micro) var(--font-mono); }
 .treeChildren { margin-left: 10px; padding-left: 12px; border-left: 1px solid #2d3338; }
@@ -412,9 +474,12 @@
 .controlModeTabs button { width: 100%; height: var(--control-height); border-radius: 0; font-size: var(--font-size-caption); }
 .controlModeTabs button.active { background: #30363b; color: #eef0f1; }
 .jointRows { min-height: 0; flex: 1; overflow: auto; padding-right: 2px; }
-.jointRow { padding: 8px 2px; border-bottom: 1px solid #252b30; }
+.jointRow { position: relative; padding: 8px 2px; border-bottom: 1px solid #252b30; }
+.jointRow.selected { background: linear-gradient(90deg, rgba(199, 164, 78, .1), transparent 70%); }
+.jointRow.selected::before { position: absolute; top: 6px; bottom: 6px; left: 0; width: 2px; background: #c5a34f; content: ''; }
 .jointRowHeader { display: grid; align-items: center; grid-template-columns: 34px 38px 1fr 38px 55px; gap: 5px; }
-.jointRowHeader strong { font: 12px var(--font-mono); font-weight: 600; }
+.jointSelectButton { width: 32px; height: 25px; padding: 0; border-color: transparent; background: transparent; color: #cbd0d3; font: 600 12px var(--font-mono); }
+.jointSelectButton[aria-pressed="true"] { border-color: #665936; background: #312d22; color: #efd78e; }
 .jointRowHeader span { color: #7e878e; font: var(--font-size-micro) var(--font-mono); }
 .jointRowHeader span:nth-of-type(2) { text-align: right; }
 .jointRowHeader output { color: #e1e4e6; font: var(--font-size-caption) var(--font-mono); text-align: right; font-variant-numeric: tabular-nums; }

@@ -1,16 +1,40 @@
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Canvas, createPortal, type ThreeEvent, useFrame, useThree } from '@react-three/fiber';
+import {
+  Component,
+  type ErrorInfo,
+  type MutableRefObject,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import URDFLoader from 'urdf-loader';
 import type { RobotProfileManifestV1 } from '@aethor/contracts';
+import { JointManipulator } from './JointManipulator';
+import {
+  applyJointPositions,
+  applyVisibility,
+  createLoadedModels,
+  findOwningJointName,
+  type JointLike,
+  type LoadedModels,
+  updateTargetHighlight
+} from './robotModel';
+import { detectSceneCapabilities, type SceneCapabilityState } from './sceneCapabilities';
+import { disposeObjectGraphs, inspectObjectGraphs } from './sceneResources';
+import { acquireSceneResources } from './sceneResourceTracker';
 
 interface RobotSceneProps {
   profile: RobotProfileManifestV1;
   urdfUrl: string;
   actualPositionsDeg: number[];
   targetPositionsDeg: number[];
+  selectedJointId: string;
   cameraResetSignal: number;
   settings: {
     showVisual: boolean;
@@ -22,38 +46,83 @@ interface RobotSceneProps {
     showTcpFrame: boolean;
     showJointAxes: boolean;
   };
+  onSelectedJointChange: (jointId: string) => void;
+  onJointTargetChange: (protocolIndex: number, valueDeg: number) => void;
   onModelState: (state: 'loading' | 'ready' | 'error') => void;
-}
-
-interface LoadedModels {
-  actual: THREE.Object3D;
-  target: THREE.Object3D;
-  actualJoints: Map<string, JointLike>;
-  targetJoints: Map<string, JointLike>;
-  ghostMaterials: THREE.Material[];
-}
-
-interface JointLike extends THREE.Object3D {
-  setJointValue: (value: number) => void;
+  onCapabilityState: (state: SceneCapabilityState) => void;
 }
 
 export function RobotScene(props: RobotSceneProps) {
+  const capability = useMemo(detectSceneCapabilities, []);
+  const [runtimeFailure, setRuntimeFailure] = useState(false);
+  const draggingRef = useRef(false);
+
+  useEffect(() => {
+    props.onCapabilityState(capability);
+    if (!capability.supported) props.onModelState('error');
+  }, [capability, props.onCapabilityState, props.onModelState]);
+
+  const handleRuntimeFailure = useCallback(() => {
+    setRuntimeFailure(true);
+    draggingRef.current = false;
+    props.onModelState('error');
+  }, [props.onModelState]);
+  const handleDraggingChange = useCallback((dragging: boolean) => {
+    draggingRef.current = dragging;
+  }, []);
+
+  if (!capability.supported || runtimeFailure) {
+    return <SceneFallback reason={runtimeFailure ? 'WEBGL CONTEXT LOST' : 'WEBGL UNAVAILABLE'} />;
+  }
+
+  const constrained = capability.quality === 'constrained';
+  const shadowsEnabled = props.settings.showShadows && !constrained;
+
   return (
-    <Canvas
-      shadows={props.settings.showShadows ? 'percentage' : false}
-      camera={{ position: [0.78, 0.58, 0.84], fov: 39, near: 0.01, far: 40 }}
-      dpr={[1, 1.75]}
-      gl={{ antialias: true, powerPreference: 'high-performance' }}
-    >
-      <color attach="background" args={['#080a0c']} />
-      <fog attach="fog" args={['#080a0c', 2.8, 7]} />
-      <SceneLighting enabled={props.settings.showLighting} shadows={props.settings.showShadows} />
-      <CameraController resetSignal={props.cameraResetSignal} />
-      {props.settings.showGrid && <GridFloor />}
-      {props.settings.showBaseFrame && <Axes scale={0.12} position={[-0.38, -0.001, 0.3]} />}
-      <RobotModels {...props} />
-    </Canvas>
+    <div className="robotSceneHost" data-scene-quality={capability.quality}>
+      <SceneErrorBoundary onError={handleRuntimeFailure}>
+        <Canvas
+          fallback={<SceneFallback reason="WEBGL INITIALIZATION FAILED" />}
+          shadows={shadowsEnabled ? 'percentage' : false}
+          camera={{ position: [0.78, 0.58, 0.84], fov: 39, near: 0.01, far: 40 }}
+          dpr={constrained ? [1, 1.2] : [1, 1.75]}
+          gl={{ antialias: !constrained, powerPreference: constrained ? 'default' : 'high-performance' }}
+        >
+          <RendererLifecycle onContextLost={handleRuntimeFailure} />
+          <color attach="background" args={['#080a0c']} />
+          <fog attach="fog" args={['#080a0c', 2.8, 7]} />
+          <SceneLighting enabled={props.settings.showLighting} shadows={shadowsEnabled} />
+          <CameraController resetSignal={props.cameraResetSignal} draggingRef={draggingRef} />
+          {props.settings.showGrid && <GridFloor />}
+          {props.settings.showBaseFrame && <Axes scale={0.12} position={[-0.38, -0.001, 0.3]} />}
+          <RobotModels {...props} onDraggingChange={handleDraggingChange} />
+        </Canvas>
+      </SceneErrorBoundary>
+      {constrained && (
+        <div className="sceneQualityNotice" role="status">
+          PERFORMANCE LIMITED · DPR / SHADOWS REDUCED
+        </div>
+      )}
+    </div>
   );
+}
+
+function RendererLifecycle({ onContextLost }: { onContextLost: () => void }) {
+  const gl = useThree((state) => state.gl);
+  useEffect(() => {
+    const release = acquireSceneResources({ renderers: 1 });
+    const canvas = gl.domElement;
+    const handleContextLost = (event: Event) => {
+      event.preventDefault();
+      onContextLost();
+    };
+    canvas.addEventListener('webglcontextlost', handleContextLost);
+    return () => {
+      canvas.removeEventListener('webglcontextlost', handleContextLost);
+      release();
+    };
+  }, [gl.domElement, onContextLost]);
+  return null;
 }
 
 function SceneLighting({ enabled, shadows }: { enabled: boolean; shadows: boolean }) {
@@ -66,20 +135,27 @@ function SceneLighting({ enabled, shadows }: { enabled: boolean; shadows: boolea
         castShadow={shadows}
         position={[1.3, 1.8, 1.1]}
         intensity={2.2}
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
+        shadow-mapSize-width={shadows ? 2048 : 512}
+        shadow-mapSize-height={shadows ? 2048 : 512}
       />
       <directionalLight position={[-1.1, 0.7, -0.5]} intensity={0.72} color="#85a1b4" />
     </>
   );
 }
 
-function CameraController({ resetSignal }: { resetSignal: number }) {
+function CameraController({
+  resetSignal,
+  draggingRef
+}: {
+  resetSignal: number;
+  draggingRef: MutableRefObject<boolean>;
+}) {
   const { camera, gl } = useThree();
   const controlsRef = useRef<OrbitControls | null>(null);
 
   useEffect(() => {
     const controls = new OrbitControls(camera, gl.domElement);
+    const release = acquireSceneResources({ controls: 1 });
     controls.enableDamping = true;
     controls.dampingFactor = 0.075;
     controls.target.set(0, 0.18, 0);
@@ -91,6 +167,7 @@ function CameraController({ resetSignal }: { resetSignal: number }) {
     return () => {
       controls.dispose();
       controlsRef.current = null;
+      release();
     };
   }, [camera, gl.domElement]);
 
@@ -100,7 +177,12 @@ function CameraController({ resetSignal }: { resetSignal: number }) {
     controlsRef.current?.update();
   }, [camera, resetSignal]);
 
-  useFrame(() => controlsRef.current?.update());
+  useFrame(() => {
+    const controls = controlsRef.current;
+    if (!controls) return;
+    controls.enabled = !draggingRef.current;
+    controls.update();
+  });
   return null;
 }
 
@@ -131,7 +213,7 @@ function Axes({ scale, position }: { scale: number; position?: [number, number, 
   return <primitive object={axes} position={position} />;
 }
 
-function RobotModels(props: RobotSceneProps) {
+function RobotModels(props: RobotSceneProps & { onDraggingChange: (dragging: boolean) => void }) {
   const [models, setModels] = useState<LoadedModels | null>(null);
   const readyFrameCount = useRef(0);
 
@@ -146,6 +228,8 @@ function RobotModels(props: RobotSceneProps) {
     let loadFailed = false;
     let resourcesLoaded = false;
     let parsedRobot: THREE.Object3D | null = null;
+    let ownedModels: LoadedModels | null = null;
+    setModels(null);
     props.onModelState('loading');
     const manager = new THREE.LoadingManager();
     const loader = new URDFLoader(manager);
@@ -155,11 +239,18 @@ function RobotModels(props: RobotSceneProps) {
       const loadedRobot = parsedRobot;
       parsedRobot = null;
       if (cancelled || loadFailed) {
-        disposeRoot(loadedRobot);
+        disposeObjectGraphs([loadedRobot]);
         return;
       }
-      readyFrameCount.current = 0;
-      setModels(createLoadedModels(loadedRobot));
+      try {
+        ownedModels = createLoadedModels(loadedRobot, props.profile);
+        readyFrameCount.current = 0;
+        setModels(ownedModels);
+      } catch {
+        loadFailed = true;
+        disposeObjectGraphs([loadedRobot]);
+        props.onModelState('error');
+      }
     };
 
     manager.onError = () => {
@@ -203,19 +294,21 @@ function RobotModels(props: RobotSceneProps) {
 
     return () => {
       cancelled = true;
-      if (resourcesLoaded && parsedRobot) {
-        disposeRoot(parsedRobot);
+      if (ownedModels) {
+        disposeObjectGraphs([ownedModels.actual, ownedModels.target]);
+        ownedModels = null;
+      } else if (resourcesLoaded && parsedRobot) {
+        disposeObjectGraphs([parsedRobot]);
         parsedRobot = null;
       }
-      setModels((current) => {
-        if (current) {
-          disposeRoot(current.actual);
-          current.ghostMaterials.forEach((material) => material.dispose());
-        }
-        return null;
-      });
     };
-  }, [props.profile.profileId, props.urdfUrl]);
+  }, [props.profile, props.urdfUrl]);
+
+  useEffect(() => {
+    if (!models) return;
+    const counts = inspectObjectGraphs([models.actual, models.target]);
+    return acquireSceneResources({ modelRoots: 2, ...counts });
+  }, [models]);
 
   useEffect(() => {
     if (!models) return;
@@ -258,92 +351,39 @@ function RobotModels(props: RobotSceneProps) {
     }
   }, [models, props.settings.showJointAxes, props.settings.showTcpFrame]);
 
+  useEffect(() => {
+    if (!models) return;
+    updateTargetHighlight(models.target, models.targetJoints, props.selectedJointId, props.profile);
+  }, [models, props.profile, props.selectedJointId]);
+
   if (!models) return <LoadingSkeleton />;
+
+  const handlePick = (event: ThreeEvent<PointerEvent>, rootJoints: Map<string, JointLike>) => {
+    const urdfJointName = findOwningJointName(event.object, rootJoints);
+    const profileJoint = props.profile.joints.find((joint) => joint.urdfJointName === urdfJointName);
+    if (profileJoint) props.onSelectedJointChange(profileJoint.jointId);
+  };
+  const selectedJoint = props.profile.joints.find((joint) => joint.jointId === props.selectedJointId);
+  const selectedTargetJoint = selectedJoint ? models.targetJoints.get(selectedJoint.urdfJointName) : undefined;
+  const selectedTargetDeg = selectedJoint ? props.targetPositionsDeg[selectedJoint.protocolIndex] ?? 0 : 0;
+
   return (
     <group rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
-      <primitive object={models.actual} />
-      <primitive object={models.target} />
+      <primitive object={models.actual} onPointerDown={(event: ThreeEvent<PointerEvent>) => handlePick(event, models.actualJoints)} />
+      <primitive object={models.target} onPointerDown={(event: ThreeEvent<PointerEvent>) => handlePick(event, models.targetJoints)} />
+      {selectedJoint && selectedTargetJoint && createPortal(
+        <JointManipulator
+          joint={selectedTargetJoint}
+          targetDeg={selectedTargetDeg}
+          protocolIndex={selectedJoint.protocolIndex}
+          onTargetChange={props.onJointTargetChange}
+          onDraggingChange={props.onDraggingChange}
+        />,
+        selectedTargetJoint,
+        { events: { priority: 2 } }
+      )}
     </group>
   );
-}
-
-function createLoadedModels(loadedRobot: THREE.Object3D): LoadedModels {
-  const target = loadedRobot.clone(true);
-  const ghostMaterials: THREE.Material[] = [];
-  target.traverse((child) => {
-    const mesh = child as THREE.Mesh;
-    if (!mesh.isMesh) return;
-    const ghost = new THREE.MeshStandardMaterial({
-      color: '#b6d3df',
-      emissive: '#6f9fb2',
-      emissiveIntensity: 0.28,
-      transparent: true,
-      opacity: 0.18,
-      wireframe: true,
-      depthWrite: false
-    });
-    mesh.material = ghost;
-    mesh.castShadow = false;
-    mesh.receiveShadow = false;
-    mesh.renderOrder = 3;
-    ghostMaterials.push(ghost);
-  });
-  loadedRobot.traverse((child) => {
-    const mesh = child as THREE.Mesh;
-    if (mesh.isMesh) {
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-    }
-  });
-  return {
-    actual: loadedRobot,
-    target,
-    actualJoints: collectJoints(loadedRobot),
-    targetJoints: collectJoints(target),
-    ghostMaterials
-  };
-}
-
-function collectJoints(root: THREE.Object3D): Map<string, JointLike> {
-  const joints = new Map<string, JointLike>();
-  root.traverse((child) => {
-    const candidate = child as Partial<JointLike> & THREE.Object3D;
-    if (typeof candidate.setJointValue === 'function') joints.set(child.name, candidate as JointLike);
-  });
-  return joints;
-}
-
-function applyJointPositions(
-  joints: Map<string, JointLike>,
-  profile: RobotProfileManifestV1,
-  positionsDeg: number[]
-) {
-  profile.joints.forEach((joint) => {
-    const value = positionsDeg[joint.protocolIndex];
-    if (value !== undefined) joints.get(joint.urdfJointName)?.setJointValue(THREE.MathUtils.degToRad(value));
-  });
-}
-
-function applyVisibility(root: THREE.Object3D, showVisual: boolean, showCollision: boolean) {
-  root.traverse((child) => {
-    const typed = child as THREE.Object3D & { isURDFVisual?: boolean; isURDFCollider?: boolean };
-    if (typed.isURDFVisual) typed.visible = showVisual;
-    if (typed.isURDFCollider) typed.visible = showCollision;
-  });
-}
-
-function disposeRoot(root: THREE.Object3D) {
-  const geometries = new Set<THREE.BufferGeometry>();
-  const materials = new Set<THREE.Material>();
-  root.traverse((child) => {
-    const mesh = child as THREE.Mesh;
-    if (mesh.geometry) geometries.add(mesh.geometry);
-    const material = mesh.material;
-    if (Array.isArray(material)) material.forEach((item) => materials.add(item));
-    else if (material) materials.add(material);
-  });
-  geometries.forEach((geometry) => geometry.dispose());
-  materials.forEach((material) => material.dispose());
 }
 
 function LoadingSkeleton() {
@@ -363,4 +403,33 @@ function LoadingSkeleton() {
       </mesh>
     </group>
   );
+}
+
+function SceneFallback({ reason }: { reason: string }) {
+  return (
+    <div className="sceneFallback" role="alert" data-testid="scene-fallback">
+      <strong>3D VIEW UNAVAILABLE</strong>
+      <span>{reason}</span>
+      <small>关节目标仍可通过右侧数值控件进行本地预览；不会下发硬件。</small>
+    </div>
+  );
+}
+
+class SceneErrorBoundary extends Component<{
+  children: ReactNode;
+  onError: () => void;
+}, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(_error: Error, _info: ErrorInfo) {
+    this.props.onError();
+  }
+
+  render() {
+    return this.state.failed ? <SceneFallback reason="3D RENDER FAILURE" /> : this.props.children;
+  }
 }

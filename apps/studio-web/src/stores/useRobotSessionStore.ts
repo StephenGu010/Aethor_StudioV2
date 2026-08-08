@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { clampJointTargetDeg } from '../domain/jointInteraction';
 import { dummyProfile } from '../profile/dummyProfile';
 
 interface RobotSessionState {
@@ -20,17 +21,17 @@ export const useRobotSessionStore = create<RobotSessionState>((set) => ({
   terminalExpertUnlocked: false,
   setJointTarget: (protocolIndex, valueDeg) =>
     set((state) => {
-      const joint = dummyProfile.joints.find((candidate) => candidate.protocolIndex === protocolIndex);
-      if (!joint || !Number.isFinite(valueDeg)) return state;
+      const clampedValue = clampJointTargetDeg(dummyProfile, protocolIndex, valueDeg);
+      if (clampedValue === undefined) return state;
       const targetPositionsDeg = [...state.targetPositionsDeg];
-      targetPositionsDeg[protocolIndex] = Math.min(joint.upperDeg, Math.max(joint.lowerDeg, valueDeg));
+      targetPositionsDeg[protocolIndex] = clampedValue;
       return { targetPositionsDeg };
     }),
   alignTarget: (positionsDeg) =>
     set({
       targetPositionsDeg: dummyProfile.joints.map((joint) => {
         const value = positionsDeg[joint.protocolIndex] ?? 0;
-        return Math.min(joint.upperDeg, Math.max(joint.lowerDeg, value));
+        return clampJointTargetDeg(dummyProfile, joint.protocolIndex, value) ?? 0;
       })
     }),
   loadShowcasePose: () => set({ targetPositionsDeg: defaultTargets() }),
@@ -38,4 +39,3 @@ export const useRobotSessionStore = create<RobotSessionState>((set) => ({
   resetSession: (profileId = dummyProfile.profileId) =>
     set({ profileId, targetPositionsDeg: defaultTargets(), terminalExpertUnlocked: false })
 }));
-

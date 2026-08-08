@@ -12,15 +12,23 @@ import {
   Settings2,
   SunMedium
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { lazy, Suspense, useMemo, useState, useSyncExternalStore } from 'react';
 import { FloatingToolWindow } from '../../components/workbench/FloatingToolWindow';
-import { RobotScene } from '../../components/visualization/RobotScene';
+import type { SceneCapabilityState } from '../../components/visualization/sceneCapabilities';
+import {
+  getSceneResourceSnapshot,
+  subscribeSceneResources
+} from '../../components/visualization/sceneResourceTracker';
 import { Hint } from '../../components/ui/Hint';
 import { SourceTag } from '../../components/ui/SourceTag';
+import { getJointKeyboardNudgeDeg } from '../../domain/jointInteraction';
 import { showcaseEvents, showcaseJointFrame, showcaseSignalSeries } from '../../fixtures/showcase';
 import { dummyProfile, dummyUrdfUrl } from '../../profile/dummyProfile';
 import { useRobotSessionStore } from '../../stores/useRobotSessionStore';
 import { type ToolWindowId, useWorkbenchStore } from '../../stores/useWorkbenchStore';
+
+const RobotScene = lazy(() => import('../../components/visualization/RobotScene')
+  .then((module) => ({ default: module.RobotScene })));
 
 export function DigitalTwinPage() {
   const actual = showcaseJointFrame.positionsDeg;
@@ -31,7 +39,11 @@ export function DigitalTwinPage() {
   const workbench = useWorkbenchStore();
   const [cameraResetSignal, setCameraResetSignal] = useState(0);
   const [modelState, setModelState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [selectedJointId, setSelectedJointId] = useState<string>(dummyProfile.joints[0]!.jointId);
+  const [sceneCapability, setSceneCapability] = useState<SceneCapabilityState>({ supported: true, quality: 'balanced' });
   const errors = useMemo(() => actual.map((value, index) => (target[index] ?? value) - value), [actual, target]);
+  const selectedJoint = dummyProfile.joints.find((joint) => joint.jointId === selectedJointId);
+  const selectedTargetDeg = selectedJoint ? target[selectedJoint.protocolIndex] ?? 0 : 0;
   const sceneSettings = {
     showVisual: workbench.showVisual,
     showCollision: workbench.showCollision,
@@ -65,15 +77,21 @@ export function DigitalTwinPage() {
               <RotateCcw size={16} />
             </SceneButton>
           </div>
-          <RobotScene
-            profile={dummyProfile}
-            urdfUrl={dummyUrdfUrl}
-            actualPositionsDeg={actual}
-            targetPositionsDeg={target}
-            cameraResetSignal={cameraResetSignal}
-            settings={sceneSettings}
-            onModelState={setModelState}
-          />
+          <Suspense fallback={<div className="sceneModuleLoading">LOADING 3D MODULE</div>}>
+            <RobotScene
+              profile={dummyProfile}
+              urdfUrl={dummyUrdfUrl}
+              actualPositionsDeg={actual}
+              targetPositionsDeg={target}
+              selectedJointId={selectedJointId}
+              cameraResetSignal={cameraResetSignal}
+              settings={sceneSettings}
+              onSelectedJointChange={setSelectedJointId}
+              onJointTargetChange={setJointTarget}
+              onModelState={setModelState}
+              onCapabilityState={setSceneCapability}
+            />
+          </Suspense>
           <div className="feedbackHud">
             <div><small>ACTUAL FEEDBACK</small><strong>SHOWCASE CAPTURE</strong></div>
             <div><span>J1</span><strong>{actual[0]?.toFixed(2)}°</strong></div>
@@ -85,18 +103,47 @@ export function DigitalTwinPage() {
             <div><span className="legendLine ghost" /> GHOST · TARGET</div>
             <div><SourceTag source="showcase" /></div>
           </div>
+          {selectedJoint && (
+            <div
+              className="jointManipulatorHud"
+              tabIndex={0}
+              aria-label={`${selectedJoint.displayName} 关节微调`}
+              onKeyDown={(event) => {
+                const delta = getJointKeyboardNudgeDeg(event.key, event.shiftKey);
+                if (delta === undefined) return;
+                event.preventDefault();
+                setJointTarget(selectedJoint.protocolIndex, selectedTargetDeg + delta);
+              }}
+            >
+              <span>SELECTED · {selectedJoint.displayName}</span>
+              <strong>{selectedTargetDeg.toFixed(2)}°</strong>
+              <small>拖动黄色旋转环 · 方向键 ±0.1° · Shift ±1°</small>
+            </div>
+          )}
+          {modelState === 'error' && sceneCapability.supported && (
+            <div className="sceneModelError" role="alert">
+              <strong>MODEL RESOURCE FAILED</strong>
+              <span>URDF、mesh 或关节映射加载失败；目标控件仍保持本地只读预览边界。</span>
+            </div>
+          )}
           <div className={`modelLoadState state-${modelState}`}>
             <span className={`statusDot ${modelState === 'ready' ? 'ok' : modelState === 'error' ? 'error' : 'warning'}`} />
-            {modelState === 'ready' ? 'URDF READY' : modelState === 'error' ? 'URDF LOAD FAILED' : 'LOADING MODEL'}
+            {!sceneCapability.supported
+              ? 'WEBGL UNAVAILABLE'
+              : modelState === 'ready'
+                ? 'URDF READY'
+                : modelState === 'error'
+                  ? 'URDF LOAD FAILED'
+                  : 'LOADING MODEL'}
           </div>
           <FloatingToolWindow id="modelTree" title="模型结构">
-            <ModelTree />
+            <ModelTree selectedJointId={selectedJointId} onSelectedJointChange={setSelectedJointId} />
           </FloatingToolWindow>
           <FloatingToolWindow id="display" title="显示设置">
             <DisplaySettings />
           </FloatingToolWindow>
           <FloatingToolWindow id="diagnostics" title="模型诊断">
-            <ModelDiagnostics modelState={modelState} />
+            <ModelDiagnostics modelState={modelState} capability={sceneCapability} />
           </FloatingToolWindow>
         </div>
       </section>
@@ -117,9 +164,22 @@ export function DigitalTwinPage() {
             const current = actual[joint.protocolIndex] ?? 0;
             const targetValue = target[joint.protocolIndex] ?? current;
             return (
-              <div className="jointRow" key={joint.jointId}>
+              <div className={joint.jointId === selectedJointId ? 'jointRow selected' : 'jointRow'} key={joint.jointId}>
                 <div className="jointRowHeader">
-                  <strong>{joint.displayName}</strong>
+                  <button
+                    type="button"
+                    className="jointSelectButton"
+                    aria-label={`选择 ${joint.displayName} 关节`}
+                    aria-pressed={joint.jointId === selectedJointId}
+                    onClick={() => setSelectedJointId(joint.jointId)}
+                    onKeyDown={(event) => {
+                      const delta = getJointKeyboardNudgeDeg(event.key, event.shiftKey);
+                      if (delta === undefined) return;
+                      event.preventDefault();
+                      setSelectedJointId(joint.jointId);
+                      setJointTarget(joint.protocolIndex, targetValue + delta);
+                    }}
+                  >{joint.displayName}</button>
                   <span>{joint.lowerDeg.toFixed(0)}</span>
                   <span className="jointLimitSpacer" />
                   <span>{joint.upperDeg.toFixed(0)}</span>
@@ -133,6 +193,7 @@ export function DigitalTwinPage() {
                     max={joint.upperDeg}
                     step={0.1}
                     value={targetValue}
+                    onFocus={() => setSelectedJointId(joint.jointId)}
                     onChange={(event) => setJointTarget(joint.protocolIndex, Number(event.currentTarget.value))}
                   />
                   <label>
@@ -143,6 +204,7 @@ export function DigitalTwinPage() {
                       max={joint.upperDeg}
                       step={0.1}
                       value={Number(targetValue.toFixed(2))}
+                      onFocus={() => setSelectedJointId(joint.jointId)}
                       onChange={(event) => setJointTarget(joint.protocolIndex, Number(event.currentTarget.value))}
                     />
                     <span>deg</span>
@@ -154,7 +216,7 @@ export function DigitalTwinPage() {
         </div>
         <div className="previewNotice">
           <Crosshair size={15} />
-          <span><strong>PREVIEW MODE</strong> · 滑块只移动目标幽灵模型，不会下发硬件。</span>
+          <span><strong>PREVIEW MODE</strong> · 拖拽与滑块只移动目标幽灵模型，不会下发硬件。</span>
         </div>
         <div className="jointSecondaryActions">
           <Hint content="需要 C# 设备服务">
@@ -178,10 +240,10 @@ export function DigitalTwinPage() {
                 const index = joint.protocolIndex;
                 const error = errors[index] ?? 0;
                 return (
-                  <tr key={joint.jointId}>
+                  <tr key={joint.jointId} data-joint-id={joint.jointId}>
                     <th>{joint.displayName}</th>
-                    <td>{actual[index]?.toFixed(2)}</td>
-                    <td>{target[index]?.toFixed(2)}</td>
+                    <td data-column="actual">{actual[index]?.toFixed(2)}</td>
+                    <td data-column="target">{target[index]?.toFixed(2)}</td>
                     <td>{error.toFixed(2)}</td>
                     <td><span className="tableState showcase">SHOWCASE</span></td>
                   </tr>
@@ -225,23 +287,56 @@ function SceneButton({
   );
 }
 
-function ModelTree() {
+function ModelTree({
+  selectedJointId,
+  onSelectedJointChange
+}: {
+  selectedJointId: string;
+  onSelectedJointChange: (jointId: string) => void;
+}) {
   return (
     <div className="modelTree">
       <TreeNode icon={<Boxes size={14} />} label="dummy" meta="ROBOT">
         <TreeNode icon={<Box size={14} />} label="base_link" meta="BASE" />
         {dummyProfile.joints.map((joint, index) => (
-          <TreeNode key={joint.jointId} icon={<GitBranch size={14} />} label={joint.urdfJointName} meta={`J${index + 1}`} />
+          <TreeNode
+            key={joint.jointId}
+            icon={<GitBranch size={14} />}
+            label={joint.urdfJointName}
+            meta={`J${index + 1}`}
+            selected={joint.jointId === selectedJointId}
+            onSelect={() => onSelectedJointChange(joint.jointId)}
+          />
         ))}
       </TreeNode>
     </div>
   );
 }
 
-function TreeNode({ icon, label, meta, children }: { icon: React.ReactNode; label: string; meta: string; children?: React.ReactNode }) {
+function TreeNode({
+  icon,
+  label,
+  meta,
+  selected,
+  onSelect,
+  children
+}: {
+  icon: React.ReactNode;
+  label: string;
+  meta: string;
+  selected?: boolean;
+  onSelect?: () => void;
+  children?: React.ReactNode;
+}) {
   return (
     <div className="treeBranch">
-      <div className="treeNode">{icon}<span>{label}</span><small>{meta}</small></div>
+      {onSelect ? (
+        <button type="button" className={selected ? 'treeNode selected' : 'treeNode'} onClick={onSelect} aria-pressed={selected}>
+          {icon}<span>{label}</span><small>{meta}</small>
+        </button>
+      ) : (
+        <div className="treeNode">{icon}<span>{label}</span><small>{meta}</small></div>
+      )}
       {children && <div className="treeChildren">{children}</div>}
     </div>
   );
@@ -271,14 +366,30 @@ function DisplaySettings() {
   );
 }
 
-function ModelDiagnostics({ modelState }: { modelState: 'loading' | 'ready' | 'error' }) {
+function ModelDiagnostics({
+  modelState,
+  capability
+}: {
+  modelState: 'loading' | 'ready' | 'error';
+  capability: SceneCapabilityState;
+}) {
+  const resources = useSyncExternalStore(
+    subscribeSceneResources,
+    getSceneResourceSnapshot,
+    getSceneResourceSnapshot
+  );
   return (
-    <dl className="diagnosticList">
+    <dl className="diagnosticList" data-testid="scene-resource-diagnostics">
       <div><dt>PROFILE</dt><dd>dummy-6dof</dd></div>
       <div><dt>SCHEMA</dt><dd>1.0 · VALID</dd></div>
       <div><dt>URDF</dt><dd>{modelState.toUpperCase()}</dd></div>
+      <div><dt>QUALITY</dt><dd>{capability.quality.toUpperCase()}</dd></div>
       <div><dt>DOF</dt><dd>6</dd></div>
       <div><dt>UP AXIS</dt><dd>Z</dd></div>
+      <div><dt>RENDERER / CONTROLS</dt><dd>{resources.renderers} / {resources.controls}</dd></div>
+      <div><dt>MODEL ROOTS</dt><dd>{resources.modelRoots}</dd></div>
+      <div><dt>GEOMETRY / MATERIAL</dt><dd>{resources.geometries} / {resources.materials}</dd></div>
+      <div><dt>DRAG SESSION</dt><dd>{resources.dragSessions}</dd></div>
       <div><dt>SOURCE</dt><dd>SHOWCASE</dd></div>
       <div><dt>EFFORT / VELOCITY</dt><dd>UNVERIFIED</dd></div>
     </dl>

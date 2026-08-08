@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-const WORKSPACE_READY_TIMEOUT_MS = 15_000;
+const WORKSPACE_READY_TIMEOUT_MS = 30_000;
 
 test.describe('Aethor Studio V2 workspaces', () => {
   test('serves the normalized Dummy URDF and every referenced mesh', async ({ request }) => {
@@ -44,10 +44,106 @@ test.describe('Aethor Studio V2 workspaces', () => {
 
   test('separates target preview from feedback and disables hardware submission', async ({ page }) => {
     await page.goto('/twin');
+    await expect(page.getByText('URDF READY')).toBeVisible({ timeout: WORKSPACE_READY_TIMEOUT_MS });
+    const actualBefore = await page.locator('tr[data-joint-id="j1"] td[data-column="actual"]').textContent();
     const target = page.getByLabel('J1 目标角度数值');
     await target.fill('25');
+    await expect(page.locator('tr[data-joint-id="j1"] td[data-column="target"]')).toHaveText('25.00');
+    await expect(page.locator('tr[data-joint-id="j1"] td[data-column="actual"]')).toHaveText(actualBefore ?? '');
     await expect(page.getByRole('button', { name: '下发整组关节角' })).toBeDisabled();
     await expect(page.getByText('SHOWCASE CAPTURE', { exact: true }).first()).toBeVisible();
+  });
+
+  test('selects and nudges all six joints without creating a hardware transport path', async ({ page }) => {
+    await page.goto('/twin');
+    await expect(page.getByText('URDF READY')).toBeVisible({ timeout: WORKSPACE_READY_TIMEOUT_MS });
+    const hardwareRequests: string[] = [];
+    page.on('request', (request) => {
+      if (['fetch', 'xhr', 'websocket'].includes(request.resourceType())) hardwareRequests.push(request.url());
+    });
+
+    for (let index = 1; index <= 6; index += 1) {
+      const selector = page.getByRole('button', { name: `选择 J${index} 关节` });
+      const numericInput = page.getByLabel(`J${index} 目标角度数值`);
+      const before = Number(await numericInput.inputValue());
+      await selector.focus();
+      await selector.press('ArrowRight');
+      await expect(selector).toHaveAttribute('aria-pressed', 'true');
+      await expect(page.getByLabel(`J${index} 关节微调`)).toContainText(`SELECTED · J${index}`);
+      await expect(numericInput).toHaveValue(String(Number((before + 0.1).toFixed(2))));
+    }
+
+    await page.getByLabel('J2 目标角度数值').fill('999');
+    await expect(page.getByLabel('J2 目标角度数值')).toHaveValue('124.9');
+    expect(hardwareRequests).toEqual([]);
+    await expect(page.getByRole('button', { name: '下发整组关节角' })).toBeDisabled();
+  });
+
+  test('releases renderer, controls and model ownership across repeated workspace mounts', async ({ page }) => {
+    test.setTimeout(90_000);
+    await page.goto('/twin');
+    await expect(page.getByText('URDF READY')).toBeVisible({ timeout: WORKSPACE_READY_TIMEOUT_MS });
+    for (let index = 0; index < 3; index += 1) {
+      await page.locator('a[href="/scope"]').click();
+      await expect(page.getByText('LIVE UNAVAILABLE', { exact: true })).toBeVisible();
+      await page.locator('a[href="/twin"]').click();
+      await expect(page.getByText('URDF READY')).toBeVisible({ timeout: WORKSPACE_READY_TIMEOUT_MS });
+    }
+    const diagnostics = page.getByRole('dialog', { name: '模型诊断' });
+    if (await diagnostics.count() === 0) await page.getByRole('button', { name: '诊断' }).click();
+    await expect(diagnostics).toBeVisible();
+    await expect(diagnostics.locator('dt', { hasText: 'RENDERER / CONTROLS' }).locator('..').locator('dd')).toHaveText('1 / 1');
+    await expect(diagnostics.locator('dt', { hasText: 'MODEL ROOTS' }).locator('..').locator('dd')).toHaveText('2');
+    await expect(diagnostics.locator('dt', { hasText: 'DRAG SESSION' }).locator('..').locator('dd')).toHaveText('0');
+  });
+
+  test('drags the selected 3D joint preview without mutating feedback or sending hardware', async ({ page }) => {
+    await page.goto('/twin');
+    await expect(page.getByText('URDF READY')).toBeVisible({ timeout: WORKSPACE_READY_TIMEOUT_MS });
+    const targetInput = page.getByLabel('J1 目标角度数值');
+    const initialTarget = await targetInput.inputValue();
+    const initialActual = await page.locator('tr[data-joint-id="j1"] td[data-column="actual"]').textContent();
+    const hardwareRequests: string[] = [];
+    page.on('request', (request) => {
+      if (['fetch', 'xhr', 'websocket'].includes(request.resourceType())) hardwareRequests.push(request.url());
+    });
+    const scene = page.locator('.robotSceneHost');
+    await expect(scene).toHaveAttribute('data-manipulator-ready', 'true');
+    const dragCoordinates = await scene.evaluate((element) => ({
+      startX: Number((element as HTMLElement).dataset.manipulatorStartX),
+      startY: Number((element as HTMLElement).dataset.manipulatorStartY),
+      endX: Number((element as HTMLElement).dataset.manipulatorEndX),
+      endY: Number((element as HTMLElement).dataset.manipulatorEndY)
+    }));
+    const sceneBox = await scene.boundingBox();
+    expect(sceneBox).not.toBeNull();
+    await page.mouse.move(sceneBox!.x + dragCoordinates.startX, sceneBox!.y + dragCoordinates.startY);
+    await expect.poll(() => page.locator('body').evaluate((element) => element.style.cursor)).toBe('grab');
+    await page.mouse.down();
+    await expect(scene).toHaveAttribute('data-drag-state', 'active');
+    await page.mouse.move(
+      sceneBox!.x + dragCoordinates.endX,
+      sceneBox!.y + dragCoordinates.endY,
+      { steps: 8 }
+    );
+    await page.mouse.up();
+
+    await expect.poll(() => targetInput.inputValue()).not.toBe(initialTarget);
+    await expect(page.getByRole('button', { name: '选择 J1 关节' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('tr[data-joint-id="j1"] td[data-column="actual"]')).toHaveText(initialActual ?? '');
+    expect(hardwareRequests).toEqual([]);
+    await expect(page.getByRole('button', { name: '下发整组关节角' })).toBeDisabled();
+    const diagnostics = page.getByRole('dialog', { name: '模型诊断' });
+    if (await diagnostics.count() === 0) await page.getByRole('button', { name: '诊断' }).click();
+    await expect(diagnostics.locator('dt', { hasText: 'DRAG SESSION' }).locator('..').locator('dd')).toHaveText('0');
+  });
+
+  test('fails visibly and safely when the URDF resource cannot be loaded', async ({ page }) => {
+    await page.route('**/robot-profiles/dummy-6dof/model/dummy.urdf', (route) => route.abort('failed'));
+    await page.goto('/twin');
+    await expect(page.getByText('URDF LOAD FAILED', { exact: true })).toBeVisible({ timeout: WORKSPACE_READY_TIMEOUT_MS });
+    await expect(page.getByRole('alert')).toContainText('MODEL RESOURCE FAILED');
+    await expect(page.getByRole('button', { name: '下发整组关节角' })).toBeDisabled();
   });
 
   test('terminal validates locally without creating a live send path', async ({ page }) => {

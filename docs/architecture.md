@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-仓库已经包含可运行的 React/Vite 展示前端、可执行的共享 TypeScript/JSON Schema 契约、内置 Dummy Profile，以及 C#/WebView2 的边界说明。真实串口、C# 服务和桌面壳尚未实现；动作编排已有信息架构入口，但编辑器、文档 Schema 和执行器仍属于阶段 6。阶段 0–2 已将代码统一为：
+仓库已经包含可运行的 React/Vite 展示前端、可执行的共享 TypeScript/JSON Schema 契约、内置 Dummy Profile，以及 C#/WebView2 的边界说明。真实串口、C# 服务和桌面壳尚未实现；动作编排已有信息架构入口，但编辑器、文档 Schema 和执行器仍属于阶段 6。阶段 0–3 已将代码统一为：
 
 ```text
 apps/
@@ -17,7 +17,7 @@ shared/
 docs/
 ```
 
-根目录拥有 pnpm workspace、统一脚本和唯一锁文件。Vite/Vitest/TypeScript 统一从 `shared/robot-profiles/BuiltIn` 读取 Profile；仓库不保留迁移前的兼容目录。
+根目录拥有 pnpm workspace、统一脚本和唯一锁文件。Vite/Vitest/TypeScript 统一从 `shared/robot-profiles/BuiltIn` 读取 Profile；仓库不保留迁移前的兼容目录。阶段 0–3 已完成工程治理、协议契约、工业 UI 系统和 Dummy 六轴直接关节预览。
 
 ## 前端信息架构与视觉系统
 
@@ -26,6 +26,14 @@ docs/
 - 1366×768 使用紧凑密度和工作区内部滚动；1920×1080 为设计基准；2560×1440 提升有效画布与数据密度。
 - 顶栏、导航、关键状态、软件急停和主下发区保持可达。禁用操作由可聚焦说明容器暴露原因，浏览器模式不伪造桌面窗口能力。
 - `/actions` 当前只声明未来交付边界，所有编辑、导入和执行入口均禁用；它不拥有动作契约或硬件命令路径。
+
+## 数字孪生交互与资源所有权
+
+- `robotModel.ts` 只按 Profile 的 `joint_1…joint_6` 稳定名称绑定 URDF joint；mesh 名称不参与关节推断。关节原点和局部轴来自 URDF 对象变换，目标限位来自已校验 manifest。
+- `JointManipulator.tsx` 将选中关节的局部轴变换到世界空间，在轴法向平面计算右手规则有符号角；视线接近平面时退化为屏幕切向投影。黄色旋转环拥有高优先级拾取，避免被重叠模型几何抢占事件。
+- 模型点选、旋转环、滑块、数值框和键盘微调共享 `targetPositionsDeg` 草稿；`showcaseJointFrame` 反馈保持只读。任何预览路径都不调用 `RobotGatewayV1`。
+- 实体模型与目标模型是独立对象树；目标树共享只读 geometry、拥有独立幽灵 material。卸载时按唯一引用释放 geometry、material 和 texture，OrbitControls、renderer 所有权与活动拖动会话进入可见诊断计数。
+- `RobotScene` 是数字孪生页面内的二级动态分包，避免 Three.js/URDF 加载器进入页面主 chunk。WebGL 缺失、上下文丢失、URDF/mesh/映射失败均显示明确降级状态；低性能环境降低 DPR、抗锯齿和阴影成本。
 
 ## 依赖方向
 

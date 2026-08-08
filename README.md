@@ -4,7 +4,7 @@
 
 ## 当前可用
 
-- 数字孪生：Dummy 六轴实体模型、目标幽灵模型、关节目标预览和显示工具窗。
+- 数字孪生：Dummy 六轴实体/目标幽灵模型、模型点选、关节轴旋转环拖拽、滑块/数值/键盘统一目标预览和显示/诊断工具窗。
 - 数据示波：有限静态采集、信号选择、缩放和 CSV 导出。
 - 串口终端：只读示例帧、筛选、导出、会话级专家解锁和离线格式校验。
 - 设备与模型：Profile、URDF、关节映射、限位、来源和 `.aethor-robot` 前端校验预览。
@@ -51,7 +51,7 @@ pnpm dev
 - [阶段路线图](docs/roadmap.md)
 - [产品与安全边界](docs/product-boundaries.md)
 - [Dummy ASCII v1](docs/protocols/dummy-ascii-v1.md)
-- [当前交接状态](docs/handoffs/phase-02.md)
+- [当前交接状态](docs/handoffs/phase-03.md)
 
 当前阶段不会自动打开已连接的 COM4。任何实机操作都必须经过对应阶段的监督验收门。
 
