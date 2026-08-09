@@ -16,6 +16,7 @@
     "gateway:build": "powershell -NoProfile -ExecutionPolicy Bypass -File services/robot-gateway/dotnet.ps1 build services/robot-gateway/AethorStudioV2.RobotGateway.slnx --configuration Release",
     "gateway:test": "powershell -NoProfile -ExecutionPolicy Bypass -File services/robot-gateway/dotnet.ps1 test services/robot-gateway/AethorStudioV2.RobotGateway.slnx --configuration Release",
     "gateway:preflight": "powershell -NoProfile -ExecutionPolicy Bypass -File services/robot-gateway/preflight-readonly.ps1",
+    "gateway:smoke:offline": "powershell -NoProfile -ExecutionPolicy Bypass -File services/robot-gateway/smoke-offline.ps1",
     "gateway:dev": "powershell -NoProfile -ExecutionPolicy Bypass -File services/robot-gateway/dotnet.ps1 run --project services/robot-gateway/src/AethorStudioV2.Api/AethorStudioV2.Api.csproj"
   }
 }

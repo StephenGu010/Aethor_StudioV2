@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-仓库已经包含可运行的 React/Vite 前端、可执行的共享 TypeScript/JSON Schema 契约、内置 Dummy Profile，以及 Phase 4 的 .NET 10 只读网关。网关的软件门已实现，但 COM4 尚未打开，真实 Dummy 回包仍待现场监督验收；WebView2 壳尚未实现。动作编排已有信息架构入口，但编辑器、文档 Schema 和执行器仍属于阶段 6。当前代码统一为：
+仓库已经包含可运行的 React/Vite 前端、可执行的共享 TypeScript/JSON Schema 契约、内置 Dummy Profile，以及完成监督 COM4 三查询验收的 Phase 4 .NET 10 只读网关。状态改变和运动能力尚未实现，WebView2 壳尚未实现。动作编排已有信息架构入口，但编辑器、文档 Schema 和执行器仍属于阶段 6。当前代码统一为：
 
 ```text
 apps/
@@ -17,7 +17,7 @@ shared/
 docs/
 ```
 
-根目录拥有 pnpm workspace、统一 Web/C# 脚本和唯一 pnpm 锁文件。Vite/Vitest/TypeScript 统一从 `shared/robot-profiles/BuiltIn` 读取 Profile；仓库不保留迁移前的兼容目录。阶段 0–3 已完成工程治理、协议契约、工业 UI 系统和 Dummy 六轴直接关节预览；阶段 4 保持 `IN PROGRESS`，直到监督下只读 COM4 门通过。
+根目录拥有 pnpm workspace、统一 Web/C# 脚本和唯一 pnpm 锁文件。Vite/Vitest/TypeScript 统一从 `shared/robot-profiles/BuiltIn` 读取 Profile；仓库不保留迁移前的兼容目录。阶段 0–4 已完成工程治理、协议契约、工业 UI 系统、Dummy 六轴直接关节预览和监督只读 COM4 网关；阶段 5 状态改变能力尚未开始。
 
 ## 前端信息架构与视觉系统
 

@@ -1,12 +1,12 @@
 # Phase 4 监督只读 COM4 验收手册
 
-- 状态：`READY FOR SUPERVISED EXECUTION`
+- 状态：`VALIDATED 2026-08-09 / REUSABLE`
 - 安全等级：只读硬件查询；仍要求现场操作者和物理急停
 - 适用 Profile：`dummy-6dof`
 - 允许的设备查询类型：`#GETJPOS`、`#GETMODE`、`#GETENABLE`
 - 明确禁止：使能、停止、去使能、回零、复位、模式切换、raw command、关节运动、动力学和轨迹规划
 
-本手册是 Phase 4 真实 COM4 验收的唯一执行入口。默认路径只做枚举和离线检查；只有完成“现场授权门”后，才允许调用一次 `/api/v1/session/connect`。任何异常立即进入清理步骤，Phase 4 保持 `IN PROGRESS`。
+本手册是 COM4 监督只读验收的唯一执行入口。默认路径只做枚举和离线检查；只有完成“现场授权门”后，才允许调用一次 `/api/v1/session/connect`。2026-08-09 的 Phase 4 验收已通过；后续复验仍必须重新授权，任何异常立即进入清理并把当次复验标记为失败。
 
 ## 1. 建立证据目录
 
@@ -60,22 +60,48 @@ pnpm build
 
 任何失败都终止本次实机验收。自动化和 fake serial 不能替代真实硬件证据。
 
+在进入本手册第 4 节前，可独立复验离线启动、认证、枚举、失败关闭和精确清理。该命令自行启动并停止一个 Release gateway，只读取端口目录，不调用 `/session/connect`；完成后仍需重新执行第 2 节预检：
+
+```powershell
+$env:AETHOR_PREFLIGHT_PORT_NAME = 'COM4'
+$env:AETHOR_PREFLIGHT_EXPECTED_INSTANCE_ID = $expectedInstanceId
+pnpm gateway:smoke:offline
+```
+
+离线 smoke 通过不能代替第 5–7 节的现场监督证据，也不能把 COM4 枚举提升为已连接。
+
 ## 4. 启动离线网关
 
-在当前验收终端生成一次性开发令牌，并以继承当前进程环境的后台进程启动服务。令牌只保存在进程环境，不写入命令输出、参数或证据文件；stdout/stderr 分开保存。
+在当前验收终端生成一次性开发令牌，并用项目选择的 .NET runtime 启动第 3 节已构建的 Release gateway assembly。令牌只保存在进程环境，不写入命令输出、参数或证据文件；stdout/stderr 分开保存。直接持有 gateway 进程对象可以避免 package runner 产生多层进程树，使清理目标唯一且可审计。
 
 ```powershell
 $env:ASPNETCORE_ENVIRONMENT = 'Development'
-$env:AETHOR_GATEWAY_SESSION_TOKEN = [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
+$tokenBytes = New-Object byte[] 32
+$tokenGenerator = [Security.Cryptography.RandomNumberGenerator]::Create()
+try {
+  $tokenGenerator.GetBytes($tokenBytes)
+}
+finally {
+  $tokenGenerator.Dispose()
+}
+$env:AETHOR_GATEWAY_SESSION_TOKEN = -join ($tokenBytes | ForEach-Object { $_.ToString('x2') })
 $env:AETHOR_GATEWAY_TOKEN_SOURCE = 'development'
 $env:AETHOR_GATEWAY_PORT = '5127'
 $env:AETHOR_GATEWAY_DEV_ORIGINS = 'http://127.0.0.1:5174'
 $gatewayStdout = Join-Path $evidenceRoot 'gateway.stdout.log'
 $gatewayStderr = Join-Path $evidenceRoot 'gateway.stderr.log'
+$gatewayAssembly = Resolve-Path 'services/robot-gateway/src/AethorStudioV2.Api/bin/Release/net10.0/AethorStudioV2.Api.dll'
+$projectLocalDotnet = Join-Path (Get-Location) '.tools/dotnet/dotnet.exe'
+$dotnetExecutable = if (Test-Path -LiteralPath $projectLocalDotnet) {
+  $projectLocalDotnet
+}
+else {
+  (Get-Command dotnet -ErrorAction Stop).Source
+}
 $gatewayProcess = Start-Process `
-  -FilePath $env:ComSpec `
-  -ArgumentList @('/d', '/s', '/c', 'pnpm gateway:dev') `
-  -WorkingDirectory (Get-Location) `
+  -FilePath $dotnetExecutable `
+  -ArgumentList @($gatewayAssembly) `
+  -WorkingDirectory (Split-Path -Parent $gatewayAssembly) `
   -RedirectStandardOutput $gatewayStdout `
   -RedirectStandardError $gatewayStderr `
   -WindowStyle Hidden `
@@ -91,7 +117,15 @@ $headers = @{ 'X-Aethor-Session' = $env:AETHOR_GATEWAY_SESSION_TOKEN }
 $baseUrl = 'http://127.0.0.1:5127'
 
 $capabilities = Invoke-RestMethod "$baseUrl/api/v1/gateway/capabilities" -Headers $headers
-$ports = Invoke-RestMethod "$baseUrl/api/v1/serial/ports" -Headers $headers
+$portsResponse = Invoke-RestMethod "$baseUrl/api/v1/serial/ports" -Headers $headers
+[object[]]$ports = @(
+  if ($portsResponse.PSObject.Properties.Name -contains 'value') {
+    $portsResponse.value
+  }
+  else {
+    $portsResponse
+  }
+)
 $sessionBefore = Invoke-RestMethod "$baseUrl/api/v1/session" -Headers $headers
 
 [ordered]@{
@@ -136,7 +170,15 @@ try {
   if ($session.validity -ne 'valid') { throw 'No valid read-only snapshot within 10 seconds.' }
 
   $jointState = Invoke-RestMethod "$baseUrl/api/v1/joint-state" -Headers $headers
-  $protocolFrames = Invoke-RestMethod "$baseUrl/api/v1/protocol-frames?limit=120" -Headers $headers
+  $protocolFramesResponse = Invoke-RestMethod "$baseUrl/api/v1/protocol-frames?limit=120" -Headers $headers
+  [object[]]$protocolFrames = @(
+    if ($protocolFramesResponse.PSObject.Properties.Name -contains 'value') {
+      $protocolFramesResponse.value
+    }
+    else {
+      $protocolFramesResponse
+    }
+  )
 
   [ordered]@{
     connectedAtUtc = $connectedAtUtc.ToString('O')
@@ -152,6 +194,8 @@ finally {
 }
 ```
 
+Windows PowerShell 5.1 可能把顶层 JSON 数组表示成带 `value/Count` 的适配对象，直接序列化会污染证据；再用 `@(Invoke-RestMethod ...)` 包裹也不能可靠修复。必须像上面一样先检查 `value` 并归一化为显式 `[object[]]`，后续验证和保存都只使用归一化变量。
+
 ## 7. 验证结果与清理
 
 通过条件必须同时满足：
@@ -160,13 +204,13 @@ finally {
 - 至少取得一组六个有限关节角、合法模式 1–3 和使能值 0/1；RX 来源为 `measured`，快照为 `valid`。
 - 超时、乱码、未知帧或设备错误均没有被标记为成功；若出现则保持失败证据。
 - `05-disconnect.json` 为 `offline`，断开后不再产生新的查询帧；没有自动重连。
-- 停止 `pnpm gateway:dev` 后，重新运行第 2 节预检，确认无 gateway 进程和 5127 listener，并保存为 `06-post-cleanup.json`。
+- 停止本次 gateway 进程后，重新运行第 2 节预检，确认无 gateway 进程和 5127 listener，并保存为 `06-post-cleanup.json`。
 
-完成 API 断开后，停止本次启动的精确进程树并等待退出；不要按进程名称批量终止其他 `dotnet` 或 `node` 进程：
+完成 API 断开后，停止本次启动的精确 gateway 进程并等待退出；不要按进程名称批量终止其他 `dotnet` 或 `node` 进程：
 
 ```powershell
 if ($gatewayProcess -and -not $gatewayProcess.HasExited) {
-  & taskkill.exe /PID $gatewayProcess.Id /T /F | Out-Null
+  Stop-Process -Id $gatewayProcess.Id -Force
   $gatewayProcess.WaitForExit(10000) | Out-Null
 }
 
@@ -177,7 +221,7 @@ powershell -NoProfile -ExecutionPolicy Bypass `
   -GatewayPort 5127 |
   Set-Content -Encoding UTF8 (Join-Path $evidenceRoot '06-post-cleanup.json')
 
-if ($LASTEXITCODE -ne 0) { throw 'Post-cleanup preflight failed; preserve evidence and keep Phase 4 IN PROGRESS.' }
+if ($LASTEXITCODE -ne 0) { throw 'Post-cleanup preflight failed; preserve evidence and mark this supervised run failed.' }
 ```
 
 如果 `handle.exe` 已由现场环境受控安装，可额外使用只读 handle 查询证明没有 Aethor 进程持有 COM4；不得为了证明释放而用第二个程序重新打开串口。没有该工具时，必须记录“真实句柄直接观测不可用”，不能把 PnP 可见性冒充为句柄释放证据。
@@ -189,6 +233,6 @@ if ($LASTEXITCODE -ne 0) { throw 'Post-cleanup preflight failed; preserve eviden
 1. 调用 `/api/v1/session/disconnect`；若 API 不可达，终止 gateway 进程。
 2. 确认 session 不再轮询，停止网关并运行 post-cleanup 预检。
 3. 保存网关控制台日志、协议帧和错误时间；删除或遮蔽任何令牌。
-4. Phase 4 保持 `IN PROGRESS`，不得放宽白名单、延长无限等待或进入 Phase 5。
+4. 将当次监督复验标记为失败，不得放宽白名单、延长无限等待或据此扩大硬件权限。
 
-只有全部条件有真实证据时，才能更新 `docs/handoffs/phase-04.md`、路线图和变更记录，并创建 `phase(04): deliver supervised readonly gateway` 本地提交。禁止自动 push。
+2026-08-09 的首次验收在全部条件取得真实证据后更新了 handoff、路线图和变更记录。后续复验只追加新的运行记录，不重复创建 Phase 4 完成提交；自动流程始终禁止 push。

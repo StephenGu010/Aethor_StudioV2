@@ -2,7 +2,7 @@
 
 ## 首版目标
 
-`Aethor Studio V2` 首版只服务 `dummy-6dof` 六轴机械臂，是面向 Windows、兼顾展示效果与现场实用性的硬件调试平台。React 前端、共享契约和 Phase 4 的 C# 只读网关软件边界已经落盘；COM4 实机读取仍待监督验收，WebView2 属于 Phase 8。
+`Aethor Studio V2` 首版只服务 `dummy-6dof` 六轴机械臂，是面向 Windows、兼顾展示效果与现场实用性的硬件调试平台。React 前端、共享契约和 Phase 4 的 C# 只读网关已落盘并完成监督 COM4 三查询验收；状态改变和运动能力尚未实现，WebView2 属于 Phase 8。
 
 ## 首版工作区
 

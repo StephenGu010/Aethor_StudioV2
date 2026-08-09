@@ -12,8 +12,8 @@
 6. [验收矩阵](testing/acceptance-matrix.md)：自动化、模拟串口和实机监督验收。
 7. [Phase 4 监督只读 COM4 验收](runbooks/phase-04-supervised-readonly-com4.md)：不可连接预检、现场授权、唯一连接动作、证据与清理步骤。
 8. [阶段提示词](prompts/README.md)：可直接交给下一位工程师或 Codex 的执行任务。
-9. [交接模板](handoffs/TEMPLATE.md)：每阶段结束时记录真实结果、证据和剩余风险。
-10. [当前交接：Phase 4](handoffs/phase-04.md)：只读 C# 网关的软件证据、未打开 COM4 的安全事实和现场监督恢复入口。
+9. [交接模板](handoffs/template.md)：每阶段结束时记录真实结果、证据和剩余风险。
+10. [当前交接：Phase 4](handoffs/phase-04.md)：只读 C# 网关、真实 COM4 三查询、断开清理与限制证据。
 
 ## 状态约定
 
@@ -22,4 +22,4 @@
 - `NOT STARTED`：仅有规划，尚未实现。
 - `BLOCKED`：已记录外部阻塞与恢复条件。
 
-当前状态以 [阶段路线图](roadmap.md) 为准。Phase 4 仍为 `IN PROGRESS`：软件门已落盘，真实 COM4 只读验收未执行。协议只在 `protocols/` 维护；接口 Schema 只在 `shared/contracts/` 维护，阶段提示词不复制这些定义。
+当前状态以 [阶段路线图](roadmap.md) 为准。Phase 4 已于 2026-08-09 完成监督只读 COM4 验收；Phase 5 尚未开始，状态改变与运动命令仍不可用。协议只在 `protocols/` 维护；接口 Schema 只在 `shared/contracts/` 维护，阶段提示词不复制这些定义。

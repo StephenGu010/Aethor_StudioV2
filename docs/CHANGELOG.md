@@ -1,12 +1,12 @@
 # 变更记录
 
-## 2026-08-08 - 阶段 4：只读网关软件门（IN PROGRESS）
+## 2026-08-09 - 阶段 4：只读网关与监督 COM4 验收（DONE）
 
 需求：
-- 建立工业级 .NET 10 串口边界，在监督实机前只允许读取 Dummy 六轴状态，不提前引入任何硬件状态改变或运动权限。
+- 建立工业级 .NET 10 串口边界，在现场监督下读取 Dummy 六轴状态，不提前引入任何硬件状态改变或运动权限。
 
 改动：
-- 新增 Domain/Application/Infrastructure/API 分层、单一串口 session owner、fake transport、Windows SerialPort adapter 和 25 项 C# 测试。
+- 新增 Domain/Application/Infrastructure/API 分层、单一串口 session owner、fake transport、Windows SerialPort adapter 和 28 项 C# 测试。
 - 将 Phase 4 写入限制固化为 Domain formatter 与 Infrastructure payload 双重白名单，仅允许 `#GETJPOS/#GETMODE/#GETENABLE`。
 - 新增 loopback REST/SignalR、opaque session token、Development/desktop token source、显式失败状态、有界事件队列/协议历史和无自动重连策略。
 - 修正协议帧来源语义：TX 查询标记为 `commanded`，RX 回包为 `measured`，解析/超时错误为 `unavailable`；不再把网关写出的查询误标为设备测量。
@@ -14,26 +14,36 @@
 - 完成 Phase 4 视觉修订：移除侧栏 `ROBOTICS ENGINEERING / CONTROL WORKSPACE` 副标并保留清晰的 `V2` 版本标识；将标题、正文和工程数值拆分为 Windows 本地 Display/Text/Mono 字体角色，重新校准标题栏、导航、状态带和三档视口字号比例。
 - 修正项目本地 `dotnet.ps1` 的参数透传；`--info/--version` 等根级 SDK 诊断参数不再被 PowerShell advanced-script 公共参数抢占，现有 restore/build/test/run 调用保持兼容。
 - 新增 `gateway:preflight` 与唯一 Phase 4 监督 runbook；预检只读取 PnP、网关进程和 listener，身份不符或残留资源时失败关闭，现场授权前不存在串口/HTTP 连接路径。
+- 新增 `gateway:smoke:offline`；用项目选择的 .NET runtime 启动精确 Release gateway 进程，自动验证离线认证/枚举/状态、运行中预检失败关闭、令牌日志审计和 post-cleanup，源码不包含连接端点。
+- 新增 3 项运维脚本安全回归：根测试门会拒绝预检获得连接/网络能力、离线 smoke 增加未审查端点或非精确清理，以及 package 入口偏离已审查命令。
+- 完成一次监督 COM4 只读连接与断开；真实设备仅收到三个白名单查询，返回六轴关节值、模式 2 和未使能状态。原始证据保持在已忽略的 TestResults，未提交机器日志或令牌。
+- 修复 Windows PowerShell 5.1 将顶层 JSON 数组表示为 `value/Count` 适配对象、导致采证误判的问题；脚本显式归一化为 `[object[]]`，并增加回归断言防止重现。
 - 同步运行手册、RobotGatewayV1 接口、架构、产品边界、ADR-0003、路线图、验收矩阵和 Phase 4 handoff。
 
 验证：
-- `pnpm typecheck` 通过；`pnpm test` 为 shared 80 + frontend 61 + C# 25，共 166 项通过。
+- `pnpm typecheck` 通过；`pnpm test` 为 shared 80 + frontend 61 + C# 28，共 169 项通过。
 - `pnpm build` 通过：Vite 2612 modules、Profile 10 项资源；.NET Release 0 warning/0 error。
 - `pnpm test:e2e` 在 Edge 三档视口 36/36 通过；覆盖精简品牌锁定、主标题层级、无裁切/溢出和更新后的 Win32 视觉基线；未配置网关时没有端口枚举、连接、fetch 或 WebSocket 硬件路径。
 - loopback smoke 验证 live、未认证 401、只读 capabilities、COM1/COM4 枚举、offline session 与 SignalR connect/stop，未调用连接端点。
 - `gateway:preflight` 对当前已核对 COM4 身份返回 exit 0，对错误身份返回 exit 2；两种结果均声明 `serialPortOpened=false`、`networkRequestSent=false`，静态审计未发现连接调用。
+- `gateway:smoke:offline` 通过：live、未认证 401、`hardwareCommands=false`、COM4 仅枚举、session `offline/unavailable`；运行中预检 exit 2，精确停止后 exit 0，token 未进入日志。错误身份和 5174 listener 占用均在启动前失败关闭，当前 Vite owner 未被终止。
+- 监督实机采集归一化后为 6 帧：3 TX + 3 RX，TX 严格为 `#GETJPOS/#GETMODE/#GETENABLE`，0 error；关节值 `[-7.97,-70.56,180.09,-3.56,3.26,0.03]`，session 为 `connected/disabled/mode 2/measured/valid`。
+- 断开返回 `offline/unavailable`；日志仅有一次 `serial.opened` 和一次位于其后的 `serial.closed`，之后无再次打开；post-cleanup 网关进程 0、5127 listener 0、stderr 空。
 
 踩坑：
 - 设备页在 1366×768 曾让根 document 多出滚动；根因是内部工作区高度/contain 边界不完整，现由 shell 内部滚动并由全量三档 E2E 固化。
 - 本机无系统 .NET SDK；使用官方 SDK 10.0.302 的项目本地、gitignored 安装，并由 `global.json` 与 wrapper 保持可复现。
-- 自动 smoke 重跑命令被本机策略在启动前拒绝；未将该尝试写成成功，也未因此打开 COM4。
+- Windows PowerShell 5.1 不支持新式静态 `RandomNumberGenerator.GetBytes(int)`/`Convert.ToHexString` 组合；runbook 改用可释放的 RNG 实例和逐字节十六进制转换。
+- Release apphost 不会自动发现仓库忽略目录 `.tools/dotnet` 的 runtime；离线 smoke 和监督 runbook 改为使用与 `dotnet.ps1` 相同的项目本地 runtime 选择规则直接启动 assembly。
+- Windows PowerShell 5.1 的 `Invoke-RestMethod` 可能把顶层 JSON 数组表示成带 `value/Count` 的适配对象，直接保存或再用 `@()` 接收都不足以保证证据形状；原实机 summary 因此诚实保留为失败，新增离线审计文件证明原始 6 帧有效，未重新连接设备。
 - 最初的协议帧记录将所有非 error 方向统一标成 `measured`；通过先失败的 C# 回归断言定位到唯一映射点，未在 UI 做补偿。
 - `dotnet.ps1` 原先使用 `[CmdletBinding()]`，导致 `--info` 与 `InformationAction/InformationVariable` 发生模糊匹配；改为直接透传 `$args`，没有为每个 SDK flag 建立重复参数表。
 - 首轮以 8 workers 并发加载三档 WebGL 场景时，2K 用例发生资源竞争超时；旧视觉快照差异符合预期。新基线逐张审阅后，以 4 workers 完整复验 36/36 通过，没有放宽 READY 或快照断言。
 - 首次尝试通过 `pnpm ... --` 传递 PnP Instance ID 时，ID 内的 `&` 被 `cmd.exe` 拆分；根命令改为读取当前进程环境变量，避免依赖脆弱转义或在命令行暴露机器身份。
 
-待完善：
-- 监督下核对 COM4 的三个真实回包、超时/拔线和断开句柄释放；通过前阶段保持 `IN PROGRESS` 且不创建完成提交。
+未覆盖：
+- `handle.exe` 未安装，无法直接观察 OS 串口句柄；释放结论来自运行日志、代码顺序、offline 终态和进程/listener 清理，禁止为补证再次打开 COM4。
+- 未在真实设备上注入拔线或连续超时；自动化故障路径已覆盖，真实断线恢复归入 Phase 7。
 - Windows catalog 目前只保证端口名；硬件 ID 允许为空，实机 handoff 使用操作系统 PnP 身份记录。
 
 新增约定：

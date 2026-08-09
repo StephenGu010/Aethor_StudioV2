@@ -51,6 +51,17 @@ pnpm gateway:preflight
 
 身份不匹配、PnP 状态异常、网关进程残留或 listener 占用时返回 exit code 2。硬件 Instance ID 通过进程环境而非 package-runner 参数传递，避免 ID 中的 `&` 被 `cmd.exe` 解释。完整现场流程只执行 [Phase 4 监督只读 COM4 验收手册](../../docs/runbooks/phase-04-supervised-readonly-com4.md)。
 
+构建 Release 网关后，可复验完整的离线路径。该入口只调用 liveness、认证拒绝、capabilities、端口枚举和 offline session；源码没有 `/session/connect` 调用，并在结束时停止本次启动的精确进程、复跑预检：
+
+```powershell
+pnpm gateway:build
+$env:AETHOR_PREFLIGHT_PORT_NAME = 'COM4'
+$env:AETHOR_PREFLIGHT_EXPECTED_INSTANCE_ID = '<operator-verified Windows PnP instance ID>'
+pnpm gateway:smoke:offline
+```
+
+证据写入已忽略的 `TestResults/phase-04-runbook-smoke/<UTC run id>/`，不得提交。该 smoke 不能替代现场监督连接或真实固件回包验收。
+
 ## 本地开发启动
 
 为每次开发会话生成一个至少 32 字符的随机令牌，不要提交到仓库：
@@ -73,7 +84,7 @@ pnpm gateway:dev
 
 前端复制 `apps/studio-web/.env.example` 为被忽略的 `.env.local`，并让 URL、令牌与网关进程一致。若 Vite 临时使用 5174，必须同时把该 origin 加入 `AETHOR_GATEWAY_DEV_ORIGINS`。
 
-启动网关不会枚举或打开串口；前端设备页加载时只调用枚举和 REST 快照。只有操作者完成监督手册的现场授权门并调用“只读连接”后，网关才会打开端口并开始三个查询。Phase 4 在 COM4 实机门通过前不得把该动作写入自动启动流程。
+启动网关不会枚举或打开串口；前端设备页加载时只调用枚举和 REST 快照。只有操作者完成监督手册的现场授权门并调用“只读连接”后，网关才会打开端口并开始三个查询。Phase 4 已完成一次监督实机验收，但连接动作仍不得写入自动启动流程；每次真实连接都需要新的现场判断。
 
 ## 公共接口
 
