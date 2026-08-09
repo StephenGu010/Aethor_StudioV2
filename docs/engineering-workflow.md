@@ -30,8 +30,9 @@
 | 3. 实施 | 按“契约/所有权 → 实现 → UI/集成”的方向工作；保护用户已有改动 | 最小完整变更 |
 | 4. 验证 | 先运行受影响的窄测试，再运行阶段门槛；涉及实机时严格执行监督 runbook | 可复现命令与结果 |
 | 5. 同步 | 更新权威文档、`docs/CHANGELOG.md`、路线图状态和本阶段 handoff | 与代码一致的工程事实 |
-| 6. 本地提交 | 审查 diff、精确暂存、检查 staged diff，创建一个清晰的阶段提交 | 本地 commit SHA |
-| 7. 交接 | 报告结果、验证、风险、下一入口和本地 SHA；保持工作区干净 | 可独立继续工作的 handoff |
+| 6. 阶段提交 | 审查 diff、精确暂存、检查 staged diff，创建一个清晰的阶段提交 | 本地 commit SHA |
+| 7. 远端交付 | fetch 并确认远端未领先/未分叉，普通 push 到 `origin` 对应分支，再核对本地与 upstream 同 SHA | 可追踪的远端 ref |
+| 8. 交接 | 报告结果、验证、风险、下一入口、本地 SHA 和远端 ref | 可独立继续工作的 handoff |
 
 退出门槛未全部通过时不得标记 `DONE`。阻塞时记录已验证事实、未完成项和恢复条件，不用计划能力冒充已实现能力。
 
@@ -51,13 +52,15 @@
 
 ## Git 规则
 
-- 远端 `origin` 仅用于用户手动 fetch/pull/push；自动流程绝不执行 push、force-push 或创建远端分支。
+- 完成阶段在验收、文档和阶段提交全部通过后自动普通 push 到 `origin` 对应分支；Phase 0–4 已使用 `main`，隔离阶段可使用 `codex/phase-NN-short-name`。
+- push 前必须执行 `git fetch origin --prune`，核对远端 URL、当前分支和 upstream；远端领先、发生分叉、认证失败或分支保护拒绝时立即停止并报告，禁止自动 merge、rebase、force-push 或删除远端分支。
 - 默认尊重当前分支。需要隔离工作时使用 `codex/phase-NN-short-name`，但不为了单次文档修订无意义切分支。
 - 阶段提交格式：`phase(NN): <已验证的结果>`，例如 `phase(01): lock dummy protocol contracts`。
 - 一个阶段可以有必要的中间提交，但只有退出门槛通过、文档同步完成的提交才能称为阶段完成提交。
 - 暂存前运行 `git status --short` 和 `git diff`；只暂存本阶段文件，再运行 `git diff --cached --check` 和 `git diff --cached --stat`。
 - 禁止提交生成物、依赖、秘密、本机端口偏好和无关用户改动。提交失败时修复原因，不绕过检查。
-- “自动 Git”只表示完成阶段时自动创建本地提交并报告 SHA；远端推送始终由用户执行。
+- `IN PROGRESS`、`BLOCKED` 和普通 checkpoint 不自动 push；只有用户明确指定的 checkpoint 才可单独推送，且不得把它描述为阶段完成。
+- 不自动创建 tag、release 或 PR；这些远端对象仍需用户单独授权。
 
 推荐的本地收口顺序：
 
@@ -72,10 +75,15 @@ git diff --cached --check
 git diff --cached --stat
 git commit -m "phase(NN): concise verified outcome"
 git status --short --branch
+git fetch origin --prune
+# 确认 upstream 未领先或分叉后：
+git push origin HEAD
+git rev-parse HEAD
+git rev-parse '@{upstream}'
 ```
 
 ## Handoff 最小内容
 
 每阶段使用 `docs/handoffs/template.md`，至少记录：状态、日期、实施者、分支、开始基线、最终提交主题、目标与排除项、真实完成项、变更路径、验证证据、硬件操作、风险和下一阶段启动清单。
 
-handoff 与阶段实现放在同一完成提交中，因此不在文件内写入该提交自身的 SHA；最终响应和 `git log -1` 提供精确 SHA。下一位实施者必须先复现关键检查，再开始新功能。
+handoff 与阶段实现放在同一完成提交中，因此不在文件内写入该提交自身的 SHA；最终响应提供精确 SHA 和已验证远端 ref。下一位实施者必须先复现关键检查，再开始新功能。

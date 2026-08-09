@@ -1,6 +1,6 @@
 ---
 name: aethor-studio-workflow
-description: Use for planning, implementing, verifying, handing off, or committing any Aethor Studio V2 phase. Enforces the single D-drive workspace, authoritative engineering documents, hardware safety gates, phase acceptance, truthful handoffs, and automatic local Git commits without pushing.
+description: Use for planning, implementing, verifying, handing off, committing, or pushing any Aethor Studio V2 phase. Enforces the single D-drive workspace, authoritative engineering documents, hardware safety gates, phase acceptance, truthful handoffs, and guarded Git commit/push delivery for completed phases.
 ---
 
 # Aethor Studio Workflow
@@ -54,7 +54,7 @@ Before committing:
 - Record exact verification commands and results, hardware access, known limitations, recovery conditions, and the next start point.
 - Record the starting SHA and intended final commit subject. Do not embed the final commit's own SHA in the same commit; report it after committing.
 
-## Finish with local Git
+## Finish with guarded Git delivery
 
 After all exit gates pass:
 
@@ -63,10 +63,11 @@ After all exit gates pass:
 3. Run `git diff --cached --check` and review `git diff --cached --stat` plus the staged diff.
 4. Commit locally with `phase(NN): <verified outcome>`.
 5. Run `git status --short --branch` and `git log -1 --oneline`.
-6. Report the local SHA, verification evidence, handoff path, and remaining risk.
-7. Never push. The user owns every remote push.
+6. Run `git fetch origin --prune`; verify `origin` is the approved project remote and the upstream is not ahead or diverged. Never rewrite remote history to resolve a mismatch.
+7. Push the completed phase commit with a normal `git push` to the corresponding `origin` branch. If the branch has no upstream, create it only for the current completed phase branch with `git push -u origin HEAD`; never force-push, push tags, or create a PR unless separately requested.
+8. Verify the local branch and upstream resolve to the same commit, then report the SHA, remote ref, verification evidence, handoff path, and remaining risk.
 
-If gates fail, keep the phase `IN PROGRESS` or `BLOCKED`, update the handoff with evidence, and do not create a misleading completion commit. Create a checkpoint commit only when the user explicitly requests one.
+If gates fail, keep the phase `IN PROGRESS` or `BLOCKED`, update the handoff with evidence, and do not create or push a misleading completion commit. Create or push a checkpoint only when the user explicitly requests that exact checkpoint. If fetch, authentication, branch protection, or remote divergence blocks delivery, preserve the verified local commit, report the exact remote state, and do not retry with force or history rewriting.
 
 ## Governing document
 

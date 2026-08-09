@@ -1,5 +1,19 @@
 # 变更记录
 
+## 2026-08-09 - 工程治理：完成阶段受控推送
+
+需求：
+- 用户要求以后每个 Phase 在完成后由 Codex 推送到远端仓库。
+
+改动：
+- 将阶段 Git 规则从“只创建本地提交、用户手动 push”改为“退出门、handoff 和阶段提交全部通过后，fetch 核对远端并普通 push 到 `origin` 对应分支”。
+- 明确禁止 force-push、自动改写分叉历史、自动 tag/release/PR，以及把 `IN PROGRESS`、`BLOCKED` 或 checkpoint 冒充阶段交付。
+- 同步根工程约定、项目内 workflow skill、工程工作流、README 与文档索引。
+
+验证：
+- 远端核对为 `https://github.com/StephenGu010/Aethor_StudioV2.git`；刷新后本地 `main` 仅领先已完成的 Phase 4 提交一项且远端未领先。
+- 已将 `f423e46 phase(04): deliver supervised readonly gateway` 普通推送到 `origin/main`，未包含当前未提交的 Phase 5–8 工作区变更。
+
 ## 2026-08-09 - 阶段 4：只读网关与监督 COM4 验收（DONE）
 
 需求：

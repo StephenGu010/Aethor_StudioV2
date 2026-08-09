@@ -4,7 +4,7 @@
 
 ## 阅读顺序
 
-1. [阶段制工程与 Git 工作流](engineering-workflow.md)：计划、实施、验证、handoff、本地提交和人工 push 的统一流程。
+1. [阶段制工程与 Git 工作流](engineering-workflow.md)：计划、实施、验证、handoff、阶段提交和受控远端 push 的统一流程。
 2. [阶段路线图](roadmap.md)：阶段 0–8 的目标、交付物和验收门槛。
 3. [产品与安全边界](product-boundaries.md)：首版范围、硬件动作约束和明确排除项。
 4. [系统架构](architecture.md)：当前结构、目标结构、依赖方向和状态所有权。
