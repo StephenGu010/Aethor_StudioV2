@@ -5,6 +5,11 @@
   "$defs": {
     "DataSource": { "enum": ["showcase", "measured", "commanded", "computed", "unavailable"] },
     "Validity": { "enum": ["valid", "stale", "invalid", "unavailable"] },
+    "RobotCommandKind": { "enum": ["enable", "stopAndDisable", "home", "reset", "setMode", "jointGroup"] },
+    "CommandStatus": { "enum": ["unsupported", "rejected", "accepted", "completed", "failed", "timedOut", "cancelled", "unconfirmed"] },
+    "CommandEvidence": { "enum": ["none", "gatewayAccepted", "deviceQueued", "deviceAck", "feedbackConfirmed"] },
+    "DirectCommandStatus": { "enum": ["replied", "queued", "rejected", "timedOut", "failed"] },
+    "CommandResultCode": { "enum": ["ok", "commandsDisabled", "invalidRequest", "sessionMismatch", "notConnected", "feedbackStale", "motorNotEnabled", "invalidTarget", "speedUnverified", "speedOutOfRange", "safetyInterlockLatched", "commandInFlight", "commandIdConflict", "deviceRejected", "deviceUnconfirmed", "transportError", "timeout", "cancelled"] },
     "RobotSessionSnapshot": {
       "type": "object",
       "additionalProperties": false,
@@ -30,7 +35,7 @@
         "displayName": { "type": ["string", "null"], "maxLength": 256 }
       }
     },
-    "ReadOnlyConnectRequest": {
+    "RobotConnectRequest": {
       "type": "object",
       "additionalProperties": false,
       "required": ["portName", "profileId"],
@@ -39,23 +44,91 @@
         "profileId": { "const": "dummy-6dof" }
       }
     },
-    "ReadOnlyGatewayCapabilities": {
+    "JointGroupCompletionPolicyV1": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["contractVersion", "protocolAdapterId", "serialEnumeration", "readOnlyConnection", "liveTelemetry", "hardwareCommands", "allowedQueries"],
+      "required": ["positionToleranceDeg", "settledDurationMs", "timeoutMs"],
       "properties": {
-        "contractVersion": { "const": "1.0" },
+        "positionToleranceDeg": { "type": "number", "minimum": 0.01, "maximum": 5 },
+        "settledDurationMs": { "type": "integer", "minimum": 100, "maximum": 5000 },
+        "timeoutMs": { "type": "integer", "minimum": 500, "maximum": 120000 }
+      }
+    },
+    "RobotGatewayCapabilitiesV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": { "properties": { "commandPolicy": { "const": "disabled" } }, "required": ["commandPolicy"] },
+          "then": {
+            "properties": {
+              "hardwareCommands": { "const": false },
+              "directCommand": { "const": false },
+              "engineeringJointSpeedMaxDegS": { "type": "null" },
+              "supportedCommands": { "type": "array", "maxItems": 0 }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "commandPolicy": { "const": "supervised" } }, "required": ["commandPolicy"] },
+          "then": { "properties": { "hardwareCommands": { "const": true }, "directCommand": { "const": false }, "engineeringJointSpeedMaxDegS": { "type": "null" } } }
+        },
+        {
+          "if": { "properties": { "commandPolicy": { "const": "engineering" } }, "required": ["commandPolicy"] },
+          "then": { "properties": { "hardwareCommands": { "const": true }, "directCommand": { "const": true }, "engineeringJointSpeedMaxDegS": { "type": "number", "exclusiveMinimum": 0, "maximum": 100 } } }
+        },
+        {
+          "if": {
+            "properties": { "supportedCommands": { "type": "array", "contains": { "const": "jointGroup" } } },
+            "required": ["supportedCommands"]
+          },
+          "then": {
+            "properties": {
+              "jointGroupSpeedLimitDegS": { "type": "number", "exclusiveMinimum": 0 },
+              "jointGroupCompletion": { "$ref": "#/$defs/JointGroupCompletionPolicyV1" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "jointGroupSpeedLimitDegS": { "type": "number" } }, "required": ["jointGroupSpeedLimitDegS"] },
+          "then": { "properties": { "jointGroupCompletion": { "$ref": "#/$defs/JointGroupCompletionPolicyV1" } } }
+        },
+        {
+          "if": { "properties": { "jointGroupCompletion": { "type": "object" } }, "required": ["jointGroupCompletion"] },
+          "then": { "properties": { "jointGroupSpeedLimitDegS": { "type": "number", "exclusiveMinimum": 0 } } }
+        }
+      ],
+      "required": ["contractVersion", "protocolAdapterId", "serialEnumeration", "readOnlyConnection", "liveTelemetry", "hardwareCommands", "directCommand", "commandPolicy", "allowedQueries", "supportedCommands", "jointGroupSpeedLimitDegS", "jointGroupCompletion", "engineeringJointSpeedMaxDegS"],
+      "properties": {
+        "contractVersion": { "const": "1.2" },
         "protocolAdapterId": { "const": "dummy-ascii-v1" },
         "serialEnumeration": { "type": "boolean" },
         "readOnlyConnection": { "type": "boolean" },
         "liveTelemetry": { "type": "boolean" },
-        "hardwareCommands": { "const": false },
+        "hardwareCommands": { "type": "boolean" },
+        "directCommand": { "type": "boolean" },
+        "commandPolicy": { "enum": ["disabled", "supervised", "engineering"] },
         "allowedQueries": {
           "type": "array",
           "minItems": 3,
           "maxItems": 3,
           "uniqueItems": true,
           "items": { "enum": ["#GETJPOS", "#GETMODE", "#GETENABLE"] }
+        },
+        "supportedCommands": {
+          "type": "array",
+          "maxItems": 6,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/RobotCommandKind" }
+        },
+        "jointGroupSpeedLimitDegS": {
+          "oneOf": [{ "type": "number", "exclusiveMinimum": 0 }, { "type": "null" }]
+        },
+        "jointGroupCompletion": {
+          "oneOf": [{ "$ref": "#/$defs/JointGroupCompletionPolicyV1" }, { "type": "null" }]
+        },
+        "engineeringJointSpeedMaxDegS": {
+          "oneOf": [{ "type": "number", "exclusiveMinimum": 0, "maximum": 100 }, { "type": "null" }]
         }
       }
     },
@@ -77,23 +150,172 @@
       "additionalProperties": false,
       "required": ["commandId", "sessionId", "profileId", "positionsDeg"],
       "properties": {
-        "commandId": { "type": "string", "minLength": 1 },
-        "sessionId": { "type": "string", "minLength": 1 },
-        "profileId": { "type": "string", "minLength": 1 },
-        "positionsDeg": { "type": "array", "minItems": 1, "maxItems": 32, "items": { "type": "number" } },
+        "commandId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "sessionId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "profileId": { "const": "dummy-6dof" },
+        "positionsDeg": { "type": "array", "minItems": 6, "maxItems": 6, "items": { "type": "number" } },
         "speedDegS": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "DirectCommandRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requestId", "sessionId", "profileId", "line"],
+      "properties": {
+        "requestId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "sessionId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "profileId": { "const": "dummy-6dof" },
+        "line": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[ -~]+$" }
+      }
+    },
+    "DirectCommandResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requestId", "sessionId", "status", "evidence", "normalizedLine", "message", "timestampUtc"],
+      "properties": {
+        "requestId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "sessionId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "status": { "$ref": "#/$defs/DirectCommandStatus" },
+        "evidence": { "$ref": "#/$defs/CommandEvidence" },
+        "normalizedLine": { "type": "string", "maxLength": 255 },
+        "message": { "type": "string", "maxLength": 500 },
+        "timestampUtc": { "type": "string", "format": "date-time" },
+        "deviceReply": { "type": "string", "maxLength": 4096 }
+      }
+    },
+    "SimpleRobotCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commandId", "sessionId", "profileId"],
+      "properties": {
+        "commandId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "sessionId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "profileId": { "const": "dummy-6dof" }
+      }
+    },
+    "SetModeCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commandId", "sessionId", "profileId", "mode"],
+      "properties": {
+        "commandId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "sessionId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "profileId": { "const": "dummy-6dof" },
+        "mode": { "enum": [1, 2, 3] }
       }
     },
     "CommandResult": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["commandId", "status", "message", "timestampUtc"],
+      "required": ["commandId", "sessionId", "commandKind", "status", "code", "evidence", "message", "timestampUtc"],
       "properties": {
         "commandId": { "type": "string", "minLength": 1 },
-        "status": { "enum": ["unsupported", "rejected", "accepted", "completed", "failed", "timedOut", "cancelled", "unconfirmed"] },
+        "sessionId": { "type": "string", "minLength": 1 },
+        "commandKind": { "$ref": "#/$defs/RobotCommandKind" },
+        "status": { "$ref": "#/$defs/CommandStatus" },
+        "code": { "$ref": "#/$defs/CommandResultCode" },
+        "evidence": { "$ref": "#/$defs/CommandEvidence" },
         "message": { "type": "string", "maxLength": 500 },
         "timestampUtc": { "type": "string", "format": "date-time" },
         "deviceReply": { "type": "string", "maxLength": 4096 }
+      }
+    },
+    "RobotCommandRequestSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": { "properties": { "commandKind": { "enum": ["enable", "stopAndDisable", "home", "reset"] } }, "required": ["commandKind"] },
+          "then": {
+            "properties": {
+              "mode": { "type": "null" },
+              "positionsDeg": { "type": "null" },
+              "positionsCount": { "type": "null" },
+              "speedDegS": { "type": "null" },
+              "payloadTruncated": { "const": false }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "commandKind": { "const": "setMode" } }, "required": ["commandKind"] },
+          "then": {
+            "properties": {
+              "mode": { "type": "integer" },
+              "positionsDeg": { "type": "null" },
+              "positionsCount": { "type": "null" },
+              "speedDegS": { "type": "null" },
+              "payloadTruncated": { "const": false }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "commandKind": { "const": "jointGroup" } }, "required": ["commandKind"] },
+          "then": { "properties": { "mode": { "type": "null" } } }
+        },
+        {
+          "if": { "properties": { "positionsCount": { "type": "integer", "minimum": 7 } }, "required": ["positionsCount"] },
+          "then": {
+            "properties": {
+              "positionsDeg": { "type": "array", "minItems": 6, "maxItems": 6 },
+              "payloadTruncated": { "const": true }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "positionsCount": { "type": "integer", "maximum": 6 } }, "required": ["positionsCount"] },
+          "then": { "properties": { "payloadTruncated": { "const": false } } }
+        },
+        {
+          "if": { "properties": { "positionsCount": { "type": "null" } }, "required": ["positionsCount"] },
+          "then": { "properties": { "positionsDeg": { "type": "null" }, "payloadTruncated": { "const": false } } }
+        }
+      ],
+      "required": ["commandKind", "requestFingerprintSha256", "mode", "positionsDeg", "positionsCount", "speedDegS", "payloadTruncated"],
+      "properties": {
+        "commandKind": { "$ref": "#/$defs/RobotCommandKind" },
+        "requestFingerprintSha256": { "type": "string", "pattern": "^[0-9A-Fa-f]{64}$" },
+        "mode": { "oneOf": [{ "type": "integer" }, { "type": "null" }] },
+        "positionsDeg": {
+          "oneOf": [
+            { "type": "array", "maxItems": 6, "items": { "type": "number" } },
+            { "type": "null" }
+          ]
+        },
+        "positionsCount": { "oneOf": [{ "type": "integer", "minimum": 0 }, { "type": "null" }] },
+        "speedDegS": { "oneOf": [{ "type": "number" }, { "type": "null" }] },
+        "payloadTruncated": { "type": "boolean" }
+      }
+    },
+    "CommandAuditRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "oneOf": [
+            { "properties": { "commandKind": { "const": "enable" }, "request": { "type": "object", "properties": { "commandKind": { "const": "enable" } } }, "result": { "type": "object", "properties": { "commandKind": { "const": "enable" } } } } },
+            { "properties": { "commandKind": { "const": "stopAndDisable" }, "request": { "type": "object", "properties": { "commandKind": { "const": "stopAndDisable" } } }, "result": { "type": "object", "properties": { "commandKind": { "const": "stopAndDisable" } } } } },
+            { "properties": { "commandKind": { "const": "home" }, "request": { "type": "object", "properties": { "commandKind": { "const": "home" } } }, "result": { "type": "object", "properties": { "commandKind": { "const": "home" } } } } },
+            { "properties": { "commandKind": { "const": "reset" }, "request": { "type": "object", "properties": { "commandKind": { "const": "reset" } } }, "result": { "type": "object", "properties": { "commandKind": { "const": "reset" } } } } },
+            { "properties": { "commandKind": { "const": "setMode" }, "request": { "type": "object", "properties": { "commandKind": { "const": "setMode" } } }, "result": { "type": "object", "properties": { "commandKind": { "const": "setMode" } } } } },
+            { "properties": { "commandKind": { "const": "jointGroup" }, "request": { "type": "object", "properties": { "commandKind": { "const": "jointGroup" } } }, "result": { "type": "object", "properties": { "commandKind": { "const": "jointGroup" } } } } }
+          ]
+        }
+      ],
+      "required": ["commandId", "sessionId", "profileId", "commandKind", "acceptedAtUtc", "request", "transmittedPayloads", "transmissionLogTruncated", "result"],
+      "properties": {
+        "commandId": { "type": "string", "minLength": 1 },
+        "sessionId": { "type": "string", "minLength": 1 },
+        "profileId": { "const": "dummy-6dof" },
+        "commandKind": { "$ref": "#/$defs/RobotCommandKind" },
+        "acceptedAtUtc": { "type": "string", "format": "date-time" },
+        "request": { "$ref": "#/$defs/RobotCommandRequestSnapshot" },
+        "transmittedPayloads": {
+          "type": "array",
+          "maxItems": 32,
+          "items": { "type": "string", "minLength": 1, "maxLength": 255 }
+        },
+        "transmissionLogTruncated": { "type": "boolean" },
+        "result": { "$ref": "#/$defs/CommandResult" }
       }
     },
     "ProtocolFrame": {
@@ -156,6 +378,50 @@
         "minimize": { "type": "boolean" },
         "toggleMaximize": { "type": "boolean" },
         "close": { "type": "boolean" }
+      }
+    },
+    "DesktopBootstrapV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contractVersion", "gateway", "capabilities"],
+      "properties": {
+        "contractVersion": { "const": "1.0" },
+        "gateway": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["baseUrl", "sessionToken"],
+              "properties": {
+                "baseUrl": { "type": "string", "pattern": "^https?://(127\\.0\\.0\\.1|localhost|\\[::1\\])(:[0-9]{1,5})?$" },
+                "sessionToken": { "type": "string", "minLength": 32, "maxLength": 256, "pattern": "^[!-~]+$" }
+              }
+            }
+          ]
+        },
+        "capabilities": { "$ref": "#/$defs/DesktopBridgeCapabilities" }
+      }
+    },
+    "DesktopBridgeRequestV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contractVersion", "requestId", "action"],
+      "properties": {
+        "contractVersion": { "const": "1.0" },
+        "requestId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "action": { "enum": ["minimize", "toggleMaximize", "close", "beginDrag"] }
+      }
+    },
+    "DesktopBridgeResponseV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contractVersion", "requestId", "ok"],
+      "properties": {
+        "contractVersion": { "const": "1.0" },
+        "requestId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "ok": { "type": "boolean" },
+        "errorCode": { "enum": ["unsupported", "invalidRequest", "hostFailure"] }
       }
     }
   }

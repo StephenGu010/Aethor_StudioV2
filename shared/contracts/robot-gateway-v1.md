@@ -1,84 +1,118 @@
 # RobotGatewayV1
 
-## 版本与所有权
+## 版本、所有权与安全默认值
 
-Wire contract 版本为 `1.0`，JSON 使用 camelCase，枚举使用 Schema 中的小写字符串，时间使用 UTC ISO 8601。JSON Schema 是跨语言 wire contract 的权威来源；C# 内部类型和 `SerialPort` 类型不得直接暴露给前端。
+当前 wire contract 版本为 `1.2`，只服务 `dummy-6dof`。JSON 使用 camelCase、Schema 中的小写枚举和 UTC ISO 8601 时间；[`gateway-contracts-v1.schema.json`](gateway-contracts-v1.schema.json) 是跨语言 wire contract 的权威来源。`aethor-robo-dual-7dof` 尚无硬件网关契约，不能通过该接口连接或下发。
 
-Phase 4 的 C# 服务独占串口、轮询任务、session、最新反馈和协议历史。前端只通过 `RobotGatewayV1` 发送连接意图并消费归一化状态；`StaticShowcaseSource` 永远不能成为硬件状态源。REST 快照是权威状态，SignalR 仅是有界的低延迟通知通道。
+C# `RobotGateway` 是唯一的串口、轮询、命令仲裁、最新快照和有界历史所有者。前端只依赖 `RobotGatewayV1` 端口，不直接访问串口；REST 是权威快照，SignalR 是可丢中间通知的有界通道。`StaticShowcaseSource` 永远不能产生真实连接、使能或命令成功状态。
 
-## Phase 4 消息
+硬件命令默认关闭。主机策略为：
 
-- `SerialPortDescriptor`：`portName` 与可空 `hardwareId/displayName`。端口存在不等于已连接；当前 Windows adapter 保证端口名，硬件 ID 允许为空。
-- `ReadOnlyConnectRequest`：`portName/profileId`；Phase 4 只接受 `dummy-6dof` 和当前枚举到的合法 Windows COM 名称。
-- `ReadOnlyGatewayCapabilities`：contract/adapter 版本、端口枚举、只读连接、实时遥测和命令能力。Phase 4 的 `hardwareCommands` 固定为 `false`。
-- `RobotSessionSnapshot`：`sessionId/profileId/connectionState/motorState/controlMode/timestampUtc/source/validity`。
-- `JointStateFrame`：递增 `sequence`、UTC 时间、六个 `positionsDeg`、来源与有效性；顺序按 Profile `protocolIndex`。
-- `ProtocolFrame`：`tx/rx/error`、UTC 时间、有界原始 ASCII、解析类别、来源和可选 `correlationId`。来源与方向固定映射为 `tx → commanded`、`rx → measured`、`error → unavailable`，不得把网关发出的查询标成设备测量值。
+- `disabled`：默认值，`hardwareCommands=false/directCommand=false`；
+- `supervised`：只允许 desktop token，公开 `supportedCommands` 中的结构化命令；
+- `engineering`：只允许 Development 环境和 development token，结构化启停/模式仍可用，并额外声明 `directCommand=true` 与 `engineeringJointSpeedMaxDegS=100`。
 
-Phase 4 capabilities 只允许以下查询，顺序轮询：
+服务没有任意 raw 串口端点。engineering direct 只接受规范化 Dummy 单行白名单，不能发送 HOME/RESET、RGB、电流、模式 4/5 或任意字节；100 deg/s 仅是固件输入上界，不是安全速度证据。
 
-```text
-#GETJPOS
-#GETMODE
-#GETENABLE
-```
+## 核心消息
 
-串口写入 adapter 对编码后的完整 payload 再做一次精确白名单校验；其他字节序列不能通过公共 API 或内部 transport 写出。
+- `SerialPortDescriptor`：端口名和可空 `hardwareId/displayName`；枚举存在不等于已连接。
+- `RobotConnectRequest`：`portName/profileId`；当前只接受 `dummy-6dof` 和本次枚举到的合法 COM 名称。
+- `RobotGatewayCapabilities`：contract/adapter 版本、查询能力、命令策略、支持命令和可空的完整关节组运动包络。
+- `JointGroupCompletionPolicyV1`：到位容差、连续稳定窗口和总到位超时；与关节速度上限必须同时配置。
+- `RobotSessionSnapshot`：session、连接、使能、模式、来源与有效性。
+- `JointStateFrame`：递增序号、六个角度、UTC 时间、来源与有效性，顺序按 Profile `protocolIndex`。
+- `ProtocolFrame`：有界 ASCII、方向、解析类别、来源和可选 correlation ID。
+- `CommandResult`：命令终态、稳定 code、evidence、面向操作者的信息和可选设备回包。
+- `RobotCommandRequestSnapshot`：命令种类、SHA-256 请求指纹和有界参数快照；关节数组最多保留前六项，同时记录原数量和截断标志。
+- `CommandAuditRecord`：命令身份、接收时间、请求快照、实际成功写入 transport 的 payload 和当前/最终结果；默认最多保留 128 项。
+- `DirectCommandRequest/DirectCommandResult`：开发调试的一行白名单命令与明确的 `replied/queued/rejected/timedOut/failed` 结果；`queued` 只表示固件 FIFO 接受，不表示运动完成。
 
 ## REST
 
-所有 `/api/v1/*` 请求必须携带 `X-Aethor-Session`。健康检查不需要认证。
+所有 `/api/v1/*` 请求必须携带 `X-Aethor-Session`；健康检查无需认证。命令端点对协议级拒绝或不支持返回 HTTP 200 和明确 `CommandResult`，网络/认证错误仍使用 HTTP 状态码。
 
-| Method | Path | Request | Response | 说明 |
-|---|---|---|---|---|
-| `GET` | `/health/live` | — | process/contract 状态 | 仅表示进程存活 |
-| `GET` | `/health/ready` | — | `ready`, `serialRequired=false` | 不表示设备已连接 |
-| `GET` | `/api/v1/gateway/capabilities` | — | `ReadOnlyGatewayCapabilities` | 当前能力声明 |
-| `GET` | `/api/v1/serial/ports` | — | `SerialPortDescriptor[]` | 只枚举，不打开端口 |
-| `GET` | `/api/v1/session` | — | `RobotSessionSnapshot` | 权威 session 快照 |
-| `GET` | `/api/v1/joint-state` | — | `JointStateFrame` | 权威最新关节帧；不可用时 validity/source 明确降级 |
-| `GET` | `/api/v1/protocol-frames?limit=N` | — | `ProtocolFrame[]` | `N` 为 1–500；历史容量默认 256 |
-| `POST` | `/api/v1/session/connect` | `ReadOnlyConnectRequest` | `RobotSessionSnapshot` | 手动打开唯一串口会话并启动只读轮询 |
-| `POST` | `/api/v1/session/disconnect` | — | `RobotSessionSnapshot` | 取消轮询并释放 transport；重复调用安全 |
+| Method | Path | Request | Response |
+|---|---|---|---|
+| `GET` | `/health/live` | — | 进程和 contract 版本 |
+| `GET` | `/health/ready` | — | `ready`；不代表设备在线 |
+| `GET` | `/api/v1/gateway/capabilities` | — | `RobotGatewayCapabilities` |
+| `GET` | `/api/v1/serial/ports` | — | `SerialPortDescriptor[]`；不打开端口 |
+| `GET` | `/api/v1/session` | — | 权威 session 快照 |
+| `GET` | `/api/v1/joint-state` | — | 权威最新关节帧 |
+| `GET` | `/api/v1/protocol-frames?limit=N` | — | 1–500 条协议帧 |
+| `GET` | `/api/v1/commands?limit=N` | — | 1–500 条命令审计 |
+| `GET` | `/api/v1/commands/{commandId}` | — | 单条命令审计或 404 |
+| `POST` | `/api/v1/session/connect` | `RobotConnectRequest` | 人工打开唯一设备会话 |
+| `POST` | `/api/v1/session/disconnect` | — | 释放会话；命令在途或电机已确认 enabled 时拒绝，stale/unknown 错误端口可释放 |
+| `POST` | `/api/v1/commands/enable` | `SimpleRobotCommand` | `CommandResult` |
+| `POST` | `/api/v1/commands/stop-and-disable` | `SimpleRobotCommand` | `CommandResult` |
+| `POST` | `/api/v1/commands/home` | `SimpleRobotCommand` | 当前生产配置返回 `unsupported` |
+| `POST` | `/api/v1/commands/reset` | `SimpleRobotCommand` | 当前生产配置返回 `unsupported` |
+| `POST` | `/api/v1/commands/set-mode` | `SetModeCommand` | 仅模式 1–3 |
+| `POST` | `/api/v1/commands/joint-group` | `JointGroupCommand` | 只有配置完整四参数运动包络后才支持 |
+| `POST` | `/api/v1/engineering/direct-command` | `DirectCommandRequest` | 仅 engineering；返回 `DirectCommandResult` |
 
-Phase 4 不存在 raw、运动、使能、停止、模式、回零或复位端点。前端对应方法必须在本地返回 `unsupported`，不得试探未声明 URL。
+连接、端口枚举和 query 参数错误使用 400/409/503；认证失败使用 401。请求取消不会被改写为成功或自动重试。请求在网关接管前已取消时不得创建审计条目或写串口；写入命令审计条目是接管线性化点，接管后的 HTTP 取消只终止当前调用方等待，网关仍须把唯一物理执行收束为可查询终态。
 
-### HTTP 失败
+## 命令仲裁与证据
 
-- `401`：会话令牌缺失或错误。
-- `400`：非法 Profile、COM 名称、未枚举端口或协议历史 limit。
-- `409`：另一个 session 正在连接、已连接或正在断开；不会创建第二个串口所有者。
-- `503`：端口枚举失败、端口占用/拒绝访问或串口打开失败。
-- 请求取消不会转换为成功或自动重试。前端 REST 请求默认 5 s 超时，连接失败后保留人工重试入口。
+- 同一时刻只允许一个硬件命令。停止并去使能可以取消正在等待/执行的普通命令；被取消命令保持 `cancelled`，不能被迟到 ACK 改写。
+- `commandId + 完整规范化 payload` 是幂等键。同 ID 同 payload 共享一次物理执行；同 ID 不同 payload 返回 `commandIdConflict`。
+- 命令审计在 transport 写成功后记录实际 payload，最多 32 条、每条最多 255 个 ASCII 字符，并以 `transmissionLogTruncated` 表示截断。校验失败或写入失败的 payload 不得伪装成已发送。
+- 终态为 `unsupported/rejected/completed/failed/timedOut/cancelled/unconfirmed`。`accepted` 只表示网关接管命令，不是物理完成。
+- evidence 从 `none`、`gatewayAccepted`、`deviceQueued`、`deviceAck` 到 `feedbackConfirmed` 逐步增强；FIFO 数字或通用 `ok` 不能单独证明到位。
+- 每个命令都校验 session/profile、连接有效性和适用状态；整组关节还校验新鲜实测反馈、已使能、恰好六个有限角、manifest 限位、显式正速度和完整四参数运动包络。
+- FIFO 接受后，网关以有界频率读取 `#GETJPOS` 并计算六轴最大绝对误差。只有误差连续处于容差内达到稳定窗口才返回 `completed + feedbackConfirmed`；离开容差会重置窗口，总超时或查询超时返回 `timedOut + deviceQueued` 并锁存安全联锁。
+- 任一命令进入 `unconfirmed/failed/timedOut` 后，网关锁存安全联锁并拒绝后续普通命令；只允许停止并去使能。停止读回 disabled 成功或操作者现场复核后重新建立新 session 才能清除联锁。
+- UI 必须先完成 capability negotiation；页面禁用不是安全边界，C# 会重复全部许可校验。
+- 客户端还必须先恢复当前 session 的 REST 命令历史；恢复状态不是 `ready` 时，普通硬件命令和关节组下发失败关闭，停止并去使能仍可用。客户端的最近展示结果与安全联锁状态必须分离；空白、陈旧或因容量截断的历史不能清除已知联锁，只有时间不早于联锁的成功停止证据或新 session 才能清除。命令 POST 的 HTTP 响应丢失属于物理结果未知，客户端以本地 `unconfirmed/transportError/none` 锁定控制，不能把网络异常当作“未发送”后重试。
+- Dummy 设备页与固定顶栏软件停止必须进入同一客户端命令生命周期：统一记录终态、刷新 REST session/joint/audit，并对响应丢失执行同一联锁。Aethor_robo 控制台固定禁用软件停止和所有硬件动作，不进入该生命周期。客户端保存当前 Dummy session 最近一次成功停止的终态时间水位；迟到或乱序且不晚于该水位的旧未知结果不能重新锁存，也不能覆盖更新的最近结果。水位在 session identity 改变时清除，在空白或截断历史恢复时保留。
+
+`jointGroupSpeedLimitDegS` 和 `jointGroupCompletion` 必须同时为非空或同时为空。后者包含 `positionToleranceDeg`（0.01–5）、`settledDurationMs`（100–5000）和 `timeoutMs`（500–120000，且运行时强制大于稳定窗口）。JSON Schema负责字段、类型和范围，跨字段大小关系由 C# 与 Zod 运行时重复校验。
+
+Dummy 当前没有可信的完整运动包络，因此 `jointGroup` 默认不在 `supportedCommands`。禁止从 URDF 零 velocity、README、旧上位机默认值或展示数据推断任一参数。
+
+## Engineering 直连调试
+
+- 允许：`#GETJPOS/#GETMODE/#GETENABLE`、`!START/!STOP/!DISABLE`、`#CMDMODE 1–3`、`>j1,j2,j3,j4,j5,j6,speed`。
+- 六轴命令必须显式携带第七个速度参数，六个角度满足 Profile 限位；网关还要求当前 session connected、反馈 valid、模式有效、电机 enabled 和实测六轴帧 fresh。
+- 查询可用于 stale 会话诊断；`!STOP/!DISABLE` 可在 stale 状态发送。其他状态改变命令失败关闭。
+- 直连命令与结构化命令共享唯一命令所有权、串口互斥和有界超时；任一时刻只能有一个在途硬件命令。停止并去使能先取消在途 direct，再在同一有界所有权链中执行；协议 TX/RX 带 correlation ID 进入有界证据。前端不得自行补写成功帧。
+- 六轴 FIFO 返回 0–15 时结果为 `queued + deviceQueued`；255 为 rejected。UI 必须继续观察 measured 反馈和误差，不得将队列接收显示成到位。
+- 该策略不关闭 Phase 5 Gate B。桌面无参数启动继续固定 `commandPolicy=disabled`；本机开发包只有显式 `--engineering` 才以 Development/development token 启用 direct，且不会自动连接串口。该入口不能作为正式发布或受监督运动证据，后者仍依赖四参数运动包络和 `feedbackConfirmed`。
+
+## 停止、HOME 与 RESET
+
+软件停止链固定为：
+
+```text
+!STOP -> $0,0,0,0,0,0 -> !DISABLE -> #GETENABLE
+```
+
+全零电流是网关内部固定 best-effort payload，不是公共 DTO。只有最终读回 `#GETENABLE=0` 才返回 `completed + feedbackConfirmed`；其他结果为失败或 `unconfirmed`，并持续提示软件急停不能替代物理急停。
+
+STOP 抢占等待串口所有权也受 `CommandTimeout` 限制；超时不会无限挂起，而是返回 `unconfirmed/timeout`、锁存安全联锁、把反馈标为 stale 并要求立即使用物理急停。之后的普通命令返回 `safetyInterlockLatched`；被取消命令的迟到回包不能恢复为成功。
+
+固件 `DummyRobot::Homing()` 和 `Resting()` 会在命令处理线程中阻塞到运动结束，ACK 也在返回后才发送。这会妨碍串口停止命令及时被解析。因此 Application 无条件拒绝 HOME/RESET，Infrastructure payload policy 也拒绝对应 ASCII；端点只作为稳定契约占位。未来需要先修复/验证固件抢占语义、完成新的监督台架验收，再通过新的版本化决策开放。
 
 ## SignalR
 
-- Hub：`/hubs/robot-v1`。
-- 认证：`Authorization: Bearer <token>`；SignalR WebSocket transport 可按客户端约定使用 `access_token` query 参数。
-- Server-to-client events：
-  - `sessionSnapshot(RobotSessionSnapshot)`
-  - `jointStateFrame(JointStateFrame)`
-  - `protocolFrame(ProtocolFrame)`
-- 没有 client-to-server hub method。
+Hub 为 `/hubs/robot-v1`，使用 Bearer token；没有 client-to-server Hub method。事件为：
 
-服务端事件队列默认容量 128，拥塞时丢弃最旧事件，REST 状态不受影响。前端自动重连等待为 0/1/3 秒；重连耗尽后显示遥测断开，不能继续把旧值显示成新鲜反馈。
+- `sessionSnapshot(RobotSessionSnapshot)`
+- `jointStateFrame(JointStateFrame)`
+- `protocolFrame(ProtocolFrame)`
+- `commandResult(CommandResult)`
 
-## 串口与状态语义
+服务事件队列默认 128，拥塞时丢弃最旧通知；协议历史默认 256、命令历史默认 128。高频轮询可能覆盖协议历史中的早期命令帧，因此审计必须以 `CommandAuditRecord.request/transmittedPayloads/result` 为准，协议帧只作补充诊断。SignalR `commandResult` 是变化通知而非完整审计载荷；客户端收到后重新读取 REST 命令历史。session identity 改变时客户端立即清空旧历史并重新恢复，在成功前保持普通命令锁定。SignalR 重连、关闭或非法载荷会立即把已有 measured session/joint state 降为 `stale`；重连事件本身不是恢复证据，客户端必须重新取得 REST capabilities/session/joint/protocol 快照后才可恢复 `valid`。契约违规则触发合并限流的 REST 恢复；重连中等待 `onreconnected`，最终关闭则保持降级直至重新建立实时会话。恢复期间收到的实时 valid 帧也按 stale 接收，防止通道恢复与权威快照之间短暂误解锁。
 
-- 串口参数固定为 115200、8-N-1、ASCII、LF、无 handshake、DTR/RTS 关闭。
-- 打开串口后 session 可进入 `connected + stale`，表示 transport 已打开但尚未完成有效状态循环；这不是反馈已确认。
-- 每个查询默认 2 s 超时。任一超时将已有反馈降为 `stale`；连续三次查询超时、拔线或 I/O 故障将 session 置为 `faulted`、反馈置为 `unavailable` 并释放 transport。
-- 网关不会自动重连；恢复必须由操作者重新选择并连接。
-- 未知、畸形、非 ASCII、超长和半帧保留为有界诊断，不得被当作成功响应。
+## 串口与恢复
 
-## 后续命令契约
-
-Schema 已定义但 Phase 4 尚未提供网络端点的类型包括：
-
-- `JointGroupCommand`：唯一 `commandId/sessionId/profileId/positionsDeg[]`，可选且经过验证的 `speedDegS`。
-- `CommandResult`：`unsupported/rejected/accepted/completed/failed/timedOut/cancelled/unconfirmed`，含 UTC 时间、安全消息与可选设备证据。
-- `SignalDescriptor/SignalSample`：信号 ID、时间、值、单位、来源与有效性。
-
-Phase 5 后任何运动下发仍必须满足会话/Profile 匹配、连接有效、反馈新鲜、设备已使能、六轴目标合法且无互斥命令。设备 FIFO 数字或通用 `ok` 只能增加 evidence，不能单独证明物理运动完成。
-
-规划中的软件停止链仍为 `!STOP → internal best-effort $0,0,0,0,0,0 → !DISABLE → #GETENABLE`；它在 Phase 4 不可调用，未来也只有最终读回去使能为 `0` 才能显示完成。软件停止不能替代物理急停。
+- 115200、8-N-1、ASCII/LF、无 handshake，DTR/RTS 关闭。
+- 串口打开后先进入 `connected + stale`；完整有效查询循环后才是 `valid`。
+- 默认查询顺序为 `#GETJPOS/#GETMODE/#GETENABLE`，单次 2 秒超时；连续三次查询超时或 I/O 故障进入 `faulted` 并释放 transport。
+- 网关不会自动重连。恢复必须由操作者重新确认端口和现场条件后手动连接。
+- 未知、畸形、非 ASCII、超长和半帧保留为有界诊断，不更新可信状态。
+- Infrastructure 使用 100 ms 有界同步读窗口并在每个窗口检查取消，不依赖 Windows `SerialPort.BaseStream.ReadAsync` 的非可靠取消；关闭仍先释放句柄，再等待轮询/命令收束和 dispose。
+- 成功断开是新的会话边界：REST session 回到 `offline/unavailable`，joint 回到 unavailable，协议帧、命令审计和安全联锁清空。调用方必须同时清空当前会话遥测和目标草稿；显式保存到持久层或已经导出的文件不属于该临时会话。

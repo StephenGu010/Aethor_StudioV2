@@ -17,6 +17,8 @@ body {
   color: var(--text-primary);
   font-family: var(--font-ui);
   font-size: var(--font-size-body);
+  font-feature-settings: "liga" 1, "calt" 1;
+  font-optical-sizing: auto;
   line-height: var(--line-height-body);
   -webkit-font-smoothing: antialiased;
   font-kerning: normal;
@@ -25,7 +27,8 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   color: inherit;
   font: inherit;
 }
@@ -67,10 +70,25 @@ button:disabled {
 }
 
 input,
-select {
+select,
+textarea {
   border: 1px solid var(--line-default);
   border-radius: var(--radius-sm);
   background: #111417;
+}
+
+textarea { resize: vertical; }
+
+.visuallyHidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
 }
 
 code,

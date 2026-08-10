@@ -18,6 +18,28 @@ export type CommandStatus =
   | 'timedOut'
   | 'cancelled'
   | 'unconfirmed';
+export type GatewayCommandPolicy = 'disabled' | 'supervised' | 'engineering';
+export type RobotCommandKind = 'enable' | 'stopAndDisable' | 'home' | 'reset' | 'setMode' | 'jointGroup';
+export type CommandEvidence = 'none' | 'gatewayAccepted' | 'deviceQueued' | 'deviceAck' | 'feedbackConfirmed';
+export type CommandResultCode =
+  | 'ok'
+  | 'commandsDisabled'
+  | 'invalidRequest'
+  | 'sessionMismatch'
+  | 'notConnected'
+  | 'feedbackStale'
+  | 'motorNotEnabled'
+  | 'invalidTarget'
+  | 'speedUnverified'
+  | 'speedOutOfRange'
+  | 'safetyInterlockLatched'
+  | 'commandInFlight'
+  | 'commandIdConflict'
+  | 'deviceRejected'
+  | 'deviceUnconfirmed'
+  | 'transportError'
+  | 'timeout'
+  | 'cancelled';
 
 export interface RobotJointProfile {
   jointId: string;
@@ -26,6 +48,13 @@ export interface RobotJointProfile {
   protocolIndex: number;
   lowerDeg: number;
   upperDeg: number;
+}
+
+export interface RobotJointGroupV1 {
+  groupId: string;
+  displayName: string;
+  jointIds: string[];
+  tcpLinkName?: string;
 }
 
 export interface RobotProfileCapabilitiesV1 {
@@ -58,6 +87,7 @@ export interface RobotProfileManifestV1 {
     showcasePoseDeg?: number[];
   };
   joints: RobotJointProfile[];
+  jointGroups?: RobotJointGroupV1[];
   capabilities: RobotProfileCapabilitiesV1;
   source: {
     urdfSha256: string;
@@ -83,19 +113,41 @@ export interface SerialPortDescriptor {
   displayName: string | null;
 }
 
-export interface ReadOnlyConnectRequest {
+export interface RobotConnectRequest {
   portName: string;
   profileId: 'dummy-6dof';
 }
 
-export interface ReadOnlyGatewayCapabilities {
-  contractVersion: '1.0';
+export interface RobotGatewayCapabilitiesV1 {
+  contractVersion: '1.2';
   protocolAdapterId: 'dummy-ascii-v1';
   serialEnumeration: boolean;
   readOnlyConnection: boolean;
   liveTelemetry: boolean;
-  hardwareCommands: false;
+  hardwareCommands: boolean;
+  directCommand: boolean;
+  commandPolicy: GatewayCommandPolicy;
   allowedQueries: Array<'#GETJPOS' | '#GETMODE' | '#GETENABLE'>;
+  supportedCommands: RobotCommandKind[];
+  jointGroupSpeedLimitDegS: number | null;
+  jointGroupCompletion: JointGroupCompletionPolicyV1 | null;
+  engineeringJointSpeedMaxDegS: number | null;
+}
+
+export interface JointGroupCompletionPolicyV1 {
+  positionToleranceDeg: number;
+  settledDurationMs: number;
+  timeoutMs: number;
+}
+
+export interface SimpleRobotCommand {
+  commandId: string;
+  sessionId: string;
+  profileId: string;
+}
+
+export interface SetModeCommand extends SimpleRobotCommand {
+  mode: DummyControlMode;
 }
 
 export interface JointStateFrame {
@@ -115,12 +167,58 @@ export interface JointGroupCommand {
   speedDegS?: number;
 }
 
-export interface CommandResult {
-  commandId: string;
-  status: CommandStatus;
+export interface DirectCommandRequest {
+  requestId: string;
+  sessionId: string;
+  profileId: string;
+  line: string;
+}
+
+export type DirectCommandStatus = 'replied' | 'queued' | 'rejected' | 'timedOut' | 'failed';
+
+export interface DirectCommandResult {
+  requestId: string;
+  sessionId: string;
+  status: DirectCommandStatus;
+  evidence: CommandEvidence;
+  normalizedLine: string;
   message: string;
   timestampUtc: string;
-  deviceReply?: string;
+  deviceReply?: string | undefined;
+}
+
+export interface CommandResult {
+  commandId: string;
+  sessionId: string;
+  commandKind: RobotCommandKind;
+  status: CommandStatus;
+  code: CommandResultCode;
+  evidence: CommandEvidence;
+  message: string;
+  timestampUtc: string;
+  deviceReply?: string | undefined;
+}
+
+export interface CommandAuditRecord {
+  commandId: string;
+  sessionId: string;
+  profileId: string;
+  commandKind: RobotCommandKind;
+  acceptedAtUtc: string;
+  request: RobotCommandRequestSnapshot;
+  transmittedPayloads: string[];
+  transmissionLogTruncated: boolean;
+  result: CommandResult;
+}
+
+export interface RobotCommandRequestSnapshot {
+  commandKind: RobotCommandKind;
+  requestFingerprintSha256: string;
+  mode: number | null;
+  positionsDeg: number[] | null;
+  positionsCount: number | null;
+  speedDegS: number | null;
+  payloadTruncated: boolean;
 }
 
 export interface ProtocolFrame {
@@ -168,4 +266,28 @@ export interface DesktopBridgeCapabilities {
   minimize: boolean;
   toggleMaximize: boolean;
   close: boolean;
+}
+
+export type DesktopBridgeAction = 'minimize' | 'toggleMaximize' | 'close' | 'beginDrag';
+
+export interface DesktopBootstrapV1 {
+  contractVersion: '1.0';
+  gateway: {
+    baseUrl: string;
+    sessionToken: string;
+  } | null;
+  capabilities: DesktopBridgeCapabilities;
+}
+
+export interface DesktopBridgeRequestV1 {
+  contractVersion: '1.0';
+  requestId: string;
+  action: DesktopBridgeAction;
+}
+
+export interface DesktopBridgeResponseV1 {
+  contractVersion: '1.0';
+  requestId: string;
+  ok: boolean;
+  errorCode?: 'unsupported' | 'invalidRequest' | 'hostFailure';
 }

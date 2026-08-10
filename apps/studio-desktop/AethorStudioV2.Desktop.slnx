@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AethorStudioV2.Desktop/AethorStudioV2.Desktop.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AethorStudioV2.Desktop.Tests/AethorStudioV2.Desktop.Tests.csproj" />
+  </Folder>
+</Solution>

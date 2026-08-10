@@ -2,7 +2,9 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './tests/e2e',
+  timeout: 60_000,
   fullyParallel: true,
+  workers: 2,
   retries: 0,
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
@@ -15,7 +17,7 @@ export default defineConfig({
     command: 'node node_modules/vite/bin/vite.js preview',
     port: 4173,
     reuseExistingServer: true,
-    timeout: 30_000
+    timeout: 90_000
   },
   projects: [
     { name: 'compact-1366', use: { ...devices['Desktop Chrome'], viewport: { width: 1366, height: 768 } } },

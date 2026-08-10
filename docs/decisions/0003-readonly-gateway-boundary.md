@@ -3,6 +3,8 @@
 - 状态：Accepted
 - 日期：2026-08-08
 
+> Phase 4 的只读结论保持为历史事实；Phase 5 对同一个 gateway owner 的受监督命令扩展见 [ADR-0004](0004-supervised-command-boundary.md)。
+
 ## 背景与约束
 
 Dummy 六轴当前连接在 Windows COM4，但固件没有完整的运动完成、安全回位和硬件动态上限证据。Phase 4 的目的只是建立可信 transport/会话边界并读取状态，不能因为已经能打开串口就提前暴露运动、使能或 raw command。前端、未来桌面壳和 C# 进程之间还需要一个可测试、可替换且不会监听局域网的版本化边界。

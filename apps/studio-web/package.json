@@ -9,13 +9,12 @@
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test",
+    "test:e2e": "pnpm --workspace-root profile:verify && tsc -b && vite build --mode e2e && playwright test",
     "preview": "vite preview"
   },
   "dependencies": {
     "@aethor/contracts": "workspace:*",
     "@microsoft/signalr": "10.0.11",
-    "@radix-ui/react-dialog": "1.1.23",
     "@radix-ui/react-select": "2.3.7",
     "@radix-ui/react-tooltip": "1.2.16",
     "@react-three/fiber": "9.7.0",
@@ -25,7 +24,7 @@
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-router-dom": "7.18.2",
-    "three": "0.185.1",
+    "three": "0.182.0",
     "urdf-loader": "0.13.1",
     "zod": "4.4.3",
     "zustand": "5.0.14"
@@ -36,7 +35,7 @@
     "@testing-library/react": "16.3.2",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "@types/three": "^0.185.0",
+    "@types/three": "0.182.0",
     "@vitejs/plugin-react": "6.0.5",
     "jsdom": "30.0.1",
     "typescript": "7.0.2",

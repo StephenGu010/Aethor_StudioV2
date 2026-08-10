@@ -69,7 +69,8 @@ git status --short
 pnpm typecheck
 pnpm test
 pnpm build
-# 按阶段补充 E2E、后端或实机验收
+pnpm test:e2e  # 自动重建当前 Web 后再启动生产预览
+# 按阶段补充后端、桌面或实机验收
 git add -- <本阶段文件>
 git diff --cached --check
 git diff --cached --stat

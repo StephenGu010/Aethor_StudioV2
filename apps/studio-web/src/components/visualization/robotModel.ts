@@ -1,6 +1,7 @@
 import type { RobotProfileManifestV1 } from '@aethor/contracts';
 import * as THREE from 'three';
 import { resolveJointBindings } from '../../domain/jointInteraction';
+import type { SceneBounds } from './cameraFit';
 
 export interface LoadedModels {
   actual: THREE.Object3D;
@@ -19,10 +20,22 @@ export function createLoadedModels(
   profile: RobotProfileManifestV1
 ): LoadedModels {
   const target = loadedRobot.clone(true);
+  const actualJoints = collectJoints(loadedRobot);
+  const targetJoints = collectJoints(target);
+  const controlledJointNames = new Set(profile.joints.map((joint) => joint.urdfJointName));
+  const ghostMaterials = new Map<string, THREE.MeshStandardMaterial>();
   target.traverse((child) => {
     const mesh = child as THREE.Mesh;
     if (!mesh.isMesh) return;
-    mesh.material = createGhostMaterial();
+    const owner = findOwningJointName(child, targetJoints);
+    const materialKey = owner && controlledJointNames.has(owner) ? owner : 'uncontrolled';
+    let material = ghostMaterials.get(materialKey);
+    if (!material) {
+      material = createGhostMaterial();
+      ghostMaterials.set(materialKey, material);
+    }
+    mesh.material = material;
+    if (isCollisionNode(child, target)) mesh.visible = false;
     mesh.castShadow = false;
     mesh.receiveShadow = false;
     mesh.renderOrder = 3;
@@ -34,8 +47,6 @@ export function createLoadedModels(
       mesh.receiveShadow = true;
     }
   });
-  const actualJoints = collectJoints(loadedRobot);
-  const targetJoints = collectJoints(target);
   resolveJointBindings(profile, actualJoints.keys());
   resolveJointBindings(profile, targetJoints.keys());
   return { actual: loadedRobot, target, actualJoints, targetJoints };
@@ -76,12 +87,19 @@ export function findOwningJointName(object: THREE.Object3D, joints: Map<string, 
 export function applyJointPositions(
   joints: Map<string, JointLike>,
   profile: RobotProfileManifestV1,
-  positionsDeg: number[]
+  positionsDeg: readonly number[],
+  previousPositionsDeg?: readonly number[]
 ) {
+  let appliedCount = 0;
   profile.joints.forEach((joint) => {
     const value = positionsDeg[joint.protocolIndex];
-    if (value !== undefined) joints.get(joint.urdfJointName)?.setJointValue(THREE.MathUtils.degToRad(value));
+    if (value === undefined || value === previousPositionsDeg?.[joint.protocolIndex]) return;
+    const targetJoint = joints.get(joint.urdfJointName);
+    if (!targetJoint) return;
+    targetJoint.setJointValue(THREE.MathUtils.degToRad(value));
+    appliedCount += 1;
   });
+  return appliedCount;
 }
 
 export function applyVisibility(root: THREE.Object3D, showVisual: boolean, showCollision: boolean) {
@@ -92,6 +110,42 @@ export function applyVisibility(root: THREE.Object3D, showVisual: boolean, showC
   });
 }
 
+export function calculateLoadedModelBounds(
+  models: LoadedModels,
+  profile: RobotProfileManifestV1,
+  focusGroupId?: string | null
+): SceneBounds | null {
+  const roots = resolveBoundsRoots(models, profile, focusGroupId);
+  const bounds = new THREE.Box3();
+  roots.forEach((root) => {
+    root.updateWorldMatrix(true, true);
+    bounds.union(new THREE.Box3().setFromObject(root));
+  });
+  if (bounds.isEmpty()) return null;
+  return {
+    min: [bounds.min.x, bounds.min.y, bounds.min.z],
+    max: [bounds.max.x, bounds.max.y, bounds.max.z]
+  };
+}
+
+function resolveBoundsRoots(
+  models: LoadedModels,
+  profile: RobotProfileManifestV1,
+  focusGroupId?: string | null
+) {
+  if (!focusGroupId) return [models.actual, models.target];
+  const group = profile.jointGroups?.find((candidate) => candidate.groupId === focusGroupId);
+  if (!group) return [models.actual, models.target];
+  const urdfJointNames = new Set(profile.joints
+    .filter((joint) => group.jointIds.includes(joint.jointId))
+    .map((joint) => joint.urdfJointName));
+  const focusedRoots = [models.actualJoints, models.targetJoints]
+    .flatMap((joints) => [...urdfJointNames]
+      .map((jointName) => joints.get(jointName))
+      .filter((joint): joint is JointLike => Boolean(joint)));
+  return focusedRoots.length > 0 ? focusedRoots : [models.actual, models.target];
+}
+
 function collectJoints(root: THREE.Object3D): Map<string, JointLike> {
   const joints = new Map<string, JointLike>();
   root.traverse((child) => {
@@ -99,6 +153,16 @@ function collectJoints(root: THREE.Object3D): Map<string, JointLike> {
     if (typeof candidate.setJointValue === 'function') joints.set(child.name, candidate as JointLike);
   });
   return joints;
+}
+
+function isCollisionNode(object: THREE.Object3D, root: THREE.Object3D) {
+  let current: THREE.Object3D | null = object;
+  while (current) {
+    if ((current as THREE.Object3D & { isURDFCollider?: boolean }).isURDFCollider) return true;
+    if (current === root) return false;
+    current = current.parent;
+  }
+  return false;
 }
 
 function createGhostMaterial() {

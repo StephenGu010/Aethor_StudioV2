@@ -1,10 +1,10 @@
-import type { CommandResult, CommandStatus } from './types';
+import type { CommandEvidence, CommandResult, CommandResultCode, CommandStatus, RobotCommandKind } from './types';
 
 export type CommandLifecycleStatus = 'created' | CommandStatus;
-export type CommandEvidence = 'none' | 'gatewayAccepted' | 'deviceQueued' | 'deviceAck' | 'feedbackConfirmed';
-
 export interface CommandLifecycleState {
   commandId: string;
+  sessionId: string;
+  commandKind: RobotCommandKind;
   status: CommandLifecycleStatus;
   evidence: CommandEvidence;
   updatedAtUtc: string;
@@ -32,9 +32,14 @@ const terminalStatuses = new Set<CommandLifecycleStatus>([
   'unsupported', 'rejected', 'completed', 'failed', 'timedOut', 'cancelled', 'unconfirmed'
 ]);
 
-export function createCommandLifecycle(commandId: string, timestampUtc: string): CommandLifecycleState {
+export function createCommandLifecycle(
+  commandId: string,
+  timestampUtc: string,
+  sessionId = 'unavailable',
+  commandKind: RobotCommandKind = 'jointGroup'
+): CommandLifecycleState {
   if (!commandId.trim()) throw new Error('commandId must not be empty');
-  return { commandId, status: 'created', evidence: 'none', updatedAtUtc: timestampUtc };
+  return { commandId, sessionId, commandKind, status: 'created', evidence: 'none', updatedAtUtc: timestampUtc };
 }
 
 export function transitionCommand(
@@ -69,12 +74,17 @@ export function transitionCommand(
 export function toCommandResult(
   state: CommandLifecycleState,
   message: string,
-  deviceReply?: string
+  deviceReply?: string,
+  code: CommandResultCode = state.status === 'completed' ? 'ok' : 'deviceUnconfirmed'
 ): CommandResult {
   if (state.status === 'created') throw new Error('created command has no public result');
   return {
     commandId: state.commandId,
+    sessionId: state.sessionId,
+    commandKind: state.commandKind,
     status: state.status,
+    code,
+    evidence: state.evidence,
     message,
     timestampUtc: state.updatedAtUtc,
     ...(deviceReply === undefined ? {} : { deviceReply })

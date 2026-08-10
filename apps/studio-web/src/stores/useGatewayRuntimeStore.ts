@@ -1,0 +1,180 @@
+import type {
+  CommandAuditRecord,
+  CommandResult,
+  JointStateFrame,
+  ProtocolFrame,
+  RobotGatewayCapabilitiesV1,
+  RobotSessionSnapshot
+} from '@aethor/contracts';
+import { create } from 'zustand';
+import { reconcileCommandSafetyState, reduceCommandSafetyState } from '../domain/commandSafety';
+import { showcaseJointFrame, showcaseSession } from '../fixtures/showcase';
+import { useRobotSessionStore } from './useRobotSessionStore';
+import { useTelemetryHistoryStore } from './useTelemetryHistoryStore';
+
+export type CommandAuditStatus = 'unavailable' | 'loading' | 'ready' | 'error';
+
+interface GatewayRuntimeState {
+  capabilities: RobotGatewayCapabilitiesV1 | null;
+  session: RobotSessionSnapshot;
+  jointState: JointStateFrame;
+  protocolFrames: ProtocolFrame[];
+  commandHistory: CommandAuditRecord[];
+  commandAuditStatus: CommandAuditStatus;
+  commandAuditError: string | null;
+  lastCommandResult: CommandResult | null;
+  latchedSafetyResult: CommandResult | null;
+  confirmedStopTimestampUtc: string | null;
+  transportWarning: string | null;
+  activePortName: string | null;
+  setCapabilities: (capabilities: RobotGatewayCapabilitiesV1 | null) => void;
+  setSession: (session: RobotSessionSnapshot) => void;
+  setJointState: (jointState: JointStateFrame) => void;
+  replaceProtocolFrames: (frames: ProtocolFrame[]) => void;
+  appendProtocolFrame: (frame: ProtocolFrame) => void;
+  beginCommandAuditRefresh: () => void;
+  failCommandAuditRefresh: (message: string) => void;
+  replaceCommandHistory: (history: CommandAuditRecord[]) => void;
+  setLastCommandResult: (result: CommandResult | null) => void;
+  setTransportWarning: (warning: string | null) => void;
+  setActivePortName: (portName: string | null) => void;
+  markTelemetryDegraded: (warning: string) => void;
+  completeDisconnect: (session: RobotSessionSnapshot, jointState?: JointStateFrame) => void;
+  resetRuntime: () => void;
+}
+
+const initialRuntime = () => ({
+  capabilities: null,
+  session: showcaseSession,
+  jointState: showcaseJointFrame,
+  protocolFrames: [] as ProtocolFrame[],
+  commandHistory: [] as CommandAuditRecord[],
+  commandAuditStatus: 'unavailable' as CommandAuditStatus,
+  commandAuditError: null,
+  lastCommandResult: null,
+  latchedSafetyResult: null,
+  confirmedStopTimestampUtc: null,
+  transportWarning: null,
+  activePortName: null
+});
+
+export const useGatewayRuntimeStore = create<GatewayRuntimeState>((set) => ({
+  ...initialRuntime(),
+  setCapabilities: (capabilities) => set({ capabilities }),
+  setSession: (session) => {
+    useTelemetryHistoryStore.getState().syncSession(session);
+    set((state) => {
+      const activePortName = session.connectionState === 'offline' || session.connectionState === 'faulted'
+        ? null
+        : state.activePortName;
+      return state.session.sessionId === session.sessionId
+      ? { session, activePortName }
+      : {
+          session,
+          lastCommandResult: null,
+          latchedSafetyResult: null,
+          confirmedStopTimestampUtc: null,
+          protocolFrames: [],
+          commandHistory: [],
+          commandAuditStatus: 'unavailable',
+          commandAuditError: null,
+          activePortName
+        };
+    });
+  },
+  setJointState: (jointState) => {
+    useTelemetryHistoryStore.getState().ingestJointState(
+      jointState,
+      useRobotSessionStore.getState().targetPositionsDeg
+    );
+    set({ jointState });
+  },
+  replaceProtocolFrames: (protocolFrames) => set({ protocolFrames: uniqueProtocolFrames(protocolFrames) }),
+  appendProtocolFrame: (frame) => set((state) => ({
+    protocolFrames: state.protocolFrames.some((candidate) => candidate.id === frame.id)
+      ? state.protocolFrames
+      : [...state.protocolFrames.slice(-255), frame]
+  })),
+  beginCommandAuditRefresh: () => set({ commandAuditStatus: 'loading', commandAuditError: null }),
+  failCommandAuditRefresh: (commandAuditError) => set({ commandAuditStatus: 'error', commandAuditError }),
+  replaceCommandHistory: (commandHistory) => set((state) => {
+    const boundedHistory = commandHistory.slice(-128);
+    const safetyState = reconcileCommandSafetyState(boundedHistory, state.session.sessionId, {
+      latchedResult: state.latchedSafetyResult,
+      confirmedStopTimestampUtc: state.confirmedStopTimestampUtc
+    });
+    return {
+      commandHistory: boundedHistory,
+      commandAuditStatus: 'ready',
+      commandAuditError: null,
+      latchedSafetyResult: safetyState.latchedResult,
+      confirmedStopTimestampUtc: safetyState.confirmedStopTimestampUtc
+    };
+  }),
+  setLastCommandResult: (lastCommandResult) => set((state) => (
+    lastCommandResult === null
+      ? { lastCommandResult }
+      : lastCommandResult.sessionId === state.session.sessionId
+        ? commandResultUpdate(state, lastCommandResult)
+        : {}
+  )),
+  setTransportWarning: (transportWarning) => set({ transportWarning }),
+  setActivePortName: (activePortName) => set({ activePortName }),
+  markTelemetryDegraded: (transportWarning) => set((state) => ({
+    transportWarning,
+    session: state.session.source === 'measured' && state.session.validity === 'valid'
+      ? { ...state.session, validity: 'stale' }
+      : state.session,
+    jointState: state.jointState.source === 'measured' && state.jointState.validity === 'valid'
+      ? { ...state.jointState, validity: 'stale' }
+      : state.jointState
+  })),
+  completeDisconnect: (session, jointState = showcaseJointFrame) => {
+    useTelemetryHistoryStore.getState().resetTelemetryHistory();
+    useRobotSessionStore.getState().resetSession();
+    set((state) => ({
+      ...initialRuntime(),
+      capabilities: state.capabilities,
+      session,
+      jointState
+    }));
+  },
+  resetRuntime: () => {
+    useTelemetryHistoryStore.getState().resetTelemetryHistory();
+    set(initialRuntime());
+  }
+}));
+
+function uniqueProtocolFrames(frames: ProtocolFrame[]) {
+  const seen = new Set<string>();
+  const uniqueNewestFirst: ProtocolFrame[] = [];
+  for (let index = frames.length - 1; index >= 0 && uniqueNewestFirst.length < 256; index -= 1) {
+    const frame = frames[index];
+    if (!frame || seen.has(frame.id)) continue;
+    seen.add(frame.id);
+    uniqueNewestFirst.push(frame);
+  }
+  return uniqueNewestFirst.reverse();
+}
+
+function commandResultUpdate(state: GatewayRuntimeState, result: CommandResult) {
+  const safetyState = reduceCommandSafetyState({
+    latchedResult: state.latchedSafetyResult,
+    confirmedStopTimestampUtc: state.confirmedStopTimestampUtc
+  }, result);
+  return {
+    lastCommandResult: shouldReplaceLastResult(state.lastCommandResult, result)
+      ? result
+      : state.lastCommandResult,
+    latchedSafetyResult: safetyState.latchedResult,
+    confirmedStopTimestampUtc: safetyState.confirmedStopTimestampUtc
+  };
+}
+
+function shouldReplaceLastResult(current: CommandResult | null, incoming: CommandResult) {
+  if (current === null || current.commandId === incoming.commandId) return true;
+  const currentTimestamp = Date.parse(current.timestampUtc);
+  const incomingTimestamp = Date.parse(incoming.timestampUtc);
+  return Number.isFinite(incomingTimestamp)
+    && (!Number.isFinite(currentTimestamp) || incomingTimestamp >= currentTimestamp);
+}

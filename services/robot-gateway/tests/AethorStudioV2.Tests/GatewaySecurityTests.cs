@@ -40,6 +40,53 @@ public sealed class GatewaySecurityTests
         new GatewayHostOptions(5127, ValidToken, "desktop", []).Validate(isDevelopment: false);
     }
 
+    [Fact]
+    public void SupervisedCommandsRequireDesktopTokenAndCompleteMotionEnvelopeWhenConfigured()
+    {
+        Assert.Throws<InvalidOperationException>(() =>
+            new GatewayHostOptions(5127, ValidToken, "development", [], AethorStudioV2.Domain.GatewayCommandPolicy.Supervised)
+                .Validate(isDevelopment: true));
+
+        new GatewayHostOptions(5127, ValidToken, "desktop", [], AethorStudioV2.Domain.GatewayCommandPolicy.Supervised, 20, 0.25, 250, 10_000)
+            .Validate(isDevelopment: true);
+
+        Assert.Throws<InvalidOperationException>(() =>
+            new GatewayHostOptions(5127, ValidToken, "desktop", [], AethorStudioV2.Domain.GatewayCommandPolicy.Supervised, 20)
+                .Validate(isDevelopment: true));
+        Assert.Throws<InvalidOperationException>(() =>
+            new GatewayHostOptions(5127, ValidToken, "desktop", [], AethorStudioV2.Domain.GatewayCommandPolicy.Supervised, double.NaN, 0.25, 250, 10_000)
+                .Validate(isDevelopment: true));
+    }
+
+    [Fact]
+    public void EngineeringCommandsRequireDevelopmentEnvironmentAndDevelopmentToken()
+    {
+        new GatewayHostOptions(
+            5127,
+            ValidToken,
+            "development",
+            [],
+            AethorStudioV2.Domain.GatewayCommandPolicy.Engineering)
+            .Validate(isDevelopment: true);
+
+        Assert.Throws<InvalidOperationException>(() =>
+            new GatewayHostOptions(
+                5127,
+                ValidToken,
+                "desktop",
+                [],
+                AethorStudioV2.Domain.GatewayCommandPolicy.Engineering)
+                .Validate(isDevelopment: true));
+        Assert.Throws<InvalidOperationException>(() =>
+            new GatewayHostOptions(
+                5127,
+                ValidToken,
+                "development",
+                [],
+                AethorStudioV2.Domain.GatewayCommandPolicy.Engineering)
+                .Validate(isDevelopment: false));
+    }
+
     [Theory]
     [InlineData(1023)]
     [InlineData(65536)]

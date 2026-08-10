@@ -36,19 +36,102 @@ public sealed class DummyAsciiConformanceTests
                     _ => DummyReadQuery.Enable
                 };
                 Assert.Equal(expectedLine, DummyAsciiProtocol.FormatQuery(query));
-                Assert.True(ReadOnlySerialPayloadPolicy.IsAllowed(Encoding.ASCII.GetBytes(expectedLine + "\n")));
+                Assert.True(SerialPayloadPolicy.IsAllowed(Encoding.ASCII.GetBytes(expectedLine + "\n")));
             }
             else
             {
-                Assert.False(ReadOnlySerialPayloadPolicy.IsAllowed(Encoding.ASCII.GetBytes(expectedLine + "\n")));
+                Assert.False(SerialPayloadPolicy.IsAllowed(Encoding.ASCII.GetBytes(expectedLine + "\n")));
             }
         }
 
         foreach (var testCase in document.RootElement.GetProperty("invalidRawCases").EnumerateArray())
         {
             var raw = testCase.GetProperty("raw").GetString()!;
-            Assert.False(ReadOnlySerialPayloadPolicy.IsAllowed(Encoding.ASCII.GetBytes(raw + "\n")));
+            Assert.False(SerialPayloadPolicy.IsAllowed(Encoding.ASCII.GetBytes(raw + "\n")));
         }
+    }
+
+    [Fact]
+    public void SupervisedPolicyAllowsOnlyTypedBoundedHardwarePayloads()
+    {
+        const double speedLimit = 20;
+        Assert.True(SerialPayloadPolicy.IsAllowed(
+            Encoding.ASCII.GetBytes("!START\n"),
+            SerialPayloadAccess.Supervised,
+            speedLimit));
+        Assert.True(SerialPayloadPolicy.IsAllowed(
+            Encoding.ASCII.GetBytes("#CMDMODE 3\n"),
+            SerialPayloadAccess.Supervised,
+            speedLimit));
+        Assert.True(SerialPayloadPolicy.IsAllowed(
+            Encoding.ASCII.GetBytes(">0,-1.25,2,3,4,5,10\n"),
+            SerialPayloadAccess.Supervised,
+            speedLimit));
+        Assert.True(SerialPayloadPolicy.IsAllowed(
+            Encoding.ASCII.GetBytes(DummyAsciiProtocol.SafetyZeroCurrentLine + "\n"),
+            SerialPayloadAccess.Supervised,
+            speedLimit));
+
+        Assert.False(SerialPayloadPolicy.IsAllowed(
+            Encoding.ASCII.GetBytes("!HOME\n"),
+            SerialPayloadAccess.Supervised,
+            speedLimit));
+        Assert.False(SerialPayloadPolicy.IsAllowed(
+            Encoding.ASCII.GetBytes("!RESET\n"),
+            SerialPayloadAccess.Supervised,
+            speedLimit));
+
+        Assert.False(SerialPayloadPolicy.IsAllowed(
+            Encoding.ASCII.GetBytes(">0,-1.25,2,3,4,5,21\n"),
+            SerialPayloadAccess.Supervised,
+            speedLimit));
+        Assert.False(SerialPayloadPolicy.IsAllowed(
+            Encoding.ASCII.GetBytes(">0,-100,2,3,4,5,10\n"),
+            SerialPayloadAccess.Supervised,
+            speedLimit));
+        Assert.False(SerialPayloadPolicy.IsAllowed(
+            Encoding.ASCII.GetBytes("#RGBMODE 1\n"),
+            SerialPayloadAccess.Supervised,
+            speedLimit));
+    }
+
+    [Fact]
+    public void EngineeringParserAllowsOnlyTheBoundedDirectDebugSubset()
+    {
+        Assert.True(DummyAsciiProtocol.TryParseEngineeringCommand(
+            ">0,-1.25,2,3,4,5,10",
+            100,
+            out var jointGroup,
+            out _));
+        Assert.Equal(DummyDirectCommandKind.JointGroup, jointGroup!.Kind);
+        Assert.Equal(">0,-1.25,2,3,4,5,10", jointGroup.NormalizedLine);
+
+        Assert.True(DummyAsciiProtocol.TryParseEngineeringCommand(" #GETJPOS ", 100, out var query, out _));
+        Assert.Equal("#GETJPOS", query!.NormalizedLine);
+        Assert.False(DummyAsciiProtocol.TryParseEngineeringCommand("!HOME", 100, out _, out _));
+        Assert.False(DummyAsciiProtocol.TryParseEngineeringCommand("!RESET", 100, out _, out _));
+        Assert.False(DummyAsciiProtocol.TryParseEngineeringCommand("#RGBMODE 1", 100, out _, out _));
+        Assert.False(DummyAsciiProtocol.TryParseEngineeringCommand("$0,0,0,0,0,0", 100, out _, out _));
+        Assert.False(DummyAsciiProtocol.TryParseEngineeringCommand(">0,0,0,0,0,0", 100, out _, out _));
+        Assert.False(DummyAsciiProtocol.TryParseEngineeringCommand(">0,0,0,0,0,0,101", 100, out _, out _));
+        Assert.False(DummyAsciiProtocol.TryParseEngineeringCommand("#GETJPOS\n!START", 100, out _, out _));
+    }
+
+    [Fact]
+    public void EngineeringTransportPolicyRetainsTheFirmwareInputCeiling()
+    {
+        Assert.True(SerialPayloadPolicy.IsAllowed(
+            Encoding.ASCII.GetBytes(">0,0,0,0,0,0,100\n"),
+            SerialPayloadAccess.Engineering,
+            100));
+        Assert.False(SerialPayloadPolicy.IsAllowed(
+            Encoding.ASCII.GetBytes(">0,0,0,0,0,0,100.1\n"),
+            SerialPayloadAccess.Engineering,
+            100));
+        Assert.False(SerialPayloadPolicy.IsAllowed(
+            Encoding.ASCII.GetBytes("!HOME\n"),
+            SerialPayloadAccess.Engineering,
+            100));
     }
 
     [Fact]

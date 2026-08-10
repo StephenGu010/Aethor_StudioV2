@@ -1,0 +1,50 @@
+{
+  "schemaVersion": "1.0",
+  "profileId": "aethor-robo-dual-7dof",
+  "displayName": "Aethor_robo",
+  "description": "Space robot model with two independently previewable seven-axis arms; hardware and protocol are not yet available.",
+  "protocolAdapterId": "aethor-robo-pending",
+  "model": {
+    "dof": 14,
+    "urdfPath": "model/aethor_robo.urdf",
+    "upAxis": "Z",
+    "lengthUnit": "m",
+    "showcasePoseDeg": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  },
+  "joints": [
+    { "jointId": "j1", "displayName": "L-J1", "urdfJointName": "left_arm_joint_1", "protocolIndex": 0, "lowerDeg": 0, "upperDeg": 360 },
+    { "jointId": "j2", "displayName": "L-J2", "urdfJointName": "left_arm_joint_2", "protocolIndex": 1, "lowerDeg": 0, "upperDeg": 360 },
+    { "jointId": "j3", "displayName": "L-J3", "urdfJointName": "left_arm_joint_3", "protocolIndex": 2, "lowerDeg": 0, "upperDeg": 360 },
+    { "jointId": "j4", "displayName": "L-J4", "urdfJointName": "left_arm_joint_4", "protocolIndex": 3, "lowerDeg": 0, "upperDeg": 360 },
+    { "jointId": "j5", "displayName": "L-J5", "urdfJointName": "left_arm_joint_5", "protocolIndex": 4, "lowerDeg": 0, "upperDeg": 360 },
+    { "jointId": "j6", "displayName": "L-J6", "urdfJointName": "left_arm_joint_6", "protocolIndex": 5, "lowerDeg": 0, "upperDeg": 360 },
+    { "jointId": "j7", "displayName": "L-J7", "urdfJointName": "left_arm_joint_7", "protocolIndex": 6, "lowerDeg": 0, "upperDeg": 360 },
+    { "jointId": "j8", "displayName": "R-J1", "urdfJointName": "right_arm_joint_1", "protocolIndex": 7, "lowerDeg": 0, "upperDeg": 360 },
+    { "jointId": "j9", "displayName": "R-J2", "urdfJointName": "right_arm_joint_2", "protocolIndex": 8, "lowerDeg": 0, "upperDeg": 360 },
+    { "jointId": "j10", "displayName": "R-J3", "urdfJointName": "right_arm_joint_3", "protocolIndex": 9, "lowerDeg": 0, "upperDeg": 360 },
+    { "jointId": "j11", "displayName": "R-J4", "urdfJointName": "right_arm_joint_4", "protocolIndex": 10, "lowerDeg": 0, "upperDeg": 360 },
+    { "jointId": "j12", "displayName": "R-J5", "urdfJointName": "right_arm_joint_5", "protocolIndex": 11, "lowerDeg": 0, "upperDeg": 360 },
+    { "jointId": "j13", "displayName": "R-J6", "urdfJointName": "right_arm_joint_6", "protocolIndex": 12, "lowerDeg": 0, "upperDeg": 360 },
+    { "jointId": "j14", "displayName": "R-J7", "urdfJointName": "right_arm_joint_7", "protocolIndex": 13, "lowerDeg": 0, "upperDeg": 360 }
+  ],
+  "jointGroups": [
+    { "groupId": "left-arm", "displayName": "左臂", "jointIds": ["j1", "j2", "j3", "j4", "j5", "j6", "j7"], "tcpLinkName": "left_arm_link_7" },
+    { "groupId": "right-arm", "displayName": "右臂", "jointIds": ["j8", "j9", "j10", "j11", "j12", "j13", "j14"], "tcpLinkName": "right_arm_link_7" }
+  ],
+  "capabilities": {
+    "jointPositionFeedback": false,
+    "jointGroupCommand": false,
+    "enable": false,
+    "stop": false,
+    "disable": false,
+    "home": false,
+    "reset": false,
+    "controlModes": [],
+    "rawTerminal": false
+  },
+  "source": {
+    "urdfSha256": "E77E0B6E25C451B6171F1B6F03F8CE50BC185AC2CB5F7118F4E5C43DA866EC37",
+    "license": "BSD (declared; exact terms unverified)",
+    "protocolReference": "pending-hardware-contract"
+  }
+}

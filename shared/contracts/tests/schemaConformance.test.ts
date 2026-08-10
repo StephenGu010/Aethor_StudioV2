@@ -2,8 +2,12 @@ import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import { describe, expect, it } from 'vitest';
 import dummyProfile from '../../robot-profiles/BuiltIn/dummy-6dof/manifest.json';
+import aethorRoboProfile from '../../robot-profiles/BuiltIn/aethor-robo-dual-7dof/manifest.json';
+import actionProgramExample from '../examples/dummy-action-program-v1.example.json';
+import actionProgramSchema from '../action-program-v1.schema.json';
 import gatewaySchema from '../gateway-contracts-v1.schema.json';
 import profileSchema from '../robot-profile-v1.schema.json';
+import type { ActionProgramV1 } from '../src/actionProgram';
 import type { CommandResult, RobotProfileManifestV1, RobotSessionSnapshot } from '../src/types';
 
 const ajv = new Ajv2020({ allErrors: true, strict: true });
@@ -17,6 +21,40 @@ function gatewayValidator(definition: string) {
 }
 
 describe('JSON Schema and TypeScript contract conformance', () => {
+  it('accepts the versioned Dummy action example in TypeScript and JSON Schema', () => {
+    const typedProgram: ActionProgramV1 = {
+      ...actionProgramExample,
+      schemaVersion: '1.0',
+      profileId: 'dummy-6dof',
+      source: 'showcaseExample',
+      waypoints: actionProgramExample.waypoints.map((waypoint) => ({
+        ...waypoint,
+        mode: 2,
+        source: 'showcaseExample',
+        postArrivalWait: { kind: 'none' },
+        capturedAtUtc: null
+      }))
+    };
+    const validate = ajv.compile(actionProgramSchema);
+
+    expect(validate(typedProgram), JSON.stringify(validate.errors)).toBe(true);
+  });
+
+  it('rejects unsafe or silently incompatible action documents', () => {
+    const validate = ajv.compile(actionProgramSchema);
+    const waypoint = actionProgramExample.waypoints[0]!;
+
+    expect(validate({ ...actionProgramExample, schemaVersion: '2.0' })).toBe(false);
+    expect(validate({ ...actionProgramExample, hiddenExecutionFlag: true })).toBe(false);
+    expect(validate({ ...actionProgramExample, waypoints: [{ ...waypoint, mode: 5 }] })).toBe(false);
+    expect(validate({ ...actionProgramExample, waypoints: [{ ...waypoint, positionsDeg: [0, 0, 0, 0, 0] }] })).toBe(false);
+    expect(validate({ ...actionProgramExample, waypoints: [{ ...waypoint, positionsDeg: [180, 0, 0, 0, 0, 0] }] })).toBe(false);
+    expect(validate({
+      ...actionProgramExample,
+      waypoints: [{ ...waypoint, source: 'measuredCapture', capturedAtUtc: null }]
+    })).toBe(false);
+  });
+
   it('accepts the built-in Dummy manifest in both the TS shape and JSON Schema', () => {
     const typedProfile: RobotProfileManifestV1 = {
       ...dummyProfile,
@@ -28,6 +66,19 @@ describe('JSON Schema and TypeScript contract conformance', () => {
     const validate = ajv.compile(profileSchema);
     expect(validate(typedProfile), JSON.stringify(validate.errors)).toBe(true);
     expect(typedProfile.capabilities.controlModes).toEqual([1, 2, 3]);
+  });
+
+  it('accepts the built-in Aethor_robo dual-arm preview manifest without hardware claims', () => {
+    const typedProfile: RobotProfileManifestV1 = {
+      ...aethorRoboProfile,
+      schemaVersion: '1.0',
+      model: { ...aethorRoboProfile.model, upAxis: 'Z', lengthUnit: 'm' },
+      capabilities: { ...aethorRoboProfile.capabilities, controlModes: [] }
+    };
+    const validate = ajv.compile(profileSchema);
+    expect(validate(typedProfile), JSON.stringify(validate.errors)).toBe(true);
+    expect(typedProfile.jointGroups?.map((group) => group.jointIds.length)).toEqual([7, 7]);
+    expect(typedProfile.capabilities.jointGroupCommand).toBe(false);
   });
 
   it('rejects excluded control modes in profile and session contracts', () => {
@@ -47,7 +98,8 @@ describe('JSON Schema and TypeScript contract conformance', () => {
 
   it('keeps unconfirmed distinct and requires an auditable timestamp', () => {
     const result = {
-      commandId: 'cmd-1', status: 'unconfirmed', message: 'No physical confirmation',
+      commandId: 'cmd-1', sessionId: 'session-1', commandKind: 'jointGroup', status: 'unconfirmed',
+      code: 'deviceUnconfirmed', evidence: 'deviceQueued', message: 'No physical confirmation',
       timestampUtc: '2026-08-08T00:00:00.000Z', deviceReply: 'ok'
     } satisfies CommandResult;
     const validate = gatewayValidator('CommandResult');
@@ -66,6 +118,81 @@ describe('JSON Schema and TypeScript contract conformance', () => {
     expect(validate({ ...session, hiddenConnectedFlag: true })).toBe(false);
   });
 
+  it('rejects contradictory capability claims and malformed six-axis targets', () => {
+    const validateCapabilities = gatewayValidator('RobotGatewayCapabilitiesV1');
+    expect(validateCapabilities({
+      contractVersion: '1.2', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
+      readOnlyConnection: true, liveTelemetry: true, hardwareCommands: true, directCommand: false,
+      commandPolicy: 'disabled', allowedQueries: ['#GETJPOS', '#GETMODE', '#GETENABLE'],
+      supportedCommands: ['enable'], jointGroupSpeedLimitDegS: null, jointGroupCompletion: null,
+      engineeringJointSpeedMaxDegS: null
+    })).toBe(false);
+    expect(validateCapabilities({
+      contractVersion: '1.2', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
+      readOnlyConnection: true, liveTelemetry: true, hardwareCommands: true, directCommand: true,
+      commandPolicy: 'engineering', allowedQueries: ['#GETJPOS', '#GETMODE', '#GETENABLE'],
+      supportedCommands: ['enable', 'stopAndDisable', 'setMode'], jointGroupSpeedLimitDegS: null,
+      jointGroupCompletion: null, engineeringJointSpeedMaxDegS: 100
+    })).toBe(true);
+    expect(validateCapabilities({
+      contractVersion: '1.2', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
+      readOnlyConnection: true, liveTelemetry: true, hardwareCommands: true, directCommand: false,
+      commandPolicy: 'supervised', allowedQueries: ['#GETJPOS', '#GETMODE', '#GETENABLE'],
+      supportedCommands: ['jointGroup'], jointGroupSpeedLimitDegS: null, jointGroupCompletion: null,
+      engineeringJointSpeedMaxDegS: null
+    })).toBe(false);
+    expect(validateCapabilities({
+      contractVersion: '1.2', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
+      readOnlyConnection: true, liveTelemetry: true, hardwareCommands: true, directCommand: false,
+      commandPolicy: 'supervised', allowedQueries: ['#GETJPOS', '#GETMODE', '#GETENABLE'],
+      supportedCommands: ['jointGroup'], jointGroupSpeedLimitDegS: 10, jointGroupCompletion: null,
+      engineeringJointSpeedMaxDegS: null
+    })).toBe(false);
+    expect(validateCapabilities({
+      contractVersion: '1.2', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
+      readOnlyConnection: true, liveTelemetry: true, hardwareCommands: true, directCommand: false,
+      commandPolicy: 'supervised', allowedQueries: ['#GETJPOS', '#GETMODE', '#GETENABLE'],
+      supportedCommands: ['jointGroup'], jointGroupSpeedLimitDegS: 10,
+      jointGroupCompletion: { positionToleranceDeg: 0.25, settledDurationMs: 1000, timeoutMs: 499 },
+      engineeringJointSpeedMaxDegS: null
+    })).toBe(false);
+
+    const validateJointGroup = gatewayValidator('JointGroupCommand');
+    expect(validateJointGroup({
+      commandId: 'cmd-1', sessionId: 'session-1', profileId: 'dummy-6dof',
+      positionsDeg: [0, 0, 0, 0, 0], speedDegS: 10
+    })).toBe(false);
+  });
+
+  it('keeps command request evidence bounded and command identities consistent', () => {
+    const validateAudit = gatewayValidator('CommandAuditRecord');
+    const audit = {
+      commandId: 'cmd-mode-2', sessionId: 'session-1', profileId: 'dummy-6dof', commandKind: 'setMode',
+      acceptedAtUtc: '2026-08-09T00:00:00.000Z',
+      request: {
+        commandKind: 'setMode', requestFingerprintSha256: 'A'.repeat(64), mode: 2,
+        positionsDeg: null, positionsCount: null, speedDegS: null, payloadTruncated: false
+      },
+      transmittedPayloads: ['#CMDMODE 2', '#GETMODE'],
+      transmissionLogTruncated: false,
+      result: {
+        commandId: 'cmd-mode-2', sessionId: 'session-1', commandKind: 'setMode', status: 'completed',
+        code: 'ok', evidence: 'feedbackConfirmed', message: 'mode confirmed', timestampUtc: '2026-08-09T00:00:01.000Z'
+      }
+    };
+    expect(validateAudit(audit), JSON.stringify(validateAudit.errors)).toBe(true);
+    expect(validateAudit({ ...audit, commandKind: 'enable' })).toBe(false);
+    expect(validateAudit({
+      ...audit,
+      commandKind: 'jointGroup',
+      request: {
+        commandKind: 'jointGroup', requestFingerprintSha256: 'B'.repeat(64), mode: null,
+        positionsDeg: [1, 2, 3, 4, 5, 6], positionsCount: 7, speedDegS: 10, payloadTruncated: false
+      },
+      result: { ...audit.result, commandKind: 'jointGroup' }
+    })).toBe(false);
+  });
+
   it.each([
     ['JointStateFrame', {
       sequence: 1, profileId: 'dummy-6dof', timestampUtc: '2026-08-08T00:00:00.000Z',
@@ -74,17 +201,36 @@ describe('JSON Schema and TypeScript contract conformance', () => {
     ['SerialPortDescriptor', {
       portName: 'COM4', hardwareId: null, displayName: 'Dummy USB Serial'
     }],
-    ['ReadOnlyConnectRequest', {
+    ['RobotConnectRequest', {
       portName: 'COM4', profileId: 'dummy-6dof'
     }],
-    ['ReadOnlyGatewayCapabilities', {
-      contractVersion: '1.0', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
-      readOnlyConnection: true, liveTelemetry: true, hardwareCommands: false,
-      allowedQueries: ['#GETJPOS', '#GETMODE', '#GETENABLE']
+    ['RobotGatewayCapabilitiesV1', {
+      contractVersion: '1.2', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
+      readOnlyConnection: true, liveTelemetry: true, hardwareCommands: false, directCommand: false,
+      commandPolicy: 'disabled', allowedQueries: ['#GETJPOS', '#GETMODE', '#GETENABLE'],
+      supportedCommands: [], jointGroupSpeedLimitDegS: null, jointGroupCompletion: null,
+      engineeringJointSpeedMaxDegS: null
+    }],
+    ['SimpleRobotCommand', {
+      commandId: 'cmd-1', sessionId: 'session-1', profileId: 'dummy-6dof'
+    }],
+    ['SetModeCommand', {
+      commandId: 'cmd-1', sessionId: 'session-1', profileId: 'dummy-6dof', mode: 2
     }],
     ['JointGroupCommand', {
       commandId: 'cmd-1', sessionId: 'session-1', profileId: 'dummy-6dof',
       positionsDeg: [0, 1, 2, 3, 4, 5], speedDegS: 10
+    }],
+    ['DirectCommandRequest', {
+      requestId: 'direct-1', sessionId: 'session-1', profileId: 'dummy-6dof', line: '#GETJPOS'
+    }],
+    ['DirectCommandResult', {
+      requestId: 'direct-1', sessionId: 'session-1', status: 'queued', evidence: 'deviceQueued',
+      normalizedLine: '>0,1,2,3,4,5,10', message: 'queued, not completed', timestampUtc: '2026-08-08T00:00:00.000Z'
+    }],
+    ['RobotCommandRequestSnapshot', {
+      commandKind: 'jointGroup', requestFingerprintSha256: 'C'.repeat(64), mode: null,
+      positionsDeg: [0, 1, 2, 3, 4, 5], positionsCount: 6, speedDegS: 10, payloadTruncated: false
     }],
     ['ProtocolFrame', {
       id: 'frame-1', timestampUtc: '2026-08-08T00:00:00.000Z', direction: 'rx',
@@ -98,6 +244,16 @@ describe('JSON Schema and TypeScript contract conformance', () => {
     }],
     ['DesktopBridgeCapabilities', {
       available: false, minimize: false, toggleMaximize: false, close: false
+    }],
+    ['DesktopBootstrapV1', {
+      contractVersion: '1.0', gateway: { baseUrl: 'http://127.0.0.1:5127', sessionToken: 'A'.repeat(43) },
+      capabilities: { available: true, minimize: true, toggleMaximize: true, close: true }
+    }],
+    ['DesktopBridgeRequestV1', {
+      contractVersion: '1.0', requestId: 'request-1', action: 'beginDrag'
+    }],
+    ['DesktopBridgeResponseV1', {
+      contractVersion: '1.0', requestId: 'request-1', ok: false, errorCode: 'unsupported'
     }],
     ['OperationEvent', {
       id: 'event-1', timestampUtc: '2026-08-08T00:00:00.000Z', severity: 'warning',

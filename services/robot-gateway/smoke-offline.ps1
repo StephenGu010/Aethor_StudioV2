@@ -83,6 +83,8 @@ $summary = [ordered]@{
     initialPreflightPassed = $false
     livenessStatus = $null
     unauthenticatedStatus = $null
+    signalRPreflightStatus = $null
+    signalRPreflightAllowsClientHeaders = $false
     hardwareCommands = $null
     readOnlyConnection = $null
     comPortEnumerated = $false
@@ -204,6 +206,39 @@ try {
     @{ status = $summary.unauthenticatedStatus } | ConvertTo-Json |
         Set-Content -Encoding UTF8 -LiteralPath (Join-Path $evidenceRoot '03-unauthenticated.json')
 
+    $preflightHeaders = @{
+        Origin = $DevelopmentOrigin
+        'Access-Control-Request-Method' = 'POST'
+        'Access-Control-Request-Headers' = 'authorization,x-requested-with,x-signalr-user-agent'
+    }
+    $signalRPreflight = Invoke-WebRequest `
+        "$baseUrl/hubs/robot-v1/negotiate?negotiateVersion=1" `
+        -Method Options `
+        -Headers $preflightHeaders `
+        -UseBasicParsing `
+        -TimeoutSec 5
+    $allowedHeaders = [string]$signalRPreflight.Headers['Access-Control-Allow-Headers']
+    $allowedHeaderNames = @(
+        $allowedHeaders.Split(',') |
+            ForEach-Object { $_.Trim().ToLowerInvariant() } |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    )
+    $summary.signalRPreflightStatus = [int]$signalRPreflight.StatusCode
+    $summary.signalRPreflightAllowsClientHeaders =
+        $allowedHeaderNames -contains 'x-requested-with' -and
+        $allowedHeaderNames -contains 'x-signalr-user-agent'
+    if ($summary.signalRPreflightStatus -ne 204 -or
+        -not $summary.signalRPreflightAllowsClientHeaders -or
+        [string]$signalRPreflight.Headers['Access-Control-Allow-Origin'] -ne $DevelopmentOrigin) {
+        throw 'SignalR negotiate CORS preflight did not allow the exact loopback origin and client headers.'
+    }
+    [ordered]@{
+        status = $summary.signalRPreflightStatus
+        allowOrigin = [string]$signalRPreflight.Headers['Access-Control-Allow-Origin']
+        allowHeaders = $allowedHeaderNames
+    } | ConvertTo-Json -Depth 4 |
+        Set-Content -Encoding UTF8 -LiteralPath (Join-Path $evidenceRoot '04-signalr-preflight.json')
+
     $headers = @{ 'X-Aethor-Session' = $sessionToken }
     $capabilities = Invoke-RestMethod "$baseUrl/api/v1/gateway/capabilities" -Headers $headers -TimeoutSec 5
     # Windows PowerShell 5.1 may represent a top-level JSON array as a PSObject
@@ -223,7 +258,7 @@ try {
         ports = $ports
         session = $session
     } | ConvertTo-Json -Depth 8 |
-        Set-Content -Encoding UTF8 -LiteralPath (Join-Path $evidenceRoot '04-offline-gateway.json')
+        Set-Content -Encoding UTF8 -LiteralPath (Join-Path $evidenceRoot '05-offline-gateway.json')
 
     $allowedQueries = @($capabilities.allowedQueries)
     if ($capabilities.hardwareCommands -ne $false -or
@@ -250,7 +285,7 @@ try {
     $summary.sessionSource = $session.source
     $summary.sessionValidity = $session.validity
 
-    $active = Invoke-PreflightCapture (Join-Path $evidenceRoot '05-active-preflight.json')
+    $active = Invoke-PreflightCapture (Join-Path $evidenceRoot '06-active-preflight.json')
     $summary.activePreflightExitCode = $active.ExitCode
     $summary.activePreflightPassed = $active.Result.passed
     $resourceFailures = @(
@@ -315,7 +350,7 @@ finally {
     }
 
     try {
-        $postCleanup = Invoke-PreflightCapture (Join-Path $evidenceRoot '06-post-cleanup.json')
+        $postCleanup = Invoke-PreflightCapture (Join-Path $evidenceRoot '07-post-cleanup.json')
         $summary.postCleanupPreflightPassed =
             $postCleanup.ExitCode -eq 0 -and
             $postCleanup.Result.passed -and

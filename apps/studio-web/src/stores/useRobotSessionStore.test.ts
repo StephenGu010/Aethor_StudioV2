@@ -12,9 +12,18 @@ describe('target and feedback isolation', () => {
     expect(showcaseJointFrame.positionsDeg).toEqual(feedbackBefore);
   });
 
-  it('clears expert unlock on device-session reset', () => {
-    useRobotSessionStore.getState().setTerminalExpertUnlocked(true);
-    useRobotSessionStore.getState().resetSession();
-    expect(useRobotSessionStore.getState().terminalExpertUnlocked).toBe(false);
+  it('aligns a new hardware session to the first measured pose without overwriting user intent', () => {
+    const store = useRobotSessionStore.getState();
+    store.beginHardwareSession('session-1');
+    store.alignTargetFromMeasured('session-1', [1, 2, 3, 4, 5, 6]);
+    expect(useRobotSessionStore.getState()).toMatchObject({
+      targetPositionsDeg: [1, 2, 3, 4, 5, 6],
+      measuredAlignmentPending: false
+    });
+
+    useRobotSessionStore.getState().beginHardwareSession('session-2');
+    useRobotSessionStore.getState().setJointTarget(0, 12);
+    useRobotSessionStore.getState().alignTargetFromMeasured('session-2', [7, 8, 9, 10, 11, 12]);
+    expect(useRobotSessionStore.getState().targetPositionsDeg[0]).toBe(12);
   });
 });

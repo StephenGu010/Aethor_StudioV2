@@ -23,17 +23,42 @@ echarts.use([
 
 export function SignalChart({ series }: { series: SignalSeries[] }) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<ReturnType<typeof echarts.init> | null>(null);
 
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
 
     const chart = echarts.init(host, undefined, { renderer: 'canvas' });
-    chart.setOption({
+    chartRef.current = chart;
+    const observer = new ResizeObserver(() => chart.resize());
+    observer.observe(host);
+    return () => {
+      observer.disconnect();
+      chartRef.current = null;
+      chart.dispose();
+    };
+  }, []);
+
+  useEffect(() => {
+    chartRef.current?.setOption(buildSignalChartOption(series), {
+      notMerge: false,
+      lazyUpdate: true,
+      replaceMerge: ['series', 'yAxis']
+    });
+  }, [series]);
+
+  return <div className="signalChart" ref={hostRef} role="img" aria-label="关节信号时序图" />;
+}
+
+export function buildSignalChartOption(series: SignalSeries[]) {
+  const units = [...new Set(series.map((item) => item.descriptor.unit))];
+  const unitAxisIndex = new Map(units.map((unit, index) => [unit, index]));
+  return {
       animation: false,
       backgroundColor: 'transparent',
       color: series.map((item) => item.descriptor.color),
-      grid: { top: 58, right: 30, bottom: 70, left: 64 },
+      grid: { top: 58, right: units.length > 1 ? 72 : 30, bottom: 70, left: 68 },
       legend: {
         top: 10,
         left: 8,
@@ -48,8 +73,7 @@ export function SignalChart({ series }: { series: SignalSeries[] }) {
         axisPointer: { type: 'cross', lineStyle: { color: '#dfe4e8', width: 1 } },
         backgroundColor: 'rgba(15, 17, 19, .96)',
         borderColor: '#343a40',
-        textStyle: { color: '#e7e9eb', fontFamily: 'Cascadia Mono, monospace', fontSize: 11 },
-        valueFormatter: (value: unknown) => typeof value === 'number' ? `${value.toFixed(3)} deg` : '—'
+        textStyle: { color: '#e7e9eb', fontFamily: 'Cascadia Mono, monospace', fontSize: 11 }
       },
       toolbox: {
         right: 10,
@@ -66,15 +90,17 @@ export function SignalChart({ series }: { series: SignalSeries[] }) {
         axisLabel: { color: '#747c84', fontSize: 10 },
         splitLine: { show: true, lineStyle: { color: '#202429' } }
       },
-      yAxis: {
+      yAxis: units.map((unit, index) => ({
         type: 'value',
-        name: 'ANGLE / deg',
+        name: `${unitLabel(unit)} / ${unit}`,
         nameTextStyle: { color: '#737b83', fontSize: 10, align: 'left' },
         scale: true,
+        position: index === 0 ? 'left' : 'right',
+        offset: index <= 1 ? 0 : (index - 1) * 54,
         axisLine: { show: true, lineStyle: { color: '#30353a' } },
         axisLabel: { color: '#747c84', fontSize: 10 },
-        splitLine: { lineStyle: { color: '#202429' } }
-      },
+        splitLine: { show: index === 0, lineStyle: { color: '#202429' } }
+      })),
       dataZoom: [
         { type: 'inside', filterMode: 'none' },
         {
@@ -94,6 +120,7 @@ export function SignalChart({ series }: { series: SignalSeries[] }) {
         id: item.descriptor.signalId,
         name: item.descriptor.displayName,
         type: 'line',
+        yAxisIndex: unitAxisIndex.get(item.descriptor.unit) ?? 0,
         showSymbol: false,
         sampling: 'lttb',
         connectNulls: false,
@@ -104,15 +131,14 @@ export function SignalChart({ series }: { series: SignalSeries[] }) {
         },
         data: item.samples.map((sample) => [sample.timestampUtc, sample.value])
       }))
-    });
-
-    const observer = new ResizeObserver(() => chart.resize());
-    observer.observe(host);
-    return () => {
-      observer.disconnect();
-      chart.dispose();
     };
-  }, [series]);
+}
 
-  return <div className="signalChart" ref={hostRef} role="img" aria-label="关节信号时序图" />;
+function unitLabel(unit: SignalSeries['descriptor']['unit']) {
+  switch (unit) {
+    case 'deg': return 'ANGLE';
+    case 'deg/s': return 'VELOCITY';
+    case 'ms': return 'LATENCY';
+    case 'Hz': return 'RATE';
+  }
 }

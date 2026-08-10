@@ -7,6 +7,7 @@ coverage/
 playwright-report/
 test-results/
 TestResults/
+artifacts/
 .vite/
 *.tsbuildinfo
 *.log

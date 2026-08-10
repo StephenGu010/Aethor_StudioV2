@@ -19,6 +19,14 @@ const jointSchema = z.object({
   upperDeg: z.number().min(-3600).max(3600)
 }).strict();
 
+const jointGroupSchema = z.object({
+  groupId: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+  displayName: z.string().min(1).max(40),
+  jointIds: z.array(z.string().regex(/^j[1-9][0-9]*$/)).min(1).max(32)
+    .refine((jointIds) => new Set(jointIds).size === jointIds.length, '组内关节不能重复'),
+  tcpLinkName: z.string().min(1).max(80).optional()
+}).strict();
+
 export const robotProfileSchema = z
   .object({
     schemaVersion: z.literal('1.0'),
@@ -41,6 +49,7 @@ export const robotProfileSchema = z
       showcasePoseDeg: z.array(z.number()).min(1).max(32).optional()
     }).strict(),
     joints: z.array(jointSchema).min(1).max(32),
+    jointGroups: z.array(jointGroupSchema).min(1).max(16).optional(),
     capabilities: z.object({
       jointPositionFeedback: z.boolean(),
       jointGroupCommand: z.boolean(),
@@ -49,7 +58,7 @@ export const robotProfileSchema = z
       disable: z.boolean(),
       home: z.boolean(),
       reset: z.boolean(),
-      controlModes: z.array(z.union([z.literal(1), z.literal(2), z.literal(3)])).min(1)
+      controlModes: z.array(z.union([z.literal(1), z.literal(2), z.literal(3)]))
         .refine((modes) => new Set(modes).size === modes.length, '控制模式不能重复'),
       rawTerminal: z.boolean()
     }).strict(),
@@ -88,6 +97,31 @@ export const robotProfileSchema = z
       }
       indexes.add(joint.protocolIndex);
     });
+    if (profile.jointGroups) {
+      const groupIds = new Set<string>();
+      const groupedJointIds = new Set<string>();
+      const knownJointIds = new Set(profile.joints.map((joint) => joint.jointId));
+      profile.jointGroups.forEach((group, groupIndex) => {
+        if (groupIds.has(group.groupId)) {
+          context.addIssue({ code: 'custom', path: ['jointGroups', groupIndex, 'groupId'], message: 'groupId 不能重复' });
+        }
+        groupIds.add(group.groupId);
+        group.jointIds.forEach((jointId, jointIndex) => {
+          if (!knownJointIds.has(jointId)) {
+            context.addIssue({ code: 'custom', path: ['jointGroups', groupIndex, 'jointIds', jointIndex], message: '关节组引用了未知关节' });
+          }
+          if (groupedJointIds.has(jointId)) {
+            context.addIssue({ code: 'custom', path: ['jointGroups', groupIndex, 'jointIds', jointIndex], message: '关节不能属于多个控制组' });
+          }
+          groupedJointIds.add(jointId);
+        });
+      });
+      profile.joints.forEach((joint) => {
+        if (!groupedJointIds.has(joint.jointId)) {
+          context.addIssue({ code: 'custom', path: ['jointGroups'], message: `控制组缺少关节 ${joint.jointId}` });
+        }
+      });
+    }
   });
 
 export function parseRobotProfile(input: unknown): RobotProfileManifestV1 {

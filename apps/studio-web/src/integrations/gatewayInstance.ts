@@ -1,10 +1,14 @@
 import type { RobotGatewayV1 } from './robotGateway';
 import { HttpRobotGateway } from './httpRobotGateway';
 import { StaticShowcaseSource } from './staticShowcaseSource';
+import { readDesktopBootstrap } from './desktopBridge';
 
-export function createRobotGateway(environment: Pick<ImportMetaEnv, 'VITE_AETHOR_GATEWAY_URL' | 'VITE_AETHOR_GATEWAY_SESSION_TOKEN'> = import.meta.env): RobotGatewayV1 {
-  const baseUrl = environment.VITE_AETHOR_GATEWAY_URL?.trim() ?? '';
-  const sessionToken = environment.VITE_AETHOR_GATEWAY_SESSION_TOKEN?.trim() ?? '';
+export function createRobotGateway(
+  environment: Pick<ImportMetaEnv, 'VITE_AETHOR_GATEWAY_URL' | 'VITE_AETHOR_GATEWAY_SESSION_TOKEN'> = import.meta.env,
+  desktopBootstrap = readDesktopBootstrap()
+): RobotGatewayV1 {
+  const baseUrl = environment.VITE_AETHOR_GATEWAY_URL?.trim() || desktopBootstrap?.gateway?.baseUrl || '';
+  const sessionToken = environment.VITE_AETHOR_GATEWAY_SESSION_TOKEN?.trim() || desktopBootstrap?.gateway?.sessionToken || '';
   if (!baseUrl && !sessionToken) return new StaticShowcaseSource();
   if (!baseUrl || !sessionToken) return new StaticShowcaseSource('只读网关配置不完整；URL 与会话令牌必须同时提供');
   try {

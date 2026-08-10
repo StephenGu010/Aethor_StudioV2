@@ -10,6 +10,15 @@ public enum DummyReadQuery
     Enable
 }
 
+public enum DummySystemCommand
+{
+    Enable,
+    Stop,
+    Disable,
+    Home,
+    Reset
+}
+
 public enum DummyResponseKind
 {
     SystemAck,
@@ -24,6 +33,25 @@ public enum DummyResponseKind
     Malformed,
     Unknown
 }
+
+public enum DummyDirectCommandKind
+{
+    QueryJointPositions,
+    QueryMode,
+    QueryEnable,
+    Enable,
+    Stop,
+    Disable,
+    SetMode,
+    JointGroup
+}
+
+public sealed record DummyDirectCommand(
+    DummyDirectCommandKind Kind,
+    string NormalizedLine,
+    int? Mode = null,
+    IReadOnlyList<double>? PositionsDeg = null,
+    double? SpeedDegS = null);
 
 public sealed record DummyResponse(
     DummyResponseKind Kind,
@@ -77,6 +105,150 @@ public static class DummyAsciiProtocol
     };
 
     public static string EncodeQuery(DummyReadQuery query) => FormatQuery(query) + LineEnding;
+
+    public static string FormatSystemCommand(DummySystemCommand command) => command switch
+    {
+        DummySystemCommand.Enable => "!START",
+        DummySystemCommand.Stop => "!STOP",
+        DummySystemCommand.Disable => "!DISABLE",
+        DummySystemCommand.Home => "!HOME",
+        DummySystemCommand.Reset => "!RESET",
+        _ => throw new ArgumentOutOfRangeException(nameof(command), command, "Unsupported system command")
+    };
+
+    public static string FormatSetMode(int mode)
+    {
+        if (!AllowedModeNames.ContainsKey(mode))
+        {
+            throw new ArgumentOutOfRangeException(nameof(mode), "Dummy ASCII v1 supports modes 1-3 only");
+        }
+
+        return $"#CMDMODE {mode.ToString(CultureInfo.InvariantCulture)}";
+    }
+
+    public static string FormatJointGroup(IReadOnlyList<double> positionsDeg, double speedDegS)
+    {
+        ArgumentNullException.ThrowIfNull(positionsDeg);
+        if (positionsDeg.Count != JointCount || positionsDeg.Any(value => !double.IsFinite(value)))
+        {
+            throw new ArgumentException("Exactly six finite joint positions are required", nameof(positionsDeg));
+        }
+
+        if (!double.IsFinite(speedDegS) || speedDegS <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(speedDegS), "Speed must be finite and greater than zero");
+        }
+
+        var values = positionsDeg
+            .Append(speedDegS)
+            .Select(value => value.ToString("0.###############", CultureInfo.InvariantCulture));
+        return $">{string.Join(',', values)}";
+    }
+
+    public const string SafetyZeroCurrentLine = "$0,0,0,0,0,0";
+
+    public static bool TryParseEngineeringCommand(
+        string? input,
+        double maximumJointSpeedDegS,
+        out DummyDirectCommand? command,
+        out string error)
+    {
+        command = null;
+        error = string.Empty;
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            error = "命令不能为空";
+            return false;
+        }
+
+        if (!double.IsFinite(maximumJointSpeedDegS)
+            || maximumJointSpeedDegS <= 0
+            || maximumJointSpeedDegS > 100)
+        {
+            error = "网关的 engineering 速度上限配置无效";
+            return false;
+        }
+
+        if (input.Contains('\r') || input.Contains('\n'))
+        {
+            error = "一次请求只能包含一行命令";
+            return false;
+        }
+
+        var line = input.Trim();
+        if (line.Length is < 1 or > MaximumLineCharacters || line.Any(character => !char.IsAscii(character) || char.IsControl(character)))
+        {
+            error = "命令必须是 1-255 个可打印 ASCII 字符";
+            return false;
+        }
+
+        command = line switch
+        {
+            "#GETJPOS" => new(DummyDirectCommandKind.QueryJointPositions, line),
+            "#GETMODE" => new(DummyDirectCommandKind.QueryMode, line),
+            "#GETENABLE" => new(DummyDirectCommandKind.QueryEnable, line),
+            "!START" => new(DummyDirectCommandKind.Enable, line),
+            "!STOP" => new(DummyDirectCommandKind.Stop, line),
+            "!DISABLE" => new(DummyDirectCommandKind.Disable, line),
+            "#CMDMODE 1" => new(DummyDirectCommandKind.SetMode, line, Mode: 1),
+            "#CMDMODE 2" => new(DummyDirectCommandKind.SetMode, line, Mode: 2),
+            "#CMDMODE 3" => new(DummyDirectCommandKind.SetMode, line, Mode: 3),
+            _ => null
+        };
+        if (command is not null)
+        {
+            return true;
+        }
+
+        if (!line.StartsWith('>'))
+        {
+            error = "engineering 模式只允许查询、启停/去使能、模式 1-3 和六轴整组目标；HOME/RESET/RGB/电流命令均被拒绝";
+            return false;
+        }
+
+        var tokens = line[1..].Split(',', StringSplitOptions.None);
+        if (tokens.Length != JointCount + 1)
+        {
+            error = "六轴整组命令必须包含 6 个角度和 1 个显式速度";
+            return false;
+        }
+
+        var values = new double[tokens.Length];
+        for (var index = 0; index < tokens.Length; index++)
+        {
+            if (!double.TryParse(tokens[index], NumberStyles.Float, CultureInfo.InvariantCulture, out values[index])
+                || !double.IsFinite(values[index]))
+            {
+                error = "六轴整组命令包含非法数值";
+                return false;
+            }
+        }
+
+        for (var index = 0; index < JointCount; index++)
+        {
+            var limit = DummyJointLimits.All[index];
+            if (values[index] < limit.LowerDeg || values[index] > limit.UpperDeg)
+            {
+                error = $"J{index + 1} 目标超出配置限位";
+                return false;
+            }
+        }
+
+        var speed = values[^1];
+        if (speed <= 0 || speed > maximumJointSpeedDegS)
+        {
+            error = $"速度必须在 0-{maximumJointSpeedDegS.ToString("0.###", CultureInfo.InvariantCulture)} deg/s 的固件输入范围内";
+            return false;
+        }
+
+        var positions = values.Take(JointCount).ToArray();
+        command = new(
+            DummyDirectCommandKind.JointGroup,
+            FormatJointGroup(positions, speed),
+            PositionsDeg: positions,
+            SpeedDegS: speed);
+        return true;
+    }
 
     public static DummyResponse ParseResponseLine(string input)
     {

@@ -22,11 +22,24 @@ public interface ISerialPortCatalog
     ValueTask<IReadOnlyList<SerialPortDescriptor>> ListAsync(CancellationToken cancellationToken);
 }
 
-public interface IReadOnlyGatewayEventSink
+public interface IRobotGatewayEventSink
 {
     ValueTask PublishSessionAsync(RobotSessionSnapshot snapshot, CancellationToken cancellationToken);
     ValueTask PublishJointStateAsync(JointStateFrame frame, CancellationToken cancellationToken);
     ValueTask PublishProtocolFrameAsync(ProtocolFrame frame, CancellationToken cancellationToken);
+    ValueTask PublishCommandResultAsync(CommandResult result, CancellationToken cancellationToken);
+}
+
+public interface IActionProgramCommandPort
+{
+    Task<CommandResult> SetModeAsync(SetModeCommand command, CancellationToken cancellationToken);
+    Task<CommandResult> SendJointGroupAsync(JointGroupCommand command, CancellationToken cancellationToken);
+    Task<CommandResult> StopAndDisableAsync(SimpleRobotCommand command, CancellationToken cancellationToken);
+}
+
+public interface IActionProgramDelay
+{
+    Task DelayAsync(TimeSpan duration, CancellationToken cancellationToken);
 }
 
 public enum GatewayDiagnosticSeverity
@@ -49,7 +62,7 @@ public interface IGatewayDiagnostics
     void Record(GatewayDiagnosticEvent diagnosticEvent);
 }
 
-public sealed class NullGatewayEventSink : IReadOnlyGatewayEventSink
+public sealed class NullGatewayEventSink : IRobotGatewayEventSink
 {
     public ValueTask PublishSessionAsync(RobotSessionSnapshot snapshot, CancellationToken cancellationToken) =>
         ValueTask.CompletedTask;
@@ -58,6 +71,9 @@ public sealed class NullGatewayEventSink : IReadOnlyGatewayEventSink
         ValueTask.CompletedTask;
 
     public ValueTask PublishProtocolFrameAsync(ProtocolFrame frame, CancellationToken cancellationToken) =>
+        ValueTask.CompletedTask;
+
+    public ValueTask PublishCommandResultAsync(CommandResult result, CancellationToken cancellationToken) =>
         ValueTask.CompletedTask;
 }
 

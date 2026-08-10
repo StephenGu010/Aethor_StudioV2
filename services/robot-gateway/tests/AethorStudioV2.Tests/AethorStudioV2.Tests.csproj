@@ -21,7 +21,10 @@
     <None Include="../../../../shared/contracts/conformance/dummy-ascii-v1.vectors.json" Link="Conformance/dummy-ascii-v1.vectors.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../../../shared/contracts/gateway-contracts-v1.schema.json" Link="Conformance/gateway-contracts-v1.schema.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../preflight-readonly.ps1" Link="Operations/preflight-readonly.ps1" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../preflight-control.ps1" Link="Operations/preflight-control.ps1" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../smoke-offline.ps1" Link="Operations/smoke-offline.ps1" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../soak-readonly.ps1" Link="Operations/soak-readonly.ps1" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../start-engineering-dev.ps1" Link="Operations/start-engineering-dev.ps1" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../../../package.json" Link="Operations/package.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

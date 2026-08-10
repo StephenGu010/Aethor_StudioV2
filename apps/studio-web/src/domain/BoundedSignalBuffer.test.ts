@@ -17,6 +17,19 @@ describe('BoundedSignalBuffer', () => {
   it('rejects an unbounded or invalid capacity', () => {
     expect(() => new BoundedSignalBuffer(0)).toThrow();
     expect(() => new BoundedSignalBuffer(1.5)).toThrow();
+    expect(() => new BoundedSignalBuffer(1, 0)).toThrow();
+  });
+
+  it('evicts by time, rejects out-of-order samples, and validates values', () => {
+    const buffer = new BoundedSignalBuffer(10, 2_000);
+    expect(buffer.push(sample(1))).toBe(true);
+    expect(buffer.push(sample(2))).toBe(true);
+    expect(buffer.push(sample(4))).toBe(true);
+    expect(buffer.snapshot().map((item) => item.value)).toEqual([2, 4]);
+    expect(buffer.snapshotSince(new Date(3_000).toISOString()).map((item) => item.value)).toEqual([4]);
+    expect(buffer.push(sample(3))).toBe(false);
+    expect(buffer.size).toBe(2);
+    expect(() => buffer.push({ ...sample(5), value: Number.NaN })).toThrow();
   });
 });
 

@@ -32,7 +32,7 @@ export function JointManipulator({
   onTargetChange: (protocolIndex: number, valueDeg: number) => void;
   onDraggingChange: (dragging: boolean) => void;
 }) {
-  const { size, camera, gl } = useThree();
+  const { size, camera, gl, invalidate } = useThree();
   const dragRef = useRef<DragSession | null>(null);
   const [hovered, setHovered] = useState(false);
   const axisOrientation = useMemo(() => {
@@ -67,6 +67,7 @@ export function JointManipulator({
     drag.releaseResource();
     dragRef.current = null;
     onDraggingChange(false);
+    invalidate();
     document.body.style.cursor = hovered ? 'grab' : '';
     const host = gl.domElement.closest<HTMLElement>('.robotSceneHost');
     if (host) host.dataset.dragState = 'idle';
@@ -173,6 +174,7 @@ export function JointManipulator({
     dragRef.current = session;
     if (host) host.dataset.dragState = 'active';
     onDraggingChange(true);
+    invalidate();
     document.body.style.cursor = 'grabbing';
   };
 

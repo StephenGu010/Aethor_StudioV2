@@ -3,7 +3,7 @@ using AethorStudioV2.Application;
 namespace AethorStudioV2.Api;
 
 public sealed class GatewayHostedLifecycle(
-    ReadOnlyRobotGateway gateway,
+    RobotGateway gateway,
     ILogger<GatewayHostedLifecycle> logger) : IHostedService
 {
     public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
@@ -12,7 +12,7 @@ public sealed class GatewayHostedLifecycle(
     {
         try
         {
-            await gateway.DisconnectAsync(cancellationToken).ConfigureAwait(false);
+            await gateway.ShutdownAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

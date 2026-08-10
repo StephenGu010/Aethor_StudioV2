@@ -1,8 +1,8 @@
 # Aethor Robot Gateway
 
-`services/robot-gateway` 是 Phase 4 的 .NET 10 只读硬件网关。它独占一个串口会话，只允许读取 Dummy 状态；当前没有使能、停止、回零、复位、模式切换、关节下发或 raw command API。
+`.NET 10` 网关是 Dummy 设备 session、串口 transport、轮询、命令仲裁和审计的唯一所有者。默认配置是只读且硬件命令关闭。Phase 5 Gate A 已完成真实状态控制验收；Gate B 运动未执行，阶段仍未完成。
 
-## 分层与所有权
+## 分层
 
 ```text
 AethorStudioV2.Api
@@ -11,19 +11,15 @@ AethorStudioV2.Api
        <- AethorStudioV2.Infrastructure
 ```
 
-- `Domain`：V1 wire DTO、Dummy ASCII 查询/响应语义和有界行解码，不依赖 HTTP 或串口。
-- `Application`：`ReadOnlyRobotGateway` 是 session、SerialPort transport、轮询任务、最新状态和有界诊断历史的唯一所有者。
-- `Infrastructure`：Windows 端口枚举与 `System.IO.Ports.SerialPort` adapter；写入边界再次拒绝除三个查询以外的任何 payload。
-- `Api`：loopback REST、SignalR、会话令牌、CORS、结构化控制台日志和进程退出清理。
-- `Tests`：跨语言 vectors、fake serial、生命周期、故障、安全与 HTTP/SignalR 认证。
+- `Domain`：v1.2 DTO、Dummy ASCII formatter/parser、关节限位和命令状态枚举。
+- `Application`：`RobotGateway` 单一所有者、轮询、许可门、幂等、单在途命令、停止抢占、安全联锁和有界历史；另含无生产接线的 Phase 6B-S `ActionProgramRunner`。
+- `Infrastructure`：Windows SerialPort adapter 和精确 payload policy；不接受任意 raw ASCII。
+- `Api`：loopback REST/SignalR、session token、精确 CORS 白名单和受控进程退出。
+- `Tests`：跨语言 vectors、fake serial、命令/生命周期/安全和 HTTP/SignalR 认证。
 
-默认轮询顺序固定为 `#GETJPOS`、`#GETMODE`、`#GETENABLE`，周期 500 ms、单次查询超时 2 s。连续三次超时或传输故障会将 session 置为 `faulted` 并释放串口；不会自动重连。
+完整 wire contract 见 [`shared/contracts/robot-gateway-v1.md`](../../shared/contracts/robot-gateway-v1.md)。
 
-## 运行要求
-
-- Windows 10/11。
-- `.NET SDK 10.0.302`。`global.json` 固定该 feature band；`dotnet.ps1` 优先使用未提交的 `.tools/dotnet/dotnet.exe`，否则使用 PATH 中的 SDK。
-- Node.js 24.x 与 pnpm 11.16+，用于根级统一命令。
+## 构建与测试
 
 从仓库根执行：
 
@@ -33,75 +29,62 @@ pnpm gateway:build
 pnpm gateway:test
 ```
 
-需要核对 wrapper 实际选中的 SDK/runtime 时，可直接透传任意 `dotnet` 参数：
+需要 `.NET SDK 10.0.302`。`global.json` 固定 feature band，`dotnet.ps1` 优先使用未提交的 `.tools/dotnet/dotnet.exe`，否则使用 PATH SDK。
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File services/robot-gateway/dotnet.ps1 --info
-```
-
-## 不可连接预检
-
-`gateway:preflight` 只读取 Windows PnP、Aethor gateway 进程和指定 loopback 端口的 listener，输出 `aethor.phase4.preflight.v1` JSON；脚本没有 `SerialPort` 实例或 HTTP client，不能打开 COM4。
-
-```powershell
-$env:AETHOR_PREFLIGHT_PORT_NAME = 'COM4'
-$env:AETHOR_PREFLIGHT_EXPECTED_INSTANCE_ID = '<operator-verified Windows PnP instance ID>'
-pnpm gateway:preflight
-```
-
-身份不匹配、PnP 状态异常、网关进程残留或 listener 占用时返回 exit code 2。硬件 Instance ID 通过进程环境而非 package-runner 参数传递，避免 ID 中的 `&` 被 `cmd.exe` 解释。完整现场流程只执行 [Phase 4 监督只读 COM4 验收手册](../../docs/runbooks/phase-04-supervised-readonly-com4.md)。
-
-构建 Release 网关后，可复验完整的离线路径。该入口只调用 liveness、认证拒绝、capabilities、端口枚举和 offline session；源码没有 `/session/connect` 调用，并在结束时停止本次启动的精确进程、复跑预检：
-
-```powershell
-pnpm gateway:build
-$env:AETHOR_PREFLIGHT_PORT_NAME = 'COM4'
-$env:AETHOR_PREFLIGHT_EXPECTED_INSTANCE_ID = '<operator-verified Windows PnP instance ID>'
-pnpm gateway:smoke:offline
-```
-
-证据写入已忽略的 `TestResults/phase-04-runbook-smoke/<UTC run id>/`，不得提交。该 smoke 不能替代现场监督连接或真实固件回包验收。
-
-## 本地开发启动
-
-为每次开发会话生成一个至少 32 字符的随机令牌，不要提交到仓库：
+## 本地只读开发
 
 ```powershell
 $env:ASPNETCORE_ENVIRONMENT = 'Development'
-$env:AETHOR_GATEWAY_SESSION_TOKEN = '<32-256 printable ASCII session token>'
+$env:AETHOR_GATEWAY_SESSION_TOKEN = '<32-256 printable ASCII token>'
 $env:AETHOR_GATEWAY_TOKEN_SOURCE = 'development'
 pnpm gateway:dev
 ```
 
-默认监听 `http://127.0.0.1:5127` 与 IPv6 loopback，不监听 LAN。可选配置：
+默认监听 `http://127.0.0.1:5127` 与 IPv6 loopback。启动服务不枚举、不打开串口，也不自动连接。默认 `commandPolicy=disabled`；只有显式设置 `engineering` 才会在 Development + development token 组合下开放受限直连调试。
 
-| 环境变量 | 默认值 | 规则 |
+| 环境变量 | 默认 | 规则 |
 |---|---|---|
-| `AETHOR_GATEWAY_PORT` | `5127` | 1024–65535；仍只绑定 loopback |
-| `AETHOR_GATEWAY_SESSION_TOKEN` | 无 | 必填，32–256 个可打印 ASCII 字符 |
-| `AETHOR_GATEWAY_TOKEN_SOURCE` | `development` | `development` 或 `desktop`；非 Development 环境必须为 `desktop` |
-| `AETHOR_GATEWAY_DEV_ORIGINS` | `http://127.0.0.1:5173;http://localhost:5173` | 分号分隔，仅允许无 path 的 loopback HTTP(S) origin |
+| `AETHOR_GATEWAY_PORT` | `5127` | 1024–65535；仍只监听 loopback |
+| `AETHOR_GATEWAY_SESSION_TOKEN` | 无 | 必填，32–256 个可打印 ASCII |
+| `AETHOR_GATEWAY_TOKEN_SOURCE` | `development` | `development` 或 `desktop`；非 Development 必须为 desktop |
+| `AETHOR_GATEWAY_DEV_ORIGINS` | 5173/5174 的 localhost 与 127.0.0.1 | 分号分隔、无 path 的 loopback HTTP(S) origin |
+| `AETHOR_GATEWAY_COMMAND_POLICY` | `disabled` | `disabled`、`supervised` 或 `engineering`；supervised 强制 desktop token，engineering 强制 Development + development token |
+| `AETHOR_GATEWAY_JOINT_GROUP_SPEED_LIMIT_DEG_S` | 无 | 有限正数；关节组四项配置之一 |
+| `AETHOR_GATEWAY_JOINT_GROUP_POSITION_TOLERANCE_DEG` | 无 | `0.01–5` deg；关节组到位容差 |
+| `AETHOR_GATEWAY_JOINT_GROUP_SETTLED_DURATION_MS` | 无 | `100–5000` ms；必须连续处于容差内的窗口 |
+| `AETHOR_GATEWAY_JOINT_GROUP_COMPLETION_TIMEOUT_MS` | 无 | `500–120000` ms 且大于稳定窗口；总到位超时 |
 
-前端复制 `apps/studio-web/.env.example` 为被忽略的 `.env.local`，并让 URL、令牌与网关进程一致。若 Vite 临时使用 5174，必须同时把该 origin 加入 `AETHOR_GATEWAY_DEV_ORIGINS`。
+四项关节组配置必须同时存在或同时缺失；不得只配置速度。不要在当前 Phase 5 未完成状态下自行组合 `supervised + desktop` 配置连接 COM4。真实控制只能从 [Phase 5 监督式控制手册](../../docs/runbooks/phase-05-supervised-control-com4.md) 进入并重新记录现场授权。
 
-启动网关不会枚举或打开串口；前端设备页加载时只调用枚举和 REST 快照。只有操作者完成监督手册的现场授权门并调用“只读连接”后，网关才会打开端口并开始三个查询。Phase 4 已完成一次监督实机验收，但连接动作仍不得写入自动启动流程；每次真实连接都需要新的现场判断。
+`engineering` 是本地开发调试策略，不是生产能力：它不需要前端管理员解锁，但仍由 C# 独占串口、校验单行可打印 ASCII、Dummy 白名单、session、限位、使能、模式、反馈新鲜度和单在途。六轴速度 `0 < speed <= 100` 只来自固件输入范围，绝不是已验证安全速度；FIFO 返回仅记作 `queued`。使用步骤见 [Dummy engineering 直连手册](../../docs/runbooks/dummy-engineering-direct.md)。
 
-## 公共接口
+## 当前控制边界
 
-- 无认证健康检查：`GET /health/live`、`GET /health/ready`。
-- 认证 REST：`/api/v1/*`，header 为 `X-Aethor-Session`。
-- 认证 SignalR：`/hubs/robot-v1`，使用 Bearer token；WebSocket 升级可使用 SignalR 的 `access_token` transport 参数。
-- 完整 DTO、端点、事件与失败语义见 [`shared/contracts/robot-gateway-v1.md`](../../shared/contracts/robot-gateway-v1.md)。
+- `ActionProgramRunner` 当前只通过 fake `IActionProgramCommandPort` 验证逐点、停止、恢复、并发和超时语义；未注册 DI、未映射 API、未提供真实 `RobotGateway` adapter，也未改变前端运行按钮。它不是可用硬件能力。
 
-REST 快照是权威状态。SignalR 使用容量 128 的有界事件队列，拥塞时丢弃最旧事件；客户端必须在断线后把遥测标记为可能陈旧，并通过 REST 手动恢复。协议历史最多保留 256 帧，API 单次查询 `limit` 为 1–500，实际返回不会超过现存历史。
+- `enable`、`stopAndDisable`、`setMode` 和可选 `jointGroup` 已有类型化端点、能力协商和 fake-serial 证据；默认全部关闭。
+- HOME/RESET 端点仅保留稳定契约。固件在处理这两条命令时阻塞到动作结束，生产配置不宣告、不执行。
+- 关节组只有在连接有效、反馈新鲜、设备已使能、六轴目标合法、显式速度不超过外部已验证上限、完整到位策略已配置且无在途命令时才可执行。
+- FIFO 接受只产生 `deviceQueued` 证据。网关持续读取 `#GETJPOS`，只有六轴最大误差连续处于容差内达到稳定窗口才返回 `completed + feedbackConfirmed`；总超时或查询超时返回 `timedOut` 并锁存联锁。
+- 停止链为 `!STOP -> internal fixed zero -> !DISABLE -> #GETENABLE`；只有读回 0 才能显示完成。
+- 所有硬件命令等待串口所有权均有界；普通命令超时且零写入时拒绝，STOP 超时返回未确认并锁存安全联锁。任一未知物理结果都会阻断后续普通命令，只允许再次停止，成功去使能或重建 session 才清除。
+- 任意 raw 串口写入、RGB、模式 4/5、电流/PID、标定和 reboot 没有公共端点；engineering direct 端点只是受限协议命令，不接受任意字节。
+- 如果仍有在途硬件命令，或电机已明确读回 enabled，人工 disconnect 会被拒绝；错误端口造成的 stale/unknown 会话允许释放。进程退出仍执行强制清理，但这不构成物理安全确认。
+- 每条命令审计保留规范化请求、SHA-256 请求指纹和最多 32 条实际成功写入 transport 的 payload；高频轮询协议环只用于补充诊断。
 
 ## 运行与恢复
 
-- 正常退出：终止 `pnpm gateway:dev`；host 生命周期会取消轮询、关闭并 dispose 串口。
-- 手动断开：调用 `POST /api/v1/session/disconnect`；重复断开是安全的，并返回 `offline` 快照。
-- 端口占用/拒绝访问：连接返回 HTTP 503，session 为 `faulted`；先关闭占用程序，再由操作者重新点击连接。
-- 拔线、I/O 错误或连续超时：网关停止轮询、释放 transport、返回 `faulted`；没有后台自动重连。
-- SignalR 中断：串口轮询继续，REST 快照仍权威；前端显示遥测警告。
-- 日志：JSON 写入当前进程控制台，不持久化原始令牌。认证失败只记录 method/path，禁止把令牌或带 `access_token` 的 URL 复制到日志或 handoff。
+- 正常退出会取消轮询/命令并关闭、dispose 唯一 transport。
+- HTTP 请求在命令接管前已取消时零审计、零硬件写入；接管后的请求断开不会取消物理 runner。网关继续形成唯一终态，同 ID 查询/恢复不会重复发送。session 断开会先取消轮询/runner 并关闭串口句柄，以打断不响应 token 取消的原生读，再等待任务形成终态并 dispose transport；不在仍打开句柄时无限等待。
+- SignalR 事件发布位于 transport 生命周期之外：每次发布与关闭排空均有独立超时。发布器超时后停止事件泵并记录诊断，不继续创建悬挂调用；网关 dispose 始终先释放 transport，再有界等待事件泵。REST 快照仍是权威状态。
+- 查询连续三次超时、拔线或 I/O 故障进入 `faulted` 并释放串口，不自动重连。
+- SignalR 中断不停止串口所有者；REST 仍是权威状态，前端把旧遥测标为陈旧并显式恢复。
+- WebView2 的 SignalR negotiate 只允许已配置 loopback origin，以及 `Authorization`、`X-Requested-With`、`X-SignalR-User-Agent` 和 `X-Aethor-Session` 等明确请求头；不允许任意 origin/header。
+- 认证的 `POST /api/v1/host/shutdown` 只在无串口会话或设备已明确 disabled 时返回 202，并在响应完成后停止宿主；状态不明确时返回 409。该端点只供桌面父进程安全退出使用。
+- 日志不得记录 session token 或带 `access_token` 的 URL。协议和命令历史均有界。
 
-Phase 8 的桌面壳将负责生成 `desktop` 令牌并守护网关进程；当前开发流程不宣称桌面级进程回收已完成。
+Phase 4 的不可连接预检与只读证据入口仍保留：`pnpm gateway:preflight`、`pnpm gateway:smoke:offline`。Phase 5 增加 `pnpm gateway:preflight:control`，它只做身份、资源、配置和 Release assembly 检查，不启动网关、不打开串口、不发网络请求；这些预检都不能替代真实控制验收。
+
+Phase 7B 的受监督只读长测入口为 `pnpm gateway:soak:readonly`。先使用 `-ValidateOnly` 验证零进程/零网络/零串口路径；真实运行必须提供精确授权短语、操作者、授权编号、设备 InstanceId 和五项现场确认。脚本强制 `commandPolicy=disabled`，只连接 `dummy-6dof` 并验证三个查询白名单，采集网关 working set/private memory/handle/CPU、关节 sequence 和协议一致性，最后断开、请求宿主 202 并执行 post-cleanup。完整命令和判定边界见 [Phase 7B 只读长测手册](../../docs/runbooks/phase-07b-readonly-soak.md)。`evidenceCollectionPassed=true` 仅代表采集与清理可信，不代表资源阈值、浏览器 heap、故障注入或 Phase 7B 已完成。
+
+2026-08-09 Gate A 已验证 `enable / stopAndDisable / setMode 1–3` 并恢复 mode 2，断开前设备回读 disabled；未发送关节目标。完整本机证据在被 Git 忽略的 `TestResults/phase-05-com4/20260809T060050Z/`，Gate B 仍须重新授权。

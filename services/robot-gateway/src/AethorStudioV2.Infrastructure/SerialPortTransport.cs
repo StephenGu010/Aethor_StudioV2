@@ -1,16 +1,29 @@
+using System.Buffers;
 using System.IO.Ports;
+using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Text;
 using AethorStudioV2.Application;
 using AethorStudioV2.Domain;
 
 namespace AethorStudioV2.Infrastructure;
 
-public sealed class SerialPortTransportFactory : IAsciiTransportFactory
+public enum SerialPayloadAccess
 {
-    public IAsciiTransport Create(string portName, int baudRate) => new SerialPortTransport(portName, baudRate);
+    ReadOnly,
+    Supervised,
+    Engineering
 }
 
-public static class ReadOnlySerialPayloadPolicy
+public sealed class SerialPortTransportFactory(
+    SerialPayloadAccess access = SerialPayloadAccess.ReadOnly,
+    double? jointGroupSpeedLimitDegS = null) : IAsciiTransportFactory
+{
+    public IAsciiTransport Create(string portName, int baudRate) =>
+        new SerialPortTransport(portName, baudRate, access, jointGroupSpeedLimitDegS);
+}
+
+public static class SerialPayloadPolicy
 {
     private static readonly HashSet<string> AllowedPayloads =
     [
@@ -19,7 +32,17 @@ public static class ReadOnlySerialPayloadPolicy
         DummyAsciiProtocol.EncodeQuery(DummyReadQuery.Enable)
     ];
 
-    public static bool IsAllowed(ReadOnlySpan<byte> payload)
+    private static readonly HashSet<string> SupervisedSystemCommands =
+    [
+        DummyAsciiProtocol.FormatSystemCommand(DummySystemCommand.Enable),
+        DummyAsciiProtocol.FormatSystemCommand(DummySystemCommand.Stop),
+        DummyAsciiProtocol.FormatSystemCommand(DummySystemCommand.Disable)
+    ];
+
+    public static bool IsAllowed(
+        ReadOnlySpan<byte> payload,
+        SerialPayloadAccess access = SerialPayloadAccess.ReadOnly,
+        double? jointGroupSpeedLimitDegS = null)
     {
         if (payload.Length is < 2 or > DummyAsciiProtocol.MaximumLineCharacters + 1)
         {
@@ -34,18 +57,96 @@ public static class ReadOnlySerialPayloadPolicy
             }
         }
 
-        return AllowedPayloads.Contains(Encoding.ASCII.GetString(payload));
+        var encoded = Encoding.ASCII.GetString(payload);
+        if (AllowedPayloads.Contains(encoded))
+        {
+            return true;
+        }
+
+        if (access == SerialPayloadAccess.ReadOnly
+            || !encoded.EndsWith(DummyAsciiProtocol.LineEnding, StringComparison.Ordinal)
+            || encoded[..^DummyAsciiProtocol.LineEnding.Length].Contains('\r'))
+        {
+            return false;
+        }
+
+        var line = encoded[..^DummyAsciiProtocol.LineEnding.Length];
+        if (SupervisedSystemCommands.Contains(line)
+            || line == DummyAsciiProtocol.SafetyZeroCurrentLine
+            || line is "#CMDMODE 1" or "#CMDMODE 2" or "#CMDMODE 3")
+        {
+            return true;
+        }
+
+        return IsAllowedJointGroup(line, jointGroupSpeedLimitDegS);
+    }
+
+    private static bool IsAllowedJointGroup(string line, double? jointGroupSpeedLimitDegS)
+    {
+        if (!line.StartsWith('>') || jointGroupSpeedLimitDegS is not { } speedLimit)
+        {
+            return false;
+        }
+
+        var tokens = line[1..].Split(',', StringSplitOptions.None);
+        if (tokens.Length != DummyAsciiProtocol.JointCount + 1)
+        {
+            return false;
+        }
+
+        var values = new double[tokens.Length];
+        for (var index = 0; index < tokens.Length; index++)
+        {
+            if (!double.TryParse(tokens[index], NumberStyles.Float, CultureInfo.InvariantCulture, out values[index])
+                || !double.IsFinite(values[index]))
+            {
+                return false;
+            }
+        }
+
+        for (var index = 0; index < DummyAsciiProtocol.JointCount; index++)
+        {
+            var limit = DummyJointLimits.All[index];
+            if (values[index] < limit.LowerDeg || values[index] > limit.UpperDeg)
+            {
+                return false;
+            }
+        }
+
+        return values[^1] > 0 && values[^1] <= speedLimit;
     }
 }
 
 public sealed class SerialPortTransport : IAsciiTransport
 {
+    private const int SerialReadTimeoutMilliseconds = 100;
     private readonly int baudRate;
+    private readonly SerialPayloadAccess access;
+    private readonly double? jointGroupSpeedLimitDegS;
+    private readonly Func<string, int, ISerialPortConnection> connectionFactory;
     private readonly SemaphoreSlim lifecycleGate = new(1, 1);
-    private SerialPort? serialPort;
+    private ISerialPortConnection? serialPort;
     private bool disposed;
 
-    public SerialPortTransport(string portName, int baudRate)
+    public SerialPortTransport(
+        string portName,
+        int baudRate,
+        SerialPayloadAccess access = SerialPayloadAccess.ReadOnly,
+        double? jointGroupSpeedLimitDegS = null) : this(
+            portName,
+            baudRate,
+            access,
+            jointGroupSpeedLimitDegS,
+            static (name, rate) => new SystemSerialPortConnection(name, rate, SerialReadTimeoutMilliseconds))
+    {
+    }
+
+    internal SerialPortTransport(
+        string portName,
+        int baudRate,
+        SerialPayloadAccess access,
+        double? jointGroupSpeedLimitDegS,
+        Func<string, int, ISerialPortConnection> connectionFactory)
     {
         if (string.IsNullOrWhiteSpace(portName))
         {
@@ -59,6 +160,9 @@ public sealed class SerialPortTransport : IAsciiTransport
 
         PortName = portName;
         this.baudRate = baudRate;
+        this.access = access;
+        this.jointGroupSpeedLimitDegS = jointGroupSpeedLimitDegS;
+        this.connectionFactory = connectionFactory;
     }
 
     public string PortName { get; }
@@ -77,7 +181,7 @@ public sealed class SerialPortTransport : IAsciiTransport
             }
 
             cancellationToken.ThrowIfCancellationRequested();
-            var candidate = CreateSerialPort();
+            var candidate = connectionFactory(PortName, baudRate);
             var openTask = Task.Run(candidate.Open, CancellationToken.None);
             try
             {
@@ -88,7 +192,7 @@ public sealed class SerialPortTransport : IAsciiTransport
             catch (OperationCanceledException)
             {
                 _ = openTask.ContinueWith(
-                    static (_, state) => DisposeSerialPort((SerialPort)state!),
+                    static (_, state) => DisposeSerialPort((ISerialPortConnection)state!),
                     candidate,
                     CancellationToken.None,
                     TaskContinuationOptions.ExecuteSynchronously,
@@ -115,7 +219,36 @@ public sealed class SerialPortTransport : IAsciiTransport
             throw new IOException("Serial transport is not open");
         }
 
-        return await current.BaseStream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+        if (buffer.Length == 0) return 0;
+
+        byte[]? rented = null;
+        ArraySegment<byte> segment;
+        if (!MemoryMarshal.TryGetArray((ReadOnlyMemory<byte>)buffer, out segment)
+            || segment.Array is null)
+        {
+            rented = ArrayPool<byte>.Shared.Rent(buffer.Length);
+            segment = new(rented, 0, buffer.Length);
+        }
+
+        try
+        {
+            var count = await Task.Run(() => ReadUntilDataOrCancellation(
+                    current,
+                    segment.Array!,
+                    segment.Offset,
+                    buffer.Length,
+                    cancellationToken),
+                CancellationToken.None).ConfigureAwait(false);
+            if (rented is not null)
+            {
+                rented.AsMemory(0, count).CopyTo(buffer);
+            }
+            return count;
+        }
+        finally
+        {
+            if (rented is not null) ArrayPool<byte>.Shared.Return(rented);
+        }
     }
 
     public async ValueTask WriteAsync(ReadOnlyMemory<byte> payload, CancellationToken cancellationToken)
@@ -126,13 +259,16 @@ public sealed class SerialPortTransport : IAsciiTransport
             throw new IOException("Serial transport is not open");
         }
 
-        if (!ReadOnlySerialPayloadPolicy.IsAllowed(payload.Span))
+        if (!SerialPayloadPolicy.IsAllowed(payload.Span, access, jointGroupSpeedLimitDegS))
         {
-            throw new InvalidOperationException("Phase 4 serial transport rejected a non-query payload");
+            throw new InvalidOperationException("Serial payload policy rejected an untyped or unauthorized command");
         }
 
-        await current.BaseStream.WriteAsync(payload, cancellationToken).ConfigureAwait(false);
-        await current.BaseStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        var encoded = payload.ToArray();
+        await Task.Run(() => current.Write(encoded, 0, encoded.Length), CancellationToken.None)
+            .ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
     }
 
     public async ValueTask CloseAsync(CancellationToken cancellationToken)
@@ -144,7 +280,7 @@ public sealed class SerialPortTransport : IAsciiTransport
             serialPort = null;
             if (current is not null)
             {
-                DisposeSerialPort(current);
+                await Task.Run(() => DisposeSerialPort(current), CancellationToken.None).ConfigureAwait(false);
             }
         }
         finally
@@ -168,7 +304,7 @@ public sealed class SerialPortTransport : IAsciiTransport
             serialPort = null;
             if (current is not null)
             {
-                DisposeSerialPort(current);
+                await Task.Run(() => DisposeSerialPort(current), CancellationToken.None).ConfigureAwait(false);
             }
         }
         finally
@@ -178,18 +314,30 @@ public sealed class SerialPortTransport : IAsciiTransport
         }
     }
 
-    private SerialPort CreateSerialPort() => new(PortName, baudRate, Parity.None, 8, StopBits.One)
+    private static int ReadUntilDataOrCancellation(
+        ISerialPortConnection serialPort,
+        byte[] buffer,
+        int offset,
+        int count,
+        CancellationToken cancellationToken)
     {
-        Encoding = Encoding.ASCII,
-        NewLine = DummyAsciiProtocol.LineEnding,
-        Handshake = Handshake.None,
-        DtrEnable = false,
-        RtsEnable = false,
-        ReadTimeout = SerialPort.InfiniteTimeout,
-        WriteTimeout = 2_000
-    };
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                return serialPort.Read(buffer, offset, count);
+            }
+            catch (TimeoutException)
+            {
+                // A finite synchronous read timeout is intentional. System.IO.Ports
+                // BaseStream.ReadAsync can ignore cancellation indefinitely on Windows;
+                // bounded reads return ownership to the gateway at least every 100 ms.
+            }
+        }
+    }
 
-    private static void DisposeSerialPort(SerialPort serialPort)
+    private static void DisposeSerialPort(ISerialPortConnection serialPort)
     {
         try
         {
@@ -203,4 +351,39 @@ public sealed class SerialPortTransport : IAsciiTransport
             serialPort.Dispose();
         }
     }
+}
+
+internal interface ISerialPortConnection : IDisposable
+{
+    bool IsOpen { get; }
+    void Open();
+    int Read(byte[] buffer, int offset, int count);
+    void Write(byte[] buffer, int offset, int count);
+    void Close();
+}
+
+internal sealed class SystemSerialPortConnection : ISerialPortConnection
+{
+    private readonly SerialPort serialPort;
+
+    public SystemSerialPortConnection(string portName, int baudRate, int readTimeoutMilliseconds)
+    {
+        serialPort = new(portName, baudRate, Parity.None, 8, StopBits.One)
+        {
+            Encoding = Encoding.ASCII,
+            NewLine = DummyAsciiProtocol.LineEnding,
+            Handshake = Handshake.None,
+            DtrEnable = false,
+            RtsEnable = false,
+            ReadTimeout = readTimeoutMilliseconds,
+            WriteTimeout = 2_000
+        };
+    }
+
+    public bool IsOpen => serialPort.IsOpen;
+    public void Open() => serialPort.Open();
+    public int Read(byte[] buffer, int offset, int count) => serialPort.Read(buffer, offset, count);
+    public void Write(byte[] buffer, int offset, int count) => serialPort.Write(buffer, offset, count);
+    public void Close() => serialPort.Close();
+    public void Dispose() => serialPort.Dispose();
 }

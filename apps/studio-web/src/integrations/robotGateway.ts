@@ -1,28 +1,45 @@
 import type {
   CommandResult,
+  CommandAuditRecord,
+  DirectCommandRequest,
+  DirectCommandResult,
   JointGroupCommand,
   JointStateFrame,
   ProtocolFrame,
-  ReadOnlyConnectRequest,
-  ReadOnlyGatewayCapabilities,
+  RobotConnectRequest,
+  RobotGatewayCapabilitiesV1,
   RobotSessionSnapshot,
-  SerialPortDescriptor
+  SerialPortDescriptor,
+  SetModeCommand,
+  SimpleRobotCommand
 } from '@aethor/contracts';
 
 export interface RobotGatewayCapabilities {
-  source: 'showcase' | 'readonlyGateway';
+  source: 'showcase' | 'gateway';
   serialEnumeration: boolean;
   readOnlyConnection: boolean;
   hardwareCommands: boolean;
   rawCommand: boolean;
   liveTelemetry: boolean;
+  commandPolicy: 'disabled' | 'supervised' | 'engineering';
+  supportedCommands: RobotGatewayCapabilitiesV1['supportedCommands'];
+  jointGroupSpeedLimitDegS: number | null;
+  jointGroupCompletion: RobotGatewayCapabilitiesV1['jointGroupCompletion'];
+  engineeringJointSpeedMaxDegS: number | null;
+}
+
+export interface RobotGatewayTransportIncident {
+  kind: 'reconnecting' | 'closed' | 'contractViolation';
+  message: string;
 }
 
 export interface RobotGatewayTelemetryListener {
   onSession?: (snapshot: RobotSessionSnapshot) => void;
   onJointState?: (frame: JointStateFrame) => void;
   onProtocolFrame?: (frame: ProtocolFrame) => void;
-  onTransportError?: (message: string) => void;
+  onCommandResult?: (result: CommandResult) => void;
+  onTransportError?: (incident: RobotGatewayTransportIncident) => void;
+  onTransportRecovered?: () => void;
 }
 
 export type CloseGatewayTelemetry = () => Promise<void>;
@@ -30,15 +47,20 @@ export type CloseGatewayTelemetry = () => Promise<void>;
 export interface RobotGatewayV1 {
   readonly capabilities: RobotGatewayCapabilities;
   readonly unavailableReason?: string;
-  getReadOnlyCapabilities(): Promise<ReadOnlyGatewayCapabilities | null>;
+  getCapabilities(): Promise<RobotGatewayCapabilitiesV1 | null>;
   listSerialPorts(): Promise<SerialPortDescriptor[]>;
-  connectReadOnly(request: ReadOnlyConnectRequest): Promise<RobotSessionSnapshot>;
+  connect(request: RobotConnectRequest): Promise<RobotSessionSnapshot>;
   disconnect(): Promise<RobotSessionSnapshot>;
   openTelemetry(listener: RobotGatewayTelemetryListener): Promise<CloseGatewayTelemetry>;
   getSession(): Promise<RobotSessionSnapshot>;
   getJointState(): Promise<JointStateFrame>;
   getProtocolFrames(): Promise<ProtocolFrame[]>;
+  getCommandHistory(): Promise<CommandAuditRecord[]>;
+  enable(command: SimpleRobotCommand): Promise<CommandResult>;
+  stopAndDisable(command: SimpleRobotCommand): Promise<CommandResult>;
+  home(command: SimpleRobotCommand): Promise<CommandResult>;
+  reset(command: SimpleRobotCommand): Promise<CommandResult>;
+  setMode(command: SetModeCommand): Promise<CommandResult>;
   sendJointGroup(command: JointGroupCommand): Promise<CommandResult>;
-  sendRaw(commandId: string, raw: string): Promise<CommandResult>;
-  emergencyStop(commandId: string): Promise<CommandResult>;
+  sendDirectCommand(command: DirectCommandRequest): Promise<DirectCommandResult>;
 }

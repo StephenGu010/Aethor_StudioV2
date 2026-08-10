@@ -15,8 +15,7 @@
 
 - `rg` 检查不存在指向旧顶层目录的有效配置/文档链接（历史记录除外）。
 - strict typecheck、全部单元测试、生产构建通过。
-- Playwright 覆盖数字孪生、示波、终端、设备与模型，并至少在 1366×768、1920×1080、2560×1440 检查无控制台错误。
+- Playwright 覆盖控制台、示波、终端、设备与模型，并至少在 1366×768、1920×1080、2560×1440 检查无浏览器控制台错误。
 - Git 不包含 `node_modules/dist/test-results/playwright-report/coverage`。
 
 只有全部通过才把路线图阶段 0 标为 `DONE`，并生成 `docs/handoffs/phase-00.md`；否则保持 `IN PROGRESS` 并准确记录阻塞。
-

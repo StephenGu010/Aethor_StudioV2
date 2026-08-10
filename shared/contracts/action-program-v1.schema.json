@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aethor.local/contracts/action-program-v1.schema.json",
+  "title": "Aethor Studio V2 ActionProgramV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "programId",
+    "name",
+    "revision",
+    "profileId",
+    "createdAtUtc",
+    "updatedAtUtc",
+    "source",
+    "notes",
+    "waypoints"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "programId": { "type": "string", "format": "uuid" },
+    "name": { "type": "string", "minLength": 1, "maxLength": 80, "pattern": "\\S" },
+    "revision": { "type": "integer", "minimum": 1, "maximum": 2147483647 },
+    "profileId": { "const": "dummy-6dof" },
+    "createdAtUtc": { "type": "string", "format": "date-time" },
+    "updatedAtUtc": { "type": "string", "format": "date-time" },
+    "source": { "enum": ["authored", "showcaseExample"] },
+    "notes": { "type": "string", "maxLength": 2000 },
+    "waypoints": {
+      "type": "array",
+      "maxItems": 256,
+      "items": { "$ref": "#/$defs/ActionWaypointV1" }
+    }
+  },
+  "$defs": {
+    "ActionWaypointV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "waypointId",
+        "name",
+        "positionsDeg",
+        "mode",
+        "postArrivalWait",
+        "notes",
+        "source",
+        "capturedAtUtc"
+      ],
+      "properties": {
+        "waypointId": { "type": "string", "format": "uuid" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 80, "pattern": "\\S" },
+        "positionsDeg": {
+          "type": "array",
+          "minItems": 6,
+          "maxItems": 6,
+          "prefixItems": [
+            { "type": "number", "minimum": -179.91, "maximum": 179.91 },
+            { "type": "number", "minimum": -74.48, "maximum": 124.9 },
+            { "type": "number", "minimum": -93.39, "maximum": 91.67 },
+            { "type": "number", "minimum": -179.91, "maximum": 179.91 },
+            { "type": "number", "minimum": -100.84, "maximum": 100.84 },
+            { "type": "number", "minimum": -179.91, "maximum": 179.91 }
+          ],
+          "items": false
+        },
+        "mode": { "enum": [1, 2, 3] },
+        "postArrivalWait": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind"],
+              "properties": { "kind": { "const": "none" } }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "durationMs"],
+              "properties": {
+                "kind": { "const": "durationAfterConfirmed" },
+                "durationMs": { "type": "integer", "minimum": 1, "maximum": 600000 }
+              }
+            }
+          ]
+        },
+        "notes": { "type": "string", "maxLength": 500 },
+        "source": { "enum": ["manual", "measuredCapture", "showcaseExample"] },
+        "capturedAtUtc": { "type": ["string", "null"], "format": "date-time" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "source": { "const": "measuredCapture" } }, "required": ["source"] },
+          "then": { "properties": { "capturedAtUtc": { "type": "string", "format": "date-time" } } },
+          "else": { "properties": { "capturedAtUtc": { "type": "null" } } }
+        }
+      ]
+    }
+  }
+}

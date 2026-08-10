@@ -43,6 +43,10 @@ internal sealed class FakeAsciiTransport : IAsciiTransport
         FullMode = BoundedChannelFullMode.Wait
     });
     private readonly Func<string, int, IReadOnlyList<byte[]>> responseScript;
+    private readonly TaskCompletionSource writeStarted =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource writeRelease =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
     private byte[]? activeChunk;
     private int activeChunkOffset;
     private int writeCount;
@@ -65,6 +69,10 @@ internal sealed class FakeAsciiTransport : IAsciiTransport
     public string PortName => AssignedPortName;
     public bool IsOpen { get; private set; }
     public bool FailOpen { get; init; }
+    public bool IgnoreReadCancellation { get; init; }
+    public bool BlockWritesUntilClose { get; init; }
+    public bool IgnoreWriteCancellation { get; init; }
+    public Task WriteStarted => writeStarted.Task;
     public int OpenCount { get; private set; }
     public int CloseCount { get; private set; }
     public int DisposeCount { get; private set; }
@@ -94,7 +102,7 @@ internal sealed class FakeAsciiTransport : IAsciiTransport
         {
             try
             {
-                activeChunk = await inbound.Reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+                activeChunk = await inbound.Reader.ReadAsync(IgnoreReadCancellation ? CancellationToken.None : cancellationToken).ConfigureAwait(false);
                 activeChunkOffset = 0;
             }
             catch (ChannelClosedException exception) when (exception.InnerException is IOException ioException)
@@ -113,12 +121,24 @@ internal sealed class FakeAsciiTransport : IAsciiTransport
         return count;
     }
 
-    public ValueTask WriteAsync(ReadOnlyMemory<byte> payload, CancellationToken cancellationToken)
+    public async ValueTask WriteAsync(ReadOnlyMemory<byte> payload, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (!IsOpen)
         {
             throw new IOException("fake port closed");
+        }
+
+        if (BlockWritesUntilClose)
+        {
+            writeStarted.TrySetResult();
+            await writeRelease.Task
+                .WaitAsync(IgnoreWriteCancellation ? CancellationToken.None : cancellationToken)
+                .ConfigureAwait(false);
+            if (!IsOpen)
+            {
+                throw new IOException("fake port closed while writing");
+            }
         }
 
         var text = Encoding.ASCII.GetString(payload.Span);
@@ -132,7 +152,6 @@ internal sealed class FakeAsciiTransport : IAsciiTransport
             }
         }
 
-        return ValueTask.CompletedTask;
     }
 
     public ValueTask CloseAsync(CancellationToken cancellationToken)
@@ -142,10 +161,19 @@ internal sealed class FakeAsciiTransport : IAsciiTransport
         {
             CloseCount++;
             IsOpen = false;
+            writeRelease.TrySetResult();
             inbound.Writer.TryComplete();
         }
 
         return ValueTask.CompletedTask;
+    }
+
+    public void PushInbound(string value)
+    {
+        if (!inbound.Writer.TryWrite(Ascii(value)))
+        {
+            throw new InvalidOperationException("fake inbound channel is full");
+        }
     }
 
     public ValueTask DisposeAsync()
@@ -155,6 +183,7 @@ internal sealed class FakeAsciiTransport : IAsciiTransport
             disposed = true;
             DisposeCount++;
             IsOpen = false;
+            writeRelease.TrySetResult();
             inbound.Writer.TryComplete();
         }
 
@@ -164,17 +193,19 @@ internal sealed class FakeAsciiTransport : IAsciiTransport
     public void SimulateUnplug()
     {
         IsOpen = false;
+        writeRelease.TrySetResult();
         inbound.Writer.TryComplete(new IOException("fake device unplugged"));
     }
 
     public static byte[] Ascii(string value) => Encoding.ASCII.GetBytes(value);
 }
 
-internal sealed class RecordingGatewayEventSink : IReadOnlyGatewayEventSink
+internal sealed class RecordingGatewayEventSink : IRobotGatewayEventSink
 {
     public ConcurrentQueue<RobotSessionSnapshot> Sessions { get; } = new();
     public ConcurrentQueue<JointStateFrame> JointStates { get; } = new();
     public ConcurrentQueue<ProtocolFrame> ProtocolFrames { get; } = new();
+    public ConcurrentQueue<CommandResult> CommandResults { get; } = new();
 
     public ValueTask PublishSessionAsync(RobotSessionSnapshot snapshot, CancellationToken cancellationToken)
     {
@@ -191,6 +222,12 @@ internal sealed class RecordingGatewayEventSink : IReadOnlyGatewayEventSink
     public ValueTask PublishProtocolFrameAsync(ProtocolFrame frame, CancellationToken cancellationToken)
     {
         ProtocolFrames.Enqueue(frame);
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask PublishCommandResultAsync(CommandResult result, CancellationToken cancellationToken)
+    {
+        CommandResults.Enqueue(result);
         return ValueTask.CompletedTask;
     }
 }
