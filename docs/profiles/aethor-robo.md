@@ -11,7 +11,7 @@
 | 来源包 | `Layout11 EX1.zip` |
 | 来源包 SHA-256 | `DCF82D4CB7DEB05B19F40320054172ADA51213F0182DB228D7E78D171D9406C1` |
 | 来源 URDF SHA-256 | `E77E0B6E25C451B6171F1B6F03F8CE50BC185AC2CB5F7118F4E5C43DA866EC37` |
-| 规范化 URDF SHA-256 | `6E5FCA8305B70027A9473C9EABBD57AB5C88BBB454B960E5B60E3413E331E553` |
+| 规范化 URDF SHA-256 | `0EC56041289B1C0C1F5F7382D3A82B25CED17716D561BDCCA87F2195C79984CA` |
 
 来源 URDF 的 robot name 为 `Layout11 EX1`，声明 BSD，但压缩包内没有可核对的完整许可证文本。当前只能记录声明，不能扩大许可结论；正式对外交付前必须补齐来源与许可证原文。
 
@@ -46,4 +46,4 @@ Aethor_robo URDF 的 visual/collision 会引用同一组 23 个大 STL。场景�
 
 ## 并行阶段
 
-进度以 [路线图](../roadmap.md) 的 A0–A3 表为准：A0 为模型与双臂控制台；A1 等待固件/协议；A2 为只读网关；A3 为安全控制和动作编排。每个共享阶段的 handoff 都要记录对本 Profile 的影响。
+进度以 [路线图](../roadmap.md) 的 A0–A3 表为准：A0 模型与双臂控制台已完成；A1 等待固件/协议；A2 为只读网关；A3 为安全控制和动作编排。每个共享阶段的 handoff 都要记录对本 Profile 的影响。

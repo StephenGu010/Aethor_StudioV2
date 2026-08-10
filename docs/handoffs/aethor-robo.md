@@ -3,9 +3,11 @@
 ## 状态
 
 - Track：A0 模型接入与双臂控制台
-- 状态：`IN PROGRESS`
+- 状态：`DONE`
 - 日期：2026-08-10
-- 硬件访问：无；未启动网关、未打开 COM4、未发送命令
+- 硬件访问：无；本轮未新启动或访问网关，未打开 COM4、未发送命令；既有未知 COM4 会话保持原样
+- 起始提交：`e7dc9b6d706b198b04c1bfebab5b2071a92ba01a`
+- 阶段提交主题：`phase(A0): complete dual-arm model console`
 
 ## 已完成的软件事实
 
@@ -27,10 +29,11 @@
 - 参考网格改为基于完整整机世界包围盒自适应：位于模型最低点下方 6% 模型高度（8–30 cm），覆盖 2 倍 X/Z 足迹且不小于 6 m；左右臂取景不改变该参考尺度。Profile UI 统一显示 `Aethor_robo`，顶部名称单行裁切；字体栈与大小写规则已按屏幕 UI/Windows 语义收束。紧凑顶栏使用 `MOTOR / N/A` 与 `FEEDBACK / NO DATA`，完整未接入语义保留在 title，状态值不能越入相邻列。
 - Windows 包现在把 Aethor_robo NOTICE 与机器可读 `provenance.json` 集中放入 `Legal/`，package smoke 和发布候选校验器缺项即失败；完整许可条款仍缺失，因此这只关闭包内溯源断链，不解除公开分发阻塞。
 
-## 仍未完成
+## 完成证据与后续边界
 
-- A0 的 Profile 溯源门、411 项全仓库测试（contracts 91、frontend 177、gateway 68、desktop 74、legal inventory 1）、typecheck、Web/.NET Release build、三档 Playwright 63/63 和 WebGL 重复挂载资源回归已通过；当前 Web build 为 2639 modules 并复制 37 项 Profile 资源。三档 E2E 同时校验整机 Profile 切换、草稿复位、能力隔离、参考平面低于整机至少 8 cm 且覆盖 2 倍足迹、Profile 名称不越框、顶栏状态不越列、根文档不溢出以及关节滚动区/固定提示/下发区无重叠。E2E 命令会先重建当前 Web，避免旧 `dist` 冒充阶段证据。交互压力采样从优化前 24 次输入中位约 350 ms / 最大约 439 ms 降至中位约 237 ms / 最大约 281 ms；这是本机软件 GPU 的对比采样，不宣称硬件级 WCET。仍需在不混入 Phase 5–8 未完成工作的前提下形成阶段提交并同步远端，才能标记 `DONE`。
-- 三维场景已从永久帧循环改为事件驱动 `demand`：空闲后实际 frame counter 不再增长，L-J1 数值变化后立即恢复并再次收敛；相机适配、左右臂取景、阻尼、拖拽、模型加载和直接对象变更均有显式失效触发。三档聚焦空闲/恢复 3/3 与相邻相机、拖拽、重复挂载 12/12 已通过；完整回归数字以本轮最终验证为准。
+- A0 当前退出门为 contracts 93 + frontend 184 + gateway 82 + desktop 79 + legal inventory 1，共 439/439；Profile 溯源、strict TypeScript、Web 2639 modules、隔离 gateway Release 与 desktop Release build 均通过，C# 0 warning/0 error；三档 Playwright 63/63 通过。
+- 三档 E2E 同时校验整机 Profile 切换、草稿复位、能力隔离、参考平面低于整机至少 8 cm 且覆盖 2 倍足迹、Profile 名称不越框、顶栏状态不越列、根文档不溢出、关节滚动区/固定提示/下发区无重叠、23 份 geometry 共享、同源资产一次恢复、按需帧收敛与重复挂载资源释放。E2E 会先重建当前 Web，旧 `dist` 不能冒充阶段证据。
+- 交互压力采样从优化前 24 次输入中位约 350 ms / 最大约 439 ms 降至中位约 237 ms / 最大约 281 ms；这是本机软件 GPU 的对比采样，不宣称硬件级 WCET。
 - 来源压缩包只有 BSD 声明，没有完整许可证文本；正式分发前需补齐。
 - A1 被固件和规范指令集阻塞。开始 A1 前必须获得可追溯固件提交、帧格式、双臂寻址、限位/速度、反馈时序、停止和错误语义。
 - A2/A3 未开始。不得先接 Dummy 串口适配器试运行，也不得用来源 URDF 的 `0…2π` 和零 velocity 推断实机安全包络。
@@ -38,7 +41,7 @@
 ## 下一位工程师启动清单
 
 1. 阅读 `docs/product-boundaries.md`、`docs/architecture.md`、`docs/profiles/aethor-robo.md` 和本交接。
-2. 检查工作树；当前 Phase 5–8 与 A0 共享未完成改动，不得 reset 或选择性提交成虚假完成阶段。
-3. 先运行根 `pnpm profile:verify`、`pnpm test`、`pnpm build` 和 `pnpm test:e2e`；E2E 固定两个 worker 且不使用 retry。确认 `/console` 无横向溢出、模型可见、左右各七轴可编辑、零硬件网络/零命令。
-4. 若固件仍未完成，只推进模型、UI、文档或离线契约，不创建串口发送路径。
+2. 检查工作树和 A0 阶段提交；不要修改或重写已验证的来源哈希和资产映射。
+3. 开始 A1 前核对固件提交与独立协议证据；任一缺失时保持 `BLOCKED`，不创建串口发送路径。
+4. 后续共享 UI/模型优化仍须运行根 `pnpm profile:verify`、`pnpm test`、`pnpm build` 和 `pnpm test:e2e`，确认 `/console` 零硬件网络/零命令。
 5. 每个阶段 handoff 分别记录 Dummy 与 Aethor_robo 的实际影响。

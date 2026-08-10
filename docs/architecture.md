@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-仓库已经包含可运行的 React/Vite 前端、共享 TypeScript/JSON Schema 契约、Dummy 与 Aethor_robo 两个内置 Profile、Dummy 专属 .NET 10 网关，以及 Phase 8A 的 WinForms/WebView2 桌面壳。Aethor_robo 目前只进入模型与前端本地预览层，未进入网关、动作执行或硬件状态层。Phase 5 Gate B 运动未执行；Phase 6A 已实现 Dummy 离线动作编辑器，6B-S 已实现无生产接线的 C# 执行内核，6B-H 硬件接线未开始。Phase 7A 已实现 Dummy 有界实时示波/协议观测，7B 真实网关长测未开始；Phase 8B 的安装签名、DPI 与正式发布门尚未完成。当前代码统一为：
+仓库已经包含可运行的 React/Vite 前端、共享 TypeScript/JSON Schema 契约、Dummy 与 Aethor_robo 两个内置 Profile、Dummy 专属 .NET 10 网关，以及 Phase 8A 的 WinForms/WebView2 桌面壳。Aethor_robo A0 模型与双七轴本地控制台已完成，但仍只进入模型与前端本地预览层，未进入网关、动作执行或硬件状态层。Phase 5 Gate B 运动未执行；Phase 6A 已实现 Dummy 离线动作编辑器，6B-S 已实现无生产接线的 C# 执行内核，6B-H 硬件接线未开始。Phase 7A 已实现 Dummy 有界实时示波/协议观测，7B 真实网关长测未开始；Phase 8B 的安装签名、DPI 与正式发布门尚未完成。当前代码统一为：
 
 ```text
 apps/
@@ -42,7 +42,7 @@ docs/
 - `RobotScene` 是控制台页面内的二级动态分包，避免 Three.js/URDF 加载器进入页面主 chunk。WebGL 缺失、上下文丢失、URDF/mesh/映射失败均显示明确降级状态；低性能环境降低 DPR、抗锯齿和阴影成本。R3F `Canvas fallback` 会成为原生 `canvas` 的子节点，视觉隐藏时仍可能进入可访问性树，因此不承载错误语义；真实故障只由预检、外层错误边界和 `webglcontextlost` 状态负责，READY 画面不能同时暴露失败告警。
 - R3F 使用 `frameloop="demand"`：静止模型不持续占用 GPU。OrbitControls 原生 change、阻尼未收敛、相机适配、模型加载、关节差量、可见性/轴/高亮变化以及拖拽开始结束都显式 invalidate；模型 READY 的两帧门也会自行请求下一帧，不能依赖永久动画循环。场景根的只读 frame counter 用于生产 E2E 证明空闲帧收敛且交互后恢复，不参与业务状态。
 - 初次加载 Profile 时，相机根据实际模型与目标模型的联合世界包围盒、画布宽高比和透视 FOV 计算取景，不写死某一机器人尺寸；窗口尺寸变化或显式“重置相机”会重新适配。场景不使用固定距离雾化，因为它会让大于 Dummy 尺寸的模型在正确取景后仍被背景雾完全遮蔽。联合包围盒只在模型就绪、整机/分组取景变化或显式重置时遍历重算；连续关节预览只应用差量关节姿态，不在每次输入时遍历整机或自动移动相机。
-- 参考网格从完整实体/幽灵模型的世界包围盒独立计算，不跟随左右臂局部取景缩小。网格中心覆盖整机 X/Z 足迹，边长为足迹的 1.4 倍且至少 3 m，分格数限制在 24–80；Y 平面始终位于完整模型最低点下方 2–10 cm，不能穿过模型。
+- 参考网格从完整实体/幽灵模型的世界包围盒独立计算，不跟随左右臂局部取景缩小。网格中心覆盖整机 X/Z 足迹，边长为足迹的 2 倍且至少 6 m，分格数限制在 24–80；Y 平面位于完整模型最低点下方模型高度的 6%，并限制为 8–30 cm，不能穿过模型。
 - 内置 Profile 的 URDF/STL 都是同源只读静态资产。浏览器网络切换导致 status 0 / failed fetch 时，每个资源只允许一次立即重试；404、外部 URL、解析失败和第二次网络失败立即进入模型错误。该策略不适用于 REST、SignalR、串口或硬件命令。
 - Aethor_robo 的 `provenance.json` 固定来源 ZIP、原始/规范化 URDF 和 23 个源 STL→规范名称的 SHA-256 映射。`verify-provenance.mjs` 流式计算当前资产哈希，并要求 provenance、URDF 引用和磁盘 STL 集合完全一致；`test:web` 与 `build:web` 在 Vitest/Vite 前失败关闭。完整 BSD 条款仍缺失，因此哈希完整不代表获得分发授权。
 - Playwright 使用 `vite preview` 验收当前源码的生产构建；`test:e2e` 先执行 Profile 溯源与 strict TypeScript，再使用固定无网关的 Vite `e2e` mode 构建，防止本机 `.env.local` 的开发网关 URL/令牌污染零硬件请求断言。直接复用旧 `dist` 或开发配置的结果不构成阶段证据。

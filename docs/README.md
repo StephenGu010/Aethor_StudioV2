@@ -33,4 +33,4 @@
 - `NOT STARTED`：仅有规划，尚未实现。
 - `BLOCKED`：已记录外部阻塞与恢复条件。
 
-当前状态以 [阶段路线图](roadmap.md) 为准。Phase 4 已完成监督只读 COM4 验收；Phase 6B-S 无生产接线执行内核已验证，但 Phase 5 Gate B 与 Phase 6B-H 仍被运动包络和独立授权阻止。Phase 7A 有界观测软件门和 Phase 8A 桌面软件门已验证，但 7B 实机长测与 8B 正式发布门未完成，因此 Phase 5–8 均保持 `IN PROGRESS`。协议只在 `protocols/` 维护；接口 Schema 只在 `shared/contracts/` 维护，阶段提示词不复制这些定义。
+当前状态以 [阶段路线图](roadmap.md) 为准。Aethor_robo A0 模型接入与双七轴本地控制台已完成，A1 仍等待独立固件和协议证据。Dummy Phase 4 已完成监督只读 COM4 验收；Phase 6B-S 无生产接线执行内核已验证，但 Phase 5 Gate B 与 Phase 6B-H 仍被运动包络和独立授权阻止。Phase 7A 有界观测软件门和 Phase 8A 桌面软件门已验证，但 7B 实机长测与 8B 正式发布门未完成，因此 Dummy Phase 5–8 均保持 `IN PROGRESS`。协议只在 `protocols/` 维护；接口 Schema 只在 `shared/contracts/` 维护，阶段提示词不复制这些定义。

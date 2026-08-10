@@ -1,5 +1,12 @@
 # 变更记录
 
+## 2026-08-10 - Aethor_robo A0 双七轴模型控制台完成
+
+- A0 退出门已关闭：规范化整机 Profile、左右两个七轴控制组、全局 Profile 隔离、整机/左右臂取景、参考网格、关节直接预览、同源资产一次恢复、按需渲染和 3D 资源唯一释放均有当前证据；Aethor_robo 仍无网关、反馈、使能、停止或下发路径。
+- 当前回归为 contracts 93 + frontend 184 + gateway 82 + desktop 79 + legal inventory 1，共 439/439；Profile 溯源、strict TypeScript、Web 2639 modules、隔离 gateway Release 与 desktop Release build 通过，三档生产 E2E 63/63 通过。
+- 修正规范化 URDF 哈希在 Profile/NOTICE 中的文档漂移，并把架构中的参考网格参数同步为实际 2 倍足迹、最小 6 m、最低点下方 6% 且 8–30 cm 有界实现。来源几何、惯量、关节定义和 23 个 STL 未改变。
+- 本轮未新启动或访问网关，未枚举或打开 COM4、未发送硬件命令；既有未知 COM4 会话保持原样。来源包仍缺完整 BSD 条款；A1 仍因固件和独立协议证据缺失保持 `BLOCKED`，A0 完成不扩大任何硬件 capability。
+
 ## 2026-08-10 - Dummy 串口停滞恢复与 Desktop/Web 对齐（Phase 5 / 8 IN PROGRESS）
 
 - 定位 J2 不更新并非关节索引错误：Dummy `#GETJPOS` 第二字段、manifest `protocolIndex=1`、网关六轴数组和前端 J2 均一致；实际故障是无回包 `!START` 占有串口 I/O 后三查询轮询整体停止。
