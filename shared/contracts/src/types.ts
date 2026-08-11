@@ -46,8 +46,14 @@ export interface RobotJointProfile {
   displayName: string;
   urdfJointName: string;
   protocolIndex: number;
+  /** Limits in the device/protocol coordinate reported by #GETJPOS. */
   lowerDeg: number;
   upperDeg: number;
+  /** modelDeg = deviceDeg * sign + offsetDeg. Omitted means identity. */
+  modelTransform?: {
+    sign: 1 | -1;
+    offsetDeg: number;
+  };
 }
 
 export interface RobotJointGroupV1 {
@@ -184,7 +190,7 @@ export interface DirectCommandResult {
   normalizedLine: string;
   message: string;
   timestampUtc: string;
-  deviceReply?: string | undefined;
+  deviceReply?: string | null | undefined;
 }
 
 export interface CommandResult {
@@ -196,7 +202,7 @@ export interface CommandResult {
   evidence: CommandEvidence;
   message: string;
   timestampUtc: string;
-  deviceReply?: string | undefined;
+  deviceReply?: string | null | undefined;
 }
 
 export interface CommandAuditRecord {
@@ -266,9 +272,10 @@ export interface DesktopBridgeCapabilities {
   minimize: boolean;
   toggleMaximize: boolean;
   close: boolean;
+  exportDiagnostics: boolean;
 }
 
-export type DesktopBridgeAction = 'minimize' | 'toggleMaximize' | 'close' | 'beginDrag';
+export type DesktopBridgeAction = 'minimize' | 'toggleMaximize' | 'close' | 'beginDrag' | 'exportDiagnostics';
 
 export interface DesktopBootstrapV1 {
   contractVersion: '1.0';

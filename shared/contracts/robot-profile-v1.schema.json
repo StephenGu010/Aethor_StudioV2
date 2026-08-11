@@ -51,7 +51,16 @@
           "urdfJointName": { "type": "string", "minLength": 1, "maxLength": 80 },
           "protocolIndex": { "type": "integer", "minimum": 0, "maximum": 31 },
           "lowerDeg": { "type": "number", "minimum": -3600, "maximum": 3600 },
-          "upperDeg": { "type": "number", "minimum": -3600, "maximum": 3600 }
+          "upperDeg": { "type": "number", "minimum": -3600, "maximum": 3600 },
+          "modelTransform": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["sign", "offsetDeg"],
+            "properties": {
+              "sign": { "enum": [-1, 1] },
+              "offsetDeg": { "type": "number", "minimum": -3600, "maximum": 3600 }
+            }
+          }
         }
       }
     },

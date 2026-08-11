@@ -4,27 +4,28 @@
 
 ## 阅读顺序
 
-1. [阶段制工程与 Git 工作流](engineering-workflow.md)：计划、实施、验证、handoff、阶段提交和受控远端 push 的统一流程。
-2. [阶段路线图](roadmap.md)：Dummy 阶段 0–8 与 Aethor_robo 并行接入阶段的目标、交付物和验收门槛。
-3. [产品与安全边界](product-boundaries.md)：首版范围、硬件动作约束和明确排除项。
-4. [系统架构](architecture.md)：当前结构、目标结构、依赖方向和状态所有权。
-5. [Dummy ASCII v1](protocols/dummy-ascii-v1.md)：固件协议证据、允许命令和响应语义。
-6. [验收矩阵](testing/acceptance-matrix.md)：自动化、模拟串口和实机监督验收。
-7. [Phase 4 监督只读 COM4 验收](runbooks/phase-04-supervised-readonly-com4.md)：不可连接预检、现场授权、唯一连接动作、证据与清理步骤。
-8. [Phase 5 监督式 COM4 控制验收](runbooks/phase-05-supervised-control-com4.md)：状态控制门、独立运动门、四参数运动包络、失败处置和清理步骤；Gate A 已验证，Gate B 被阻止。
-9. [Phase 7B Dummy 只读长测采证](runbooks/phase-07b-readonly-soak.md)：显式现场授权、只读白名单、资源/协议采样、失败关闭和最终释放。
-10. [ActionProgram V1](../shared/contracts/action-program-v1.md)：离线动作文档、来源、保存与版本兼容边界。
-11. [阶段提示词](prompts/README.md)：可直接交给下一位工程师或 Codex 的执行任务。
-12. [交接模板](handoffs/template.md)：每阶段结束时记录真实结果、证据和剩余风险。
-13. [Phase 6 交接](handoffs/phase-06.md)：已验证的 6A 离线编辑器、6B-S 无生产接线执行内核，以及仍锁定的 6B-H 实机入口。
-14. [当前交接：Phase 7](handoffs/phase-07.md)：已验证的 7A 有界观测软件门、已就绪但尚未执行的 7B 只读采证工具。
-15. [当前交接：Phase 8](handoffs/phase-08.md)：已验证的 8A Windows 桌面软件门、仍待完成的 8B 正式发布门。
-16. [Phase 8 桌面 smoke](runbooks/phase-08-desktop-smoke.md)：便携包、WebView2、loopback 网关、DPI 与受控恢复验证。
-17. [ADR-0008 Windows 安装与数据保留](decisions/0008-windows-installer-and-user-data.md)：MSI、Major Upgrade、默认数据保留、签名与工具治理边界。
-18. [Aethor_robo 双七轴档案与进度](profiles/aethor-robo.md)：来源、规范化映射、能力边界和并行阶段状态。
-19. [Aethor_robo 当前交接](handoffs/aethor-robo.md)：下一位工程师继续模型、协议和硬件接入时的入口与禁区。
-20. [ADR-0009 Engineering 直连调试边界](decisions/0009-engineering-direct-debug-boundary.md)：开发环境受限 ASCII 调试、错误端口释放和 queued 语义。
-21. [Dummy Engineering 直连手册](runbooks/dummy-engineering-direct.md)：本机网关启动、连接、使能、关节组发送、停止与退出流程。
+1. [系统工程说明](系统工程说明.md)：目录、技术栈、Profile 切换、网关、通信、状态所有权和扩展方式的完整导读。
+2. [阶段制工程与 Git 工作流](engineering-workflow.md)：计划、实施、验证、handoff、阶段提交和受控远端 push 的统一流程。
+3. [阶段路线图](roadmap.md)：Dummy 阶段 0–8 与 Aethor_robo 并行接入阶段的目标、交付物和验收门槛。
+4. [产品与安全边界](product-boundaries.md)：首版范围、硬件动作约束和明确排除项。
+5. [系统架构](architecture.md)：当前结构、目标结构、依赖方向和状态所有权。
+6. [Dummy ASCII v1](protocols/dummy-ascii-v1.md)：固件协议证据、允许命令和响应语义。
+7. [验收矩阵](testing/acceptance-matrix.md)：自动化、模拟串口和实机监督验收。
+8. [Phase 4 监督只读 COM4 验收](runbooks/phase-04-supervised-readonly-com4.md)：不可连接预检、现场授权、唯一连接动作、证据与清理步骤。
+9. [Phase 5 监督式 COM4 控制验收](runbooks/phase-05-supervised-control-com4.md)：状态控制门、独立运动门、四参数运动包络、失败处置和清理步骤；Gate A 已验证，Gate B 被阻止。
+10. [Phase 7B Dummy 只读长测采证](runbooks/phase-07b-readonly-soak.md)：显式现场授权、只读白名单、资源/协议采样、失败关闭和最终释放。
+11. [ActionProgram V1](../shared/contracts/action-program-v1.md)：离线动作文档、来源、保存与版本兼容边界。
+12. [阶段提示词](prompts/README.md)：可直接交给下一位工程师或 Codex 的执行任务。
+13. [交接模板](handoffs/template.md)：每阶段结束时记录真实结果、证据和剩余风险。
+14. [Phase 6 交接](handoffs/phase-06.md)：已验证的 6A 离线编辑器、6B-S 无生产接线执行内核，以及仍锁定的 6B-H 实机入口。
+15. [当前交接：Phase 7](handoffs/phase-07.md)：已验证的 7A 有界观测软件门、已就绪但尚未执行的 7B 只读采证工具。
+16. [当前交接：Phase 8](handoffs/phase-08.md)：已验证的 8A Windows 桌面软件门、仍待完成的 8B 正式发布门。
+17. [Phase 8 桌面 smoke](runbooks/phase-08-desktop-smoke.md)：便携包、WebView2、loopback 网关、DPI 与受控恢复验证。
+18. [ADR-0008 Windows 安装与数据保留](decisions/0008-windows-installer-and-user-data.md)：MSI、Major Upgrade、默认数据保留、签名与工具治理边界。
+19. [Aethor_robo 双七轴档案与进度](profiles/aethor-robo.md)：来源、规范化映射、能力边界和并行阶段状态。
+20. [Aethor_robo 当前交接](handoffs/aethor-robo.md)：下一位工程师继续模型、协议和硬件接入时的入口与禁区。
+21. [ADR-0009 Engineering 直连调试边界](decisions/0009-engineering-direct-debug-boundary.md)：开发环境受限 ASCII 调试、错误端口释放和 queued 语义。
+22. [Dummy Engineering 直连手册](runbooks/dummy-engineering-direct.md)：本机网关启动、连接、使能、关节组发送、停止与退出流程。
 
 ## 状态约定
 

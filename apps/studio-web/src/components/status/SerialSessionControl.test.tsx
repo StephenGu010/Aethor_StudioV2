@@ -27,7 +27,10 @@ describe('SerialSessionControl', () => {
     fireEvent.change(screen.getByLabelText('串口'), { target: { value: 'COM4' } });
     fireEvent.click(screen.getByRole('button', { name: '连接' }));
 
-    await waitFor(() => expect(connect).toHaveBeenCalledWith({ portName: 'COM4', profileId: 'dummy-6dof' }));
+    await waitFor(() => expect(connect).toHaveBeenCalledWith(
+      { portName: 'COM4', profileId: 'dummy-6dof' },
+      expect.stringMatching(/^[0-9a-f-]{36}$/i)
+    ));
     expect(useGatewayRuntimeStore.getState()).toMatchObject({
       activePortName: 'COM4',
       session: { connectionState: 'connected', sessionId: 'session-1' }
@@ -107,7 +110,10 @@ describe('SerialSessionControl', () => {
     fireEvent.change(screen.getByLabelText('串口'), { target: { value: 'COM4' } });
     fireEvent.click(screen.getByRole('button', { name: '连接' }));
 
-    await waitFor(() => expect(connect).toHaveBeenCalledWith({ portName: 'COM4', profileId: 'dummy-6dof' }));
+    await waitFor(() => expect(connect).toHaveBeenCalledWith(
+      { portName: 'COM4', profileId: 'dummy-6dof' },
+      expect.stringMatching(/^[0-9a-f-]{36}$/i)
+    ));
     expect(useGatewayRuntimeStore.getState().session.sessionId).toBe('session-2');
   });
 

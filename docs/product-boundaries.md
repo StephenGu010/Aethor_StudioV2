@@ -35,7 +35,7 @@
 
 ## Phase 6A / 6B-S 当前边界
 
-- `ActionProgramV1` 仅接受 `dummy-6dof`、六轴 degree、模式 1–3 和最多 256 个点位；详情以 [ActionProgram V1](../shared/contracts/action-program-v1.md) 为准。
+- `ActionProgramV1` 仅接受 `dummy-6dof`、`dummy-device-joints-v1` 六轴设备角、模式 1–3 和最多 256 个点位；详情以 [ActionProgram V1](../shared/contracts/action-program-v1.md) 为准。
 - 只有 connected、profile 匹配、source measured、valid 且六轴完整的当前反馈才能采集为 `measuredCapture`；静态展示只能产生 `showcaseExample`。
 - 本机动作库只保存显式确认过的文档 revision；草稿、当前选择和预览不持久化。导出不等于安装或设备审核。
 - C# `ActionProgramRunner` 只通过 fake command port 验证逐点、停止和 checkpoint 语义；没有 DI、REST/SignalR、真实 RobotGateway adapter、串口写入或前端运行态。运行按钮固定禁用。

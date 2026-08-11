@@ -4,6 +4,7 @@ import * as Tooltip from '@radix-ui/react-tooltip';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProfilePackageValidation } from '../../domain/profilePackage';
 import * as profilePackage from '../../domain/profilePackage';
+import type { DesktopBridgeV1 } from '../../integrations/desktopBridge';
 import type { RobotGatewayV1 } from '../../integrations/robotGateway';
 import { aethorRoboProfile } from '../../profile/aethorRoboProfile';
 import { dummyProfile } from '../../profile/dummyProfile';
@@ -35,6 +36,36 @@ describe('DeviceModelPage supervised safety states', () => {
     expect(screen.getByText('14 / 14 MAPPED')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '切换到 Dummy' })).toBeEnabled();
     expect(listSerialPorts).not.toHaveBeenCalled();
+  });
+
+  it('keeps support bundle export unavailable in a browser for either profile', () => {
+    const bridge = fakeDesktopBridge(false);
+    render(<Tooltip.Provider><DeviceModelPage bridge={bridge} /></Tooltip.Provider>);
+
+    expect(screen.getByRole('button', { name: '导出桌面诊断包' })).toBeDisabled();
+    expect(screen.getByText(/需要 Windows 桌面版/)).toBeInTheDocument();
+    expect(bridge.exportDiagnostics).not.toHaveBeenCalled();
+  });
+
+  it('exports one desktop support bundle and reports the acknowledged result', async () => {
+    const bridge = fakeDesktopBridge(true);
+    render(<Tooltip.Provider><DeviceModelPage bridge={bridge} /></Tooltip.Provider>);
+
+    fireEvent.click(screen.getByRole('button', { name: '导出桌面诊断包' }));
+
+    await waitFor(() => expect(bridge.exportDiagnostics).toHaveBeenCalledOnce());
+    expect(await screen.findByText('诊断包已生成到所选位置。')).toBeInTheDocument();
+  });
+
+  it('does not report a support bundle when the native host cancels or fails', async () => {
+    const bridge = fakeDesktopBridge(true);
+    vi.mocked(bridge.exportDiagnostics).mockResolvedValue(false);
+    render(<Tooltip.Provider><DeviceModelPage bridge={bridge} /></Tooltip.Provider>);
+
+    fireEvent.click(screen.getByRole('button', { name: '导出桌面诊断包' }));
+
+    expect(await screen.findByText(/已取消或未能生成/)).toBeInTheDocument();
+    expect(screen.queryByText('诊断包已生成到所选位置。')).not.toBeInTheDocument();
   });
 
   it('keeps serial selection and every hardware action disabled without gateway config', () => {
@@ -121,7 +152,10 @@ describe('DeviceModelPage supervised safety states', () => {
     fireEvent.change(screen.getByLabelText('串口'), { target: { value: 'COM4' } });
     expect(connectButton).toBeEnabled();
     fireEvent.click(connectButton);
-    await waitFor(() => expect(connect).toHaveBeenCalledWith({ portName: 'COM4', profileId: 'dummy-6dof' }));
+    await waitFor(() => expect(connect).toHaveBeenCalledWith(
+      { portName: 'COM4', profileId: 'dummy-6dof' },
+      expect.stringMatching(/^[0-9a-f-]{36}$/i)
+    ));
     expect(useGatewayRuntimeStore.getState().activePortName).toBe('COM4');
     expect(screen.getByRole('button', { name: /使能设备/ })).toBeDisabled();
     expect(screen.getByText(/READ-ONLY GATEWAY/)).toBeInTheDocument();
@@ -402,6 +436,23 @@ function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((resolver) => { resolve = resolver; });
   return { promise, resolve };
+}
+
+function fakeDesktopBridge(available: boolean): DesktopBridgeV1 {
+  return {
+    capabilities: {
+      available,
+      minimize: available,
+      toggleMaximize: available,
+      close: available,
+      exportDiagnostics: available
+    },
+    minimize: vi.fn(async () => available),
+    toggleMaximize: vi.fn(async () => available),
+    close: vi.fn(async () => available),
+    beginDrag: vi.fn(async () => available),
+    exportDiagnostics: vi.fn(async () => available)
+  };
 }
 
 function unsupported(commandId: string, sessionId: string, commandKind: CommandResult['commandKind']): CommandResult {

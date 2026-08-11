@@ -48,9 +48,9 @@ export interface RobotGatewayV1 {
   readonly capabilities: RobotGatewayCapabilities;
   readonly unavailableReason?: string;
   getCapabilities(): Promise<RobotGatewayCapabilitiesV1 | null>;
-  listSerialPorts(): Promise<SerialPortDescriptor[]>;
-  connect(request: RobotConnectRequest): Promise<RobotSessionSnapshot>;
-  disconnect(): Promise<RobotSessionSnapshot>;
+  listSerialPorts(operationId?: string): Promise<SerialPortDescriptor[]>;
+  connect(request: RobotConnectRequest, operationId?: string): Promise<RobotSessionSnapshot>;
+  disconnect(operationId?: string): Promise<RobotSessionSnapshot>;
   openTelemetry(listener: RobotGatewayTelemetryListener): Promise<CloseGatewayTelemetry>;
   getSession(): Promise<RobotSessionSnapshot>;
   getJointState(): Promise<JointStateFrame>;

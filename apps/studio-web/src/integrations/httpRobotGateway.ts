@@ -126,7 +126,7 @@ const commandResultSchema = z.object({
   evidence: z.enum(['none', 'gatewayAccepted', 'deviceQueued', 'deviceAck', 'feedbackConfirmed']),
   message: z.string().max(500),
   timestampUtc: utcTimestampSchema,
-  deviceReply: z.string().max(4096).optional()
+  deviceReply: z.string().max(4096).nullable().optional()
 }).strict();
 const directCommandResultSchema = z.object({
   requestId: z.string().min(1).max(128),
@@ -136,7 +136,7 @@ const directCommandResultSchema = z.object({
   normalizedLine: z.string().max(255),
   message: z.string().max(500),
   timestampUtc: utcTimestampSchema,
-  deviceReply: z.string().max(4096).optional()
+  deviceReply: z.string().max(4096).nullable().optional()
 }).strict();
 const commandRequestSnapshotSchema = z.object({
   commandKind: commandKindSchema,
@@ -261,16 +261,25 @@ export class HttpRobotGateway implements RobotGatewayV1 {
     return negotiated;
   }
 
-  async listSerialPorts(): Promise<SerialPortDescriptor[]> {
-    return this.request('/api/v1/serial/ports', z.array(serialPortSchema));
+  async listSerialPorts(operationId = crypto.randomUUID()): Promise<SerialPortDescriptor[]> {
+    return this.request('/api/v1/serial/ports', z.array(serialPortSchema), {
+      headers: { 'X-Aethor-Operation': operationId }
+    });
   }
 
-  async connect(request: RobotConnectRequest): Promise<RobotSessionSnapshot> {
-    return this.request('/api/v1/session/connect', sessionSchema, { method: 'POST', body: JSON.stringify(request) });
+  async connect(request: RobotConnectRequest, operationId = crypto.randomUUID()): Promise<RobotSessionSnapshot> {
+    return this.request('/api/v1/session/connect', sessionSchema, {
+      method: 'POST',
+      body: JSON.stringify(request),
+      headers: { 'X-Aethor-Operation': operationId }
+    });
   }
 
-  async disconnect(): Promise<RobotSessionSnapshot> {
-    return this.request('/api/v1/session/disconnect', sessionSchema, { method: 'POST' });
+  async disconnect(operationId = crypto.randomUUID()): Promise<RobotSessionSnapshot> {
+    return this.request('/api/v1/session/disconnect', sessionSchema, {
+      method: 'POST',
+      headers: { 'X-Aethor-Operation': operationId }
+    });
   }
 
   async getSession(): Promise<RobotSessionSnapshot> {

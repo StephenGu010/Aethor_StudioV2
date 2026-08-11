@@ -4,7 +4,8 @@ import type {
   JointStateFrame,
   ProtocolFrame,
   RobotGatewayCapabilitiesV1,
-  RobotSessionSnapshot
+  RobotSessionSnapshot,
+  SerialPortDescriptor
 } from '@aethor/contracts';
 import { create } from 'zustand';
 import { reconcileCommandSafetyState, reduceCommandSafetyState } from '../domain/commandSafety';
@@ -13,6 +14,8 @@ import { useRobotSessionStore } from './useRobotSessionStore';
 import { useTelemetryHistoryStore } from './useTelemetryHistoryStore';
 
 export type CommandAuditStatus = 'unavailable' | 'loading' | 'ready' | 'error';
+export type SerialPortCatalogStatus = 'idle' | 'loading' | 'ready' | 'error';
+export type SerialSessionOperationStatus = 'idle' | 'connecting' | 'disconnecting' | 'error';
 
 interface GatewayRuntimeState {
   capabilities: RobotGatewayCapabilitiesV1 | null;
@@ -27,6 +30,13 @@ interface GatewayRuntimeState {
   confirmedStopTimestampUtc: string | null;
   transportWarning: string | null;
   activePortName: string | null;
+  serialPorts: SerialPortDescriptor[];
+  serialPortCatalogStatus: SerialPortCatalogStatus;
+  serialPortCatalogError: string | null;
+  serialPortCatalogUpdatedAtUtc: string | null;
+  selectedPortName: string;
+  serialSessionOperationStatus: SerialSessionOperationStatus;
+  serialSessionOperationError: string | null;
   setCapabilities: (capabilities: RobotGatewayCapabilitiesV1 | null) => void;
   setSession: (session: RobotSessionSnapshot) => void;
   setJointState: (jointState: JointStateFrame) => void;
@@ -38,6 +48,13 @@ interface GatewayRuntimeState {
   setLastCommandResult: (result: CommandResult | null) => void;
   setTransportWarning: (warning: string | null) => void;
   setActivePortName: (portName: string | null) => void;
+  beginSerialPortRefresh: () => void;
+  completeSerialPortRefresh: (ports: SerialPortDescriptor[], updatedAtUtc: string) => void;
+  failSerialPortRefresh: (message: string) => void;
+  setSelectedPortName: (portName: string) => void;
+  beginSerialSessionOperation: (status: Exclude<SerialSessionOperationStatus, 'idle' | 'error'>) => void;
+  completeSerialSessionOperation: () => void;
+  failSerialSessionOperation: (message: string) => void;
   markTelemetryDegraded: (warning: string) => void;
   completeDisconnect: (session: RobotSessionSnapshot, jointState?: JointStateFrame) => void;
   resetRuntime: () => void;
@@ -55,7 +72,14 @@ const initialRuntime = () => ({
   latchedSafetyResult: null,
   confirmedStopTimestampUtc: null,
   transportWarning: null,
-  activePortName: null
+  activePortName: null,
+  serialPorts: [] as SerialPortDescriptor[],
+  serialPortCatalogStatus: 'idle' as SerialPortCatalogStatus,
+  serialPortCatalogError: null,
+  serialPortCatalogUpdatedAtUtc: null,
+  selectedPortName: '',
+  serialSessionOperationStatus: 'idle' as SerialSessionOperationStatus,
+  serialSessionOperationError: null
 });
 
 export const useGatewayRuntimeStore = create<GatewayRuntimeState>((set) => ({
@@ -120,6 +144,37 @@ export const useGatewayRuntimeStore = create<GatewayRuntimeState>((set) => ({
   )),
   setTransportWarning: (transportWarning) => set({ transportWarning }),
   setActivePortName: (activePortName) => set({ activePortName }),
+  beginSerialPortRefresh: () => set({
+    serialPortCatalogStatus: 'loading',
+    serialPortCatalogError: null
+  }),
+  completeSerialPortRefresh: (serialPorts, serialPortCatalogUpdatedAtUtc) => set((state) => ({
+    serialPorts,
+    serialPortCatalogStatus: 'ready',
+    serialPortCatalogError: null,
+    serialPortCatalogUpdatedAtUtc,
+    selectedPortName: state.selectedPortName
+      && serialPorts.some((port) => port.portName === state.selectedPortName)
+        ? state.selectedPortName
+        : ''
+  })),
+  failSerialPortRefresh: (serialPortCatalogError) => set({
+    serialPortCatalogStatus: 'error',
+    serialPortCatalogError
+  }),
+  setSelectedPortName: (selectedPortName) => set({ selectedPortName }),
+  beginSerialSessionOperation: (serialSessionOperationStatus) => set({
+    serialSessionOperationStatus,
+    serialSessionOperationError: null
+  }),
+  completeSerialSessionOperation: () => set({
+    serialSessionOperationStatus: 'idle',
+    serialSessionOperationError: null
+  }),
+  failSerialSessionOperation: (serialSessionOperationError) => set({
+    serialSessionOperationStatus: 'error',
+    serialSessionOperationError
+  }),
   markTelemetryDegraded: (transportWarning) => set((state) => ({
     transportWarning,
     session: state.session.source === 'measured' && state.session.validity === 'valid'

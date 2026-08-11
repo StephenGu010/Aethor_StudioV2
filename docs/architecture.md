@@ -39,7 +39,7 @@ docs/
 - Aethor_robo 模型点选、旋转环、滑块、数值框和键盘微调共享独立的 14 轴本地目标草稿；它不读取 `showcaseJointFrame`、Dummy runtime store 或 `RobotGatewayV1`。左右臂 tab 只切换当前七轴控制组，六个车轮保持模型专用。
 - 相机取景是 ConsolePage 的临时 UI 状态，只有 `all / left-arm / right-arm` 三种值。`RobotScene` 根据 Profile `jointGroups` 计算整机或目标机械臂的联合实际/幽灵包围盒；切换取景会同步当前七轴控制组，但不修改任何关节值。未知组回退整机，显式重置只重算当前取景。
 - 实体模型与目标模型是独立对象树；同一 STL 的 visual/collision 节点在单次模型生命周期内合并并发加载并共享一份只读 geometry，实体节点共享同一材质，目标树继续共享 geometry、但拥有可独立高亮的幽灵 material。失败条目立即从缓存移除，使有界网络重试启动一次真实新加载；缓存不跨模型生命周期持有资源。卸载时按唯一引用释放 geometry、material 和 texture，OrbitControls、renderer 所有权与活动拖动会话进入可见诊断计数。
-- `RobotScene` 是控制台页面内的二级动态分包，避免 Three.js/URDF 加载器进入页面主 chunk。WebGL 缺失、上下文丢失、URDF/mesh/映射失败均显示明确降级状态；低性能环境降低 DPR、抗锯齿和阴影成本。R3F `Canvas fallback` 会成为原生 `canvas` 的子节点，视觉隐藏时仍可能进入可访问性树，因此不承载错误语义；真实故障只由预检、外层错误边界和 `webglcontextlost` 状态负责，READY 画面不能同时暴露失败告警。
+- `RobotScene` 是控制台页面内的二级动态分包，避免 Three.js/URDF 加载器进入页面主 chunk。WebGL 缺失、上下文丢失、URDF/mesh/映射失败均显示明确降级状态；R3F 使用 demand render，画布尺寸或设备 DPR 变化时按实际 CSS 面积重算栅格密度：balanced 上限 1.75/350 万 framebuffer pixels，constrained 上限 1.2/180 万，最低 DPR 1；布局尺寸与相机不变。低性能环境同时关闭抗锯齿和阴影。R3F `Canvas fallback` 会成为原生 `canvas` 的子节点，视觉隐藏时仍可能进入可访问性树，因此不承载错误语义；真实故障只由预检、外层错误边界和 `webglcontextlost` 状态负责，READY 画面不能同时暴露失败告警。
 - R3F 使用 `frameloop="demand"`：静止模型不持续占用 GPU。OrbitControls 原生 change、阻尼未收敛、相机适配、模型加载、关节差量、可见性/轴/高亮变化以及拖拽开始结束都显式 invalidate；模型 READY 的两帧门也会自行请求下一帧，不能依赖永久动画循环。场景根的只读 frame counter 用于生产 E2E 证明空闲帧收敛且交互后恢复，不参与业务状态。
 - 初次加载 Profile 时，相机根据实际模型与目标模型的联合世界包围盒、画布宽高比和透视 FOV 计算取景，不写死某一机器人尺寸；窗口尺寸变化或显式“重置相机”会重新适配。场景不使用固定距离雾化，因为它会让大于 Dummy 尺寸的模型在正确取景后仍被背景雾完全遮蔽。联合包围盒只在模型就绪、整机/分组取景变化或显式重置时遍历重算；连续关节预览只应用差量关节姿态，不在每次输入时遍历整机或自动移动相机。
 - 参考网格从完整实体/幽灵模型的世界包围盒独立计算，不跟随左右臂局部取景缩小。网格中心覆盖整机 X/Z 足迹，边长为足迹的 2 倍且至少 6 m，分格数限制在 24–80；Y 平面位于完整模型最低点下方模型高度的 6%，并限制为 8–30 cm，不能穿过模型。
@@ -77,17 +77,19 @@ studio-desktop ──> DesktopBridgeV1 ──> studio-web
 - 父进程对自有子网关的 readiness 与 host shutdown 请求使用 `UseProxy=false`、禁止重定向的专用 HTTP 客户端；本机代理配置不得参与 loopback 生命周期，也不要求用户维护 `NO_PROXY`。
 - WebView2 将包内 `web` 目录映射为 `http://localhost`，在应用脚本前注入冻结的 `DesktopBootstrapV1`。外部导航、新窗口、权限和拖放全部拒绝。
 - 桌面启动顺序固定为：离线探测 WebView2 Stable Runtime → 创建 WebView 环境与控件 → 启动命令关闭的机器人网关 → 注入 bootstrap 并导航。Beta/Dev/Canary、空/非法版本或 loader 异常均在网关启动前失败关闭；原生前置条件面板明确不自动下载组件，并提供仍经过宿主安全门的关闭入口。
-- `DesktopBridgeV1` 仅允许四种窗口动作，未知版本/字段/来源失败关闭。前端同动作在途请求合并，普通动作 2 秒、关闭 10 秒超时；浏览器 fallback 始终禁用。
+- `DesktopBridgeV1` 仅允许最小化、最大化切换、关闭、标题栏拖动和诊断包导出。未知版本、字段或来源失败关闭；前端对同类在途请求做合并。窗口动作 2 秒、关闭 10 秒、诊断导出 120 秒超时，浏览器 fallback 始终禁用且不会伪造成功。
 - 正常关闭先调用带令牌的 `POST /api/v1/host/shutdown`。网关只有在无串口会话或设备明确 disabled 时返回 202；否则宿主保留窗口并显示失败。Windows Job Object 为父进程异常退出提供子进程回收兜底。
 - 桌面进程显式为 Per-Monitor V2 DPI aware；窗口尺寸由 WinForms DPI 缩放，自定义无边框命中区按当前显示器 DPI 计算。网关意外退出会阻断整个工作区并保持设备状态为未知，不自动重启或重连；进程消失不能替代宿主 202 安全关闭确认，普通关闭保持拒绝。恢复策略以原子单向状态固定 `Normal → GatewayFailed → OfflineRestartRequested`，正常态不能越权请求离线重启，并发点击也只接受一次；随后才结束当前桌面 session 并用 `--offline` 创建新进程。
-- `%LOCALAPPDATA%\Aethor Studio V2` 是日志、WebView2 数据、RobotProfiles、CrashDumps、Temp、布局版本和窗口位置的唯一应用数据根。日志有界轮转并遮蔽令牌；窗口恢复被限制到当前显示器可见区域。
-- 自包含包生成逐文件 SHA-256 manifest，且输出目录必须位于仓库根内；默认拒绝脏工作树。`-AllowDirty` 只产出 `development-dirty`，干净但未签名的包为 `development-unsigned`。.NET publish 使用本次 staging 内的隔离 artifacts path，并在 manifest 前删除中间目录，旧运行进程锁定常规 `bin/Release` 时不会污染或阻断新包。包内 `Legal/` 集中携带两个 Profile 的 NOTICE/provenance；同时从安装后的 pnpm 生产图与实际发布 `.deps.json` 生成 SPDX 2.3 组件清单、完整性摘要和包内法律文本，不把开发依赖或推测组件写入发布事实。package smoke 校验组件/PURL/关系/附件与 manifest 闭包；release-candidate verifier 对任何缺失的包内许可正文失败关闭。四项签名输入必须同时存在，脏工作树禁止签名；七个自有 PE 文件在 manifest 哈希前完成 Authenticode、精确 Publisher 和 RFC 3161 时间戳复验后才可标记 `release-candidate`。正式发布目标为 MSI，二进制与应用数据根分离；第三方许可缺口处置、安装工具治理、真实证书签名、升级/卸载演练与完整四档 DPI/多显示器目视矩阵仍属于 8B。
+- `%LOCALAPPDATA%\Aethor Studio V2` 是日志、WebView2 数据、RobotProfiles、CrashDumps、Temp、布局版本和窗口位置的唯一应用数据根。日志有界轮转并遮蔽令牌；窗口恢复被限制到当前显示器可见区域。用户可通过桌面桥导出原子写入的诊断 ZIP，包内仅包含说明、清单和最多五份已脱敏桌面轮转日志，不复制终端记录、命令审计、目标草稿或模型资源。
+- Desktop 在页面导航成功后通过 WebView2 CDP 每 60 秒采集一次低频 `AETHOR_PERF_V1`。采样 single-flight，失败即停止；除可信本地路由映射出的 `console/scope/terminal/devices/actions/unknown` 工作区、有界 JS heap、Documents/Nodes、Layout/RecalcStyle 次数和可见性外，还从 `CoreWebView2Environment.GetProcessInfos()` 的官方快照聚合可观测 WebView2 进程数/工作集，并附桌面宿主、可空网关及三者受跟踪合计。工作区分类器拒绝非 `http://localhost`、非默认端口、非打包入口和未知路由，日志不保存完整 URL、查询参数或片段。进程句柄读取后立即释放，PID、路径、命令行、CDP 原文、脚本、DOM 内容和设备数据均不落盘。WebView2 快照明确排除 crashpad，因此合计不冒充 OS 完整进程树；该采样用于资源趋势诊断，不是 Phase 7B 真实长测或内存合格阈值。
+- 自包含包生成逐文件 SHA-256 manifest，且输出目录必须位于仓库根内；默认拒绝脏工作树。`-AllowDirty` 只产出 `development-dirty`，干净但未签名的包为 `development-unsigned`。.NET publish 使用本次短名 `.stg-*` staging 内的隔离 `.dn` artifacts path，并在 manifest 前删除中间目录；短内部路径避免自定义输出根把 Windows 清理路径推过 260 字符，旧运行进程锁定常规 `bin/Release` 时也不会污染或阻断新包。包内 `Legal/` 集中携带两个 Profile 的 NOTICE/provenance 与独立模型再分发状态；同时从安装后的 pnpm 生产图与实际发布 `.deps.json` 生成 SPDX 2.3 组件清单、完整性摘要和包内法律文本，不把开发依赖或推测组件写入发布事实。包根遗漏正文的依赖只能由精确 ecosystem/name/version、包完整性、不可变上游 revision/blob 和双 SHA-256 绑定的仓库输入补齐；版本、声明、路径、哈希或来源变化均失败关闭，打包期间不下载法律材料。package smoke 校验组件/PURL/关系/附件、双模型状态与 manifest 闭包；`releaseReady` 同时要求依赖正文和模型再分发条款完整。四项签名输入必须同时存在，脏工作树禁止签名；七个自有 PE 文件在 manifest 哈希前完成 Authenticode、精确 Publisher 和 RFC 3161 时间戳复验后才可标记 `release-candidate`。正式发布目标为 MSI，二进制与应用数据根分离；当前依赖正文门已关闭，但两个模型条款、安装工具治理、真实证书签名、升级/卸载演练与完整四档 DPI/多显示器目视矩阵仍属于 8B。
+- 构建验证输出与运行输出分离：根 `pnpm test` / `pnpm build` 的网关和桌面步骤经 `dotnet-isolated.ps1` 创建唯一 `artifacts/validation/dotnet/.run-(gw|dt)-<pid>-<uuid>`，拒绝调用方覆盖 artifacts path，并在成功或失败后只删除自己拥有的精确子目录。常规 `bin/Release` 仅由显式 `gateway:build` / `desktop:build` 持久化，供运行手册消费；验证脚本不得终止进程、打开串口或发送硬件命令。
 
 ## 运行时状态所有权
 
 | 状态 | 所有者 | 生命周期 |
 |---|---|---|
-| 当前 Profile | `useActiveRobotProfileStore` | 当前前端应用会话；合法值写入版本化 `sessionStorage`，应用重启回到默认 Profile；切换时清空隐藏目标草稿、Dummy runtime 与遥测历史 |
+| 当前 Profile | `useActiveRobotProfileStore` | 当前前端应用会话；浏览器模式恢复版本化 `sessionStorage`，带 Dummy child gateway 的 Desktop 新会话强制从 `Dummy` 启动，使唯一 coordinator 能立即只读枚举端口；切换时清空隐藏目标草稿、Dummy runtime 与遥测历史 |
 | 当前人工选择/已连接端口 | 顶栏或设备页 → studio-web runtime store；串口句柄仍由 C# `RobotGateway` 所有 | 当前 Dummy session；只在显式连接后记录，完成断开即清空；端口列表可重新枚举 |
 | 连接、使能、模式、最新反馈 | C# `RobotGateway` | 当前唯一设备会话 |
 | 命令在途、幂等、安全联锁与有界审计 | C# `RobotGateway` | 当前设备会话；未知结果锁存至成功停止或新 session |
@@ -105,7 +107,7 @@ studio-desktop ──> DesktopBridgeV1 ──> studio-web
 
 反馈与目标草稿必须独立，不同 Profile 的草稿也必须独立。拖动滑块或 3D 关节只修改当前 Profile 草稿和幽灵模型，不得改写实际反馈、另一个 Profile 的草稿或自动向硬件发送。Dummy 完成断开后，前端以一个原子 runtime 复位清空连接/协议/命令/遥测临时态，将实体与幽灵模型恢复到 Profile 软件启动姿态并重置相机；已保存动作程序、布局和显示偏好保留。软件启动姿态不声明物理 HOME 或安全位置。
 
-Dummy 建立新硬件 session 后，协调器只接受 profile、DOF、source 和 validity 均合法的首个实测帧做一次目标基准对齐；若操作者先编辑目标则取消待对齐。后续实测帧只更新实体反馈，不覆盖幽灵目标，也不构成物理零位或关节方向验收。
+Dummy 建立新硬件 session 后，协调器只接受 profile、DOF、source 和 validity 均合法的首个实测帧做一次目标基准对齐；若操作者先编辑目标则取消待对齐。`#GETJPOS` 设备角贯穿反馈、目标、动作点位、误差与网关命令，Profile 的 `modelTransform` 只在 Three.js/URDF 边界换算；Dummy J3 为 `model=device-90°`，其余五轴为恒等。后续实测帧只更新实体反馈，不覆盖幽灵目标，也不构成物理零位或关节方向验收。
 
 从 Dummy 切换到 Aethor_robo 前，Dummy 必须处于 `offline`、无安全联锁且已确认去使能；连接中、重连中、状态未知或电机未确认 disabled 时切换失败关闭。Profile 切换不是断开或停止命令，也不能替代安全清理。
 
@@ -119,12 +121,14 @@ Dummy 的 `RobotGatewayV1` 有两个实现，相关页面不直接依赖 HTTP、
 - `HttpRobotGateway`：仅接受 loopback URL 和 32–256 字符令牌；REST 负责能力、枚举、人工连接/断开、结构化命令、Development-only engineering direct 和权威快照，SignalR 负责 session、关节帧、协议帧和结构化命令终态通知。
 - engineering direct 不是浏览器串口旁路：C# 继续独占 transport、规范化单行 ASCII、执行白名单/限位/状态/互斥/超时校验，并把真实 TX/RX 写入协议证据。直发六轴结果只区分队列接收与失败，不进入结构化“到位完成”语义。
 - C# API 使用 `ListenLocalhost`，`/api/v1` 与 `/hubs/robot-v1` 校验同一 opaque session token。Development token 不能用于非 Development 环境。
-- `RobotGateway` 独占 transport、轮询与命令仲裁。结构化命令与 engineering direct 共用唯一在途所有权；停止并去使能可取消 direct 后有界抢占。命令默认关闭；supervised 只接受 desktop token；没有 raw 端点。HOME/RESET 因固件阻塞风险不进入生产 supported capabilities；关节组只有在速度、到位容差、连续稳定窗口和总超时同时配置时才声明，并由网关持有实测到位判定，避免 Phase 6 用固定延时猜测完成。
+- `RobotGateway` 独占 transport、轮询与命令仲裁。连接后的首轮在同一串口门内取得关节、模式和使能，之后 `#GETJPOS` 默认按 50 ms 快节拍读取，模式/使能按 500 ms 慢节拍刷新；任何超时都会降为 stale 并要求下一次完整状态恢复。两种节拍仍由唯一 `serialIoGate` 串行执行，不并发读串口。固件自身已有独立通信任务和 CAN 回调，运动期间反馈不更新的根因是位置控制分支未周期触发电机角采集，不是主机缺少第二条异步串口。结构化命令与 engineering direct 共用唯一在途所有权；停止并去使能可取消 direct 后有界抢占。命令默认关闭；supervised 只接受 desktop token；没有 raw 端点。HOME/RESET 因固件阻塞风险不进入生产 supported capabilities；关节组只有在速度、到位容差、连续稳定窗口和总超时同时配置时才声明，并由网关持有实测到位判定，避免 Phase 6 用固定延时猜测完成。
 - SignalR 事件队列只承担有界通知，不拥有串口或权威状态。每次 sink 发布有独立超时；超时即停止该事件泵并记录 `events.publish.timeout`，不继续生成悬挂发布。dispose 先完成命令/轮询与 transport 释放，再给事件队列有界排空窗口；不响应取消的 sink 不能阻塞串口释放或宿主无限退出。
 - REST session/joint state 和命令历史是 Dummy 硬件路径的权威值；命令审计保存规范化请求、请求指纹、最多 32 条实际成功写入 transport 的 payload 和截断标志。AppShell 协调器独占初始权威状态恢复，页面挂载不再重复写入 capabilities/session。SignalR `commandResult` 或 session identity 改变会触发 REST 审计重取；只有恢复状态为 `ready` 才允许普通硬件命令，失败时只读遥测继续但仅保留停止去使能。SignalR 重连、关闭或契约错误会立即保留最后实测值并降为 `stale`；重连事件本身不清除降级，必须重新取得 REST capabilities/session/joint/protocol 快照。契约错误触发合并限流的 REST 恢复，重连中等待 `onreconnected`，最终关闭则保持降级直至重新建立实时会话。恢复窗口内到达的实时 valid 帧仍按 stale 接收。Dummy 相关页面继续保留最后实测姿态并标记 `MEASURED STALE`；Aethor_robo 控制台始终保持 `MODEL ONLY`，不会把该状态解释为本机反馈。全局告警跨路由持续存在，普通 Dummy 控制保持锁定。前端将“最近命令结果”与安全联锁镜像分离，手动刷新也会从历史重建联锁；空白、陈旧或截断历史不会清除已知联锁，只有时间不早于联锁的 `stopAndDisable completed` 证据可清除。前端仅保存当前 session 最多 128 条展示副本，设备页可刷新并导出 JSON。容量 128 的 SignalR 事件队列拥塞时丢弃最旧通知，容量 256 的协议历史仅用于补充诊断，不能替代命令审计。
-- 串口打开后先显示 `connected + stale`，完整有效查询循环后才是 `valid`；连续三次协议查询超时、拔线或 I/O 错误进入 `faulted` 并释放 transport，不自动重连。Windows adapter 使用短同步读窗口检查取消，避免 `BaseStream.ReadAsync` 在驱动无回包时永久占有串口；硬件命令获取串口所有权使用 `CommandTimeout` 有界等待，STOP 未取得所有权时返回未确认并锁存联锁，普通命令在零写入前超时则拒绝。
+- 串口成功打开后先显示 `connected + stale`，完整有效查询循环后才是 `valid`；普通打开失败会释放临时 transport、保留关联错误并直接恢复 `offline`，不会生成需要人工释放的 faulted 会话或阻塞桌面关闭。打开阶段另有默认 5 秒、宿主可在 `100–30000 ms` 内配置的总超时；超时或调用方取消会立即触发候选连接 dispose、记录 `serial.open.timeout/cancelled`，并隔离本 Gateway 进程的后续打开尝试，要求重启后再连，防止不响应取消的原生 `SerialPort.Open()` 工作项重复累积。成功打开后的连续三次协议查询超时、拔线或 I/O 错误才进入 `faulted` 并释放 transport，不自动重连。Windows adapter 使用短同步读窗口检查取消，避免 `BaseStream.ReadAsync` 在驱动无回包时永久占有串口；硬件命令获取串口所有权使用 `CommandTimeout` 有界等待，STOP 未取得所有权时返回未确认并锁存联锁，普通命令在零写入前超时则拒绝。
 
-浏览器开发模式只有在 `VITE_AETHOR_GATEWAY_URL` 和 `VITE_AETHOR_GATEWAY_SESSION_TOKEN` 同时有效时才创建 `HttpRobotGateway`；否则显式回退为 `BACKEND ABSENT`。桌面模式优先使用宿主注入的 loopback URL 与短期令牌，不读取构建时生产秘密。
+浏览器开发模式只有在 `VITE_AETHOR_GATEWAY_URL` 和 `VITE_AETHOR_GATEWAY_SESSION_TOKEN` 同时有效时才创建 `HttpRobotGateway`；否则显式回退为 `BACKEND ABSENT`。有效 Desktop bootstrap（包括显式 `gateway=null`）是唯一权威配置，不能被 `.env.local` 或构建变量覆盖；production/e2e bundle 强制清空两项 Vite 网关值，Windows 打包还会扫描并拒绝开发 URL 或令牌进入产物。
+
+串口目录与会话动作属于临时运行态，由 `useGatewayRuntimeStore` 唯一持有。顶部入口和设备页通过 `refreshSerialPortCatalog` 合并同一 gateway 上的并发枚举；显式连接/断开通过 `serialSessionOperations` 合并相同意图并拒绝冲突意图，两个入口不能各自拥有第二套 busy 状态或直接发起物理会话请求。UUID `operationId` 贯穿前端 `AETHOR_PROBE_V1` 与网关：目录使用 Event 1006/1007/1002，会话使用 Event 1008/1009/1010；只记录终态、耗时、数量/连接状态和失败分类，不记录令牌、端口身份或请求正文。完整约定见 [诊断与日志探针](runbooks/diagnostics.md)。
 
 ## 动作文档与执行边界
 
@@ -138,7 +142,7 @@ Dummy 的 `RobotGatewayV1` 有两个实现，相关页面不直接依赖 HTTP、
 
 - URDF、mesh 和配置包导入必须拒绝路径穿越、Windows 大小写/保留名冲突、外部 URL、重复关节、DOF 不匹配、缺失资源和非法限位。前端 ZIP 预览先以中央目录元数据实施 250 MiB 压缩/解包、2,048 文件、1 MiB manifest、8 MiB URDF 和 64 条诊断边界，再只异步解压 manifest 与目标 URDF；STL 不在校验阶段展开。选择替代文件或页面卸载会取消旧任务，旧结果不得覆盖新选择。
 - Three.js 场景切换/卸载时释放 geometry、material、texture、controls 和 renderer 资源。
-- 串口断开、帧解析失败、反馈过期或查询超时均进入可见降级/故障状态，不能回退成“成功”。轮询取消、手动断开、打开失败、进程退出和 dispose 都收束到唯一 transport 释放路径；adapter 用 100 ms 同步读窗口实现可观察取消，断开仍先关闭句柄，再等待任务终态并 dispose。完成断开后清空当前会话证据和联锁，下一次连接不得继承旧协议帧、命令记录或关节序号。
+- 串口断开、帧解析失败、反馈过期或查询超时均进入可见降级/故障状态，不能回退成“成功”。轮询取消、手动断开、打开失败、进程退出和 dispose 都收束到唯一 transport 释放路径；adapter 用 100 ms 同步读窗口实现可观察取消，断开仍先关闭句柄，再等待任务终态并 dispose。打开阶段的候选连接尚未成为 active transport，因此取消时由独立后台清理观察原生 Open 结果；Gateway 同时禁止同进程重试，进程退出是无法中断驱动调用的最终回收边界。完成断开后清空当前会话证据和联锁，下一次连接不得继承旧协议帧、命令记录或关节序号。
 - 外部事件 sink 不属于机器人资源所有权链。其超时只影响实时通知并产生诊断；不得反向延长 transport 生命周期，也不得把未发布的 SignalR 通知解释为设备状态变化。客户端继续以 REST 快照和命令历史恢复。
 - 软件急停不能替代物理急停；只有后端明确确认去使能后，UI 才能显示完成。
 - 结构化命令若丢失 HTTP 响应，前端不能假设请求未到达后端；本地生成 `unconfirmed + transportError` 并锁定普通命令，直到成功停止或新 session/权威审计恢复完成。

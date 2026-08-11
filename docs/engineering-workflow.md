@@ -83,6 +83,8 @@ git rev-parse HEAD
 git rev-parse '@{upstream}'
 ```
 
+根 `pnpm test` 与 `pnpm build` 的 .NET 步骤使用唯一的 `artifacts/validation/dotnet/.run-*` 验证输出并自动清理，不依赖也不覆盖供运行中网关/桌面使用的常规 Release 目录。不要为了通过回归而终止未知串口会话。只有运行手册明确需要持久 Release 产物时，才单独执行 `pnpm gateway:build` 或 `pnpm desktop:build`。
+
 ## Handoff 最小内容
 
 每阶段使用 `docs/handoffs/template.md`，至少记录：状态、日期、实施者、分支、开始基线、最终提交主题、目标与排除项、真实完成项、变更路径、验证证据、硬件操作、风险和下一阶段启动清单。

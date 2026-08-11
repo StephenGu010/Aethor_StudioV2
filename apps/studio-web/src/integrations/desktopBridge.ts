@@ -12,6 +12,7 @@ export interface DesktopBridgeV1 {
   toggleMaximize(): Promise<boolean>;
   close(): Promise<boolean>;
   beginDrag(): Promise<boolean>;
+  exportDiagnostics(): Promise<boolean>;
 }
 
 interface DesktopEnvironment {
@@ -23,7 +24,8 @@ interface DesktopEnvironment {
 }
 
 const capabilitiesSchema = z.object({
-  available: z.boolean(), minimize: z.boolean(), toggleMaximize: z.boolean(), close: z.boolean()
+  available: z.boolean(), minimize: z.boolean(), toggleMaximize: z.boolean(), close: z.boolean(),
+  exportDiagnostics: z.boolean()
 }).strict();
 const bootstrapSchema = z.object({
   contractVersion: z.literal('1.0'),
@@ -41,11 +43,14 @@ const responseSchema = z.object({
 }).strict();
 
 export const unavailableDesktopBridge: DesktopBridgeV1 = {
-  capabilities: { available: false, minimize: false, toggleMaximize: false, close: false },
+  capabilities: {
+    available: false, minimize: false, toggleMaximize: false, close: false, exportDiagnostics: false
+  },
   minimize: async () => false,
   toggleMaximize: async () => false,
   close: async () => false,
-  beginDrag: async () => false
+  beginDrag: async () => false,
+  exportDiagnostics: async () => false
 };
 
 export function readDesktopBootstrap(
@@ -78,6 +83,7 @@ class WebViewDesktopBridge implements DesktopBridgeV1 {
   toggleMaximize() { return this.invoke('toggleMaximize', this.capabilities.toggleMaximize); }
   close() { return this.invoke('close', this.capabilities.close, 10_000); }
   beginDrag() { return this.invoke('beginDrag', this.capabilities.available); }
+  exportDiagnostics() { return this.invoke('exportDiagnostics', this.capabilities.exportDiagnostics, 120_000); }
 
   private invoke(action: DesktopBridgeAction, supported: boolean, timeoutMs = 2_000) {
     if (!supported) return Promise.resolve(false);

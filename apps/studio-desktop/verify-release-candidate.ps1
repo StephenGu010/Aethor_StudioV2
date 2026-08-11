@@ -154,6 +154,7 @@ if ($null -ne $manifest) {
         'Legal/dummy-6dof-NOTICE.md',
         'Legal/aethor-robo-dual-7dof-NOTICE.md',
         'Legal/aethor-robo-dual-7dof-provenance.json',
+        'Legal/MODEL-REDISTRIBUTION-STATUS.json',
         'Legal/THIRD-PARTY-INVENTORY.spdx.json',
         'Legal/THIRD-PARTY-SUMMARY.json',
         'Legal/THIRD-PARTY-NOTICES.md',
@@ -187,7 +188,7 @@ if ($null -ne $manifest) {
         if ([string]$spdx.spdxVersion -ne 'SPDX-2.3' -or
             [string]$spdx.dataLicense -ne 'CC0-1.0' -or
             [string]$spdx.SPDXID -ne 'SPDXRef-DOCUMENT' -or
-            [string]$thirdPartySummary.schemaVersion -ne 'aethor.third-party-inventory-summary.v1') {
+            [string]$thirdPartySummary.schemaVersion -ne 'aethor.third-party-inventory-summary.v2') {
             Add-ReleaseIssue -Code 'third-party-inventory-schema' -Detail 'The package does not contain the supported SPDX 2.3 inventory and summary schemas.'
         }
         if ([string]$thirdPartySummary.productVersion -ne [string]$manifest.version -or
@@ -244,14 +245,26 @@ if ($null -ne $manifest) {
         }
 
         $missingLicenseTexts = @($thirdPartySummary.missingLicenseTexts)
-        $calculatedReleaseReady = $missingLicenseTexts.Count -eq 0
+        $calculatedDependencyReady = $missingLicenseTexts.Count -eq 0
+        $incompleteModelRedistributions = @($thirdPartySummary.incompleteModelRedistributions)
+        $calculatedModelReady = $incompleteModelRedistributions.Count -eq 0
+        $calculatedReleaseReady = $calculatedDependencyReady -and $calculatedModelReady
         if ($missingLicenseTexts.Count -ne [int]$thirdPartySummary.missingLicenseTextCount -or
+            $incompleteModelRedistributions.Count -ne [int]$thirdPartySummary.incompleteModelRedistributionCount -or
+            [bool]$thirdPartySummary.dependencyLicenseTextReady -ne $calculatedDependencyReady -or
+            [bool]$thirdPartySummary.modelRedistributionReady -ne $calculatedModelReady -or
             [bool]$thirdPartySummary.releaseReady -ne $calculatedReleaseReady) {
-            Add-ReleaseIssue -Code 'third-party-summary-inconsistent' -Detail 'The third-party summary license-gap count and release-ready flag do not agree.'
+            Add-ReleaseIssue -Code 'third-party-summary-inconsistent' -Detail 'The dependency/model legal gap counts and release-ready flags do not agree.'
         }
-        elseif (!$calculatedReleaseReady) {
+        else {
+          if (!$calculatedDependencyReady) {
             $missingNames = @($missingLicenseTexts | ForEach-Object { "$($_.name)@$($_.version)" }) -join ', '
-            Add-ReleaseIssue -Code 'third-party-license-incomplete' -Detail "Package-local license text is unresolved for $($missingLicenseTexts.Count) component(s): $missingNames"
+            Add-ReleaseIssue -Code 'third-party-license-incomplete' -Detail "Dependency license text is unresolved for $($missingLicenseTexts.Count) component(s): $missingNames"
+          }
+          if (!$calculatedModelReady) {
+            $missingModels = @($incompleteModelRedistributions | ForEach-Object { [string]$_.profileId }) -join ', '
+            Add-ReleaseIssue -Code 'model-redistribution-incomplete' -Detail "Redistribution terms are unresolved for $($incompleteModelRedistributions.Count) model profile(s): $missingModels"
+          }
         }
 
         $legalArtifactPaths = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
@@ -268,6 +281,94 @@ if ($null -ne $manifest) {
         }
         if (!$legalArtifactPaths.Contains('Legal/ThirdParty/NPM-LICENSE-TEXTS.md')) {
             Add-ReleaseIssue -Code 'legal-asset-missing' -Detail 'The npm production license-text bundle is absent from the third-party summary.'
+        }
+
+        $curatedKeys = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+        $curatedLicenseSources = @($thirdPartySummary.curatedLicenseSources)
+        if ($curatedLicenseSources.Count -ne [int]$thirdPartySummary.curatedLicenseSourceCount) {
+            Add-ReleaseIssue -Code 'curated-license-inconsistent' -Detail 'The curated license source count is inconsistent.'
+        }
+        foreach ($source in $curatedLicenseSources) {
+            $key = "$([string]$source.ecosystem):$([string]$source.name)@$([string]$source.version)"
+            $artifact = ([string]$source.artifact).Replace('\', '/')
+            $candidate = Test-PackageChildPath -RelativePath $artifact
+            if (!$curatedKeys.Add($key) -or
+                !$legalArtifactPaths.Contains($artifact) -or
+                $null -eq $candidate -or
+                !(Test-Path -LiteralPath $candidate -PathType Leaf)) {
+                Add-ReleaseIssue -Code 'curated-license-inconsistent' -Detail "Curated license identity or artifact is invalid: $key"
+                continue
+            }
+            $actualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $candidate).Hash.ToLowerInvariant()
+            if ($actualHash -ne ([string]$source.textSha256).ToLowerInvariant() -or
+                [string]$source.upstream.revision -notmatch '^[a-f0-9]{40}$' -or
+                [string]$source.upstream.blobSha -notmatch '^[a-f0-9]{40}$' -or
+                [string]$source.upstream.contentSha256 -notmatch '^[a-f0-9]{64}$' -or
+                [string]::IsNullOrWhiteSpace([string]$source.packageEvidence.integrity)) {
+                Add-ReleaseIssue -Code 'curated-license-inconsistent' -Detail "Curated license provenance is incomplete or changed: $key"
+            }
+        }
+
+        $modelArtifactPaths = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+        foreach ($relativePathValue in @($thirdPartySummary.modelLegalArtifacts)) {
+            $relativePath = ([string]$relativePathValue).Replace('\', '/')
+            $candidate = Test-PackageChildPath -RelativePath $relativePath
+            if (!$relativePath.StartsWith('Legal/', [StringComparison]::Ordinal) -or
+                !$modelArtifactPaths.Add($relativePath) -or
+                $null -eq $candidate -or
+                !(Test-Path -LiteralPath $candidate -PathType Leaf) -or
+                !$manifestPaths.Contains($relativePath)) {
+                Add-ReleaseIssue -Code 'model-legal-asset-missing' -Detail "Model legal artifact is unsafe, duplicated, or absent: $relativePath"
+            }
+        }
+        foreach ($requiredModelArtifact in @(
+            'Legal/MODEL-REDISTRIBUTION-STATUS.json',
+            'Legal/dummy-6dof-NOTICE.md',
+            'Legal/aethor-robo-dual-7dof-NOTICE.md',
+            'Legal/aethor-robo-dual-7dof-provenance.json')) {
+            if (!$modelArtifactPaths.Contains($requiredModelArtifact)) {
+                Add-ReleaseIssue -Code 'model-legal-asset-missing' -Detail "Required model legal artifact is absent from the summary: $requiredModelArtifact"
+            }
+        }
+        $modelProfileIds = @($thirdPartySummary.modelRedistributionStatuses | ForEach-Object { [string]$_.profileId } | Sort-Object)
+        if (($modelProfileIds -join ',') -ne 'aethor-robo-dual-7dof,dummy-6dof') {
+            Add-ReleaseIssue -Code 'model-redistribution-inconsistent' -Detail 'The model redistribution gate does not cover exactly the two built-in profiles.'
+        }
+        $modelStatusPath = Test-PackageChildPath -RelativePath 'Legal/MODEL-REDISTRIBUTION-STATUS.json'
+        if ($null -ne $modelStatusPath -and (Test-Path -LiteralPath $modelStatusPath -PathType Leaf)) {
+            try {
+                $modelStatus = Get-Content -Raw -Encoding UTF8 -LiteralPath $modelStatusPath | ConvertFrom-Json
+                if ([string]$modelStatus.schemaVersion -ne 'aethor.model-redistribution-status.v1') {
+                    Add-ReleaseIssue -Code 'model-redistribution-inconsistent' -Detail 'The packaged model redistribution status schema is unsupported.'
+                }
+                foreach ($profile in @($modelStatus.profiles)) {
+                    $summaryProfiles = @($thirdPartySummary.modelRedistributionStatuses | Where-Object {
+                        [string]$_.profileId -eq [string]$profile.profileId
+                    })
+                    if ($summaryProfiles.Count -ne 1 -or
+                        [string]$summaryProfiles[0].declaredLicense -ne [string]$profile.declaredLicense -or
+                        [bool]$summaryProfiles[0].redistributionTermsComplete -ne [bool]$profile.redistributionTermsComplete -or
+                        [string]$summaryProfiles[0].unresolvedReason -ne [string]$profile.unresolvedReason) {
+                        Add-ReleaseIssue -Code 'model-redistribution-inconsistent' -Detail "Packaged model status and legal summary disagree: $([string]$profile.profileId)"
+                        continue
+                    }
+                    foreach ($evidence in @($summaryProfiles[0].evidence)) {
+                        $artifact = ([string]$evidence.packagedPath).Replace('\', '/')
+                        $candidate = Test-PackageChildPath -RelativePath $artifact
+                        if (!$modelArtifactPaths.Contains($artifact) -or $null -eq $candidate -or !(Test-Path -LiteralPath $candidate -PathType Leaf)) {
+                            Add-ReleaseIssue -Code 'model-legal-asset-missing' -Detail "Model evidence is missing: $artifact"
+                            continue
+                        }
+                        $actualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $candidate).Hash.ToLowerInvariant()
+                        if ($actualHash -ne ([string]$evidence.sourceSha256).ToLowerInvariant()) {
+                            Add-ReleaseIssue -Code 'model-redistribution-inconsistent' -Detail "Model evidence hash does not match its source record: $artifact"
+                        }
+                    }
+                }
+            }
+            catch {
+                Add-ReleaseIssue -Code 'model-redistribution-inconsistent' -Detail 'The packaged model redistribution status is not valid JSON.'
+            }
         }
     }
 }

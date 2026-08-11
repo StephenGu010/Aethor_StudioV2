@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using AethorStudioV2.Application;
+using AethorStudioV2.Api;
 using AethorStudioV2.Domain;
 
 namespace AethorStudioV2.Tests;
@@ -61,7 +63,7 @@ public sealed class RobotGatewayReadOnlyTests
     }
 
     [Fact]
-    public async Task OccupiedPortBecomesFaultedAndReleasesTheFailedTransport()
+    public async Task OccupiedPortReturnsOfflineAndReleasesTheFailedTransport()
     {
         var occupied = new FakeAsciiTransport((_, _) => []) { FailOpen = true };
         var diagnostics = new RecordingGatewayDiagnostics();
@@ -69,9 +71,60 @@ public sealed class RobotGatewayReadOnlyTests
 
         await Assert.ThrowsAsync<GatewayDependencyException>(() =>
             gateway.ConnectAsync(new("COM4", GatewayContractV1.DummyProfileId), CancellationToken.None));
-        Assert.Equal(ConnectionState.Faulted, gateway.GetSession().ConnectionState);
+        var session = gateway.GetSession();
+        Assert.Equal(ConnectionState.Offline, session.ConnectionState);
+        Assert.Equal("offline", session.SessionId);
+        Assert.Equal(MotorState.Unknown, session.MotorState);
+        Assert.Equal(Validity.Unavailable, session.Validity);
+        Assert.True(GatewayHostShutdownPolicy.CanShutdown(session));
         Assert.Equal(1, occupied.DisposeCount);
         Assert.Contains(diagnostics.Events, item => item.EventName == "serial.open.failed");
+    }
+
+    [Fact]
+    public async Task TimedOutOpenReturnsOfflineAndQuarantinesRetriesUntilGatewayRestart()
+    {
+        var blocked = new FakeAsciiTransport((_, _) => []) { BlockOpenUntilCancelled = true };
+        var diagnostics = new RecordingGatewayDiagnostics();
+        var factory = new FakeAsciiTransportFactory(_ => blocked);
+        var options = FastOptions() with { SerialOpenTimeout = TimeSpan.FromMilliseconds(100) };
+        await using var gateway = CreateGateway(factory, diagnostics: diagnostics, options: options);
+        var elapsed = Stopwatch.StartNew();
+
+        var exception = await Assert.ThrowsAsync<GatewayDependencyException>(() =>
+            gateway.ConnectAsync(new("COM4", GatewayContractV1.DummyProfileId), CancellationToken.None));
+        elapsed.Stop();
+
+        Assert.Contains("restart", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.True(elapsed.Elapsed < TimeSpan.FromSeconds(1), $"Open timeout took {elapsed.Elapsed}");
+        Assert.Equal(ConnectionState.Offline, gateway.GetSession().ConnectionState);
+        Assert.True(GatewayHostShutdownPolicy.CanShutdown(gateway.GetSession()));
+        Assert.Equal(1, blocked.DisposeCount);
+        Assert.Contains(diagnostics.Events, item => item.EventName == "serial.open.timeout");
+
+        await Assert.ThrowsAsync<GatewayConflictException>(() =>
+            gateway.ConnectAsync(new("COM4", GatewayContractV1.DummyProfileId), CancellationToken.None));
+        Assert.Single(factory.Transports);
+    }
+
+    [Fact]
+    public async Task CancelledOpenReturnsOfflineAndQuarantinesRetriesUntilGatewayRestart()
+    {
+        var blocked = new FakeAsciiTransport((_, _) => []) { BlockOpenUntilCancelled = true };
+        var diagnostics = new RecordingGatewayDiagnostics();
+        var factory = new FakeAsciiTransportFactory(_ => blocked);
+        await using var gateway = CreateGateway(factory, diagnostics: diagnostics);
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            gateway.ConnectAsync(new("COM4", GatewayContractV1.DummyProfileId), cancellation.Token));
+
+        Assert.Equal(ConnectionState.Offline, gateway.GetSession().ConnectionState);
+        Assert.Equal(1, blocked.DisposeCount);
+        Assert.Contains(diagnostics.Events, item => item.EventName == "serial.open.cancelled");
+        await Assert.ThrowsAsync<GatewayConflictException>(() =>
+            gateway.ConnectAsync(new("COM4", GatewayContractV1.DummyProfileId), CancellationToken.None));
+        Assert.Single(factory.Transports);
     }
 
     [Fact]
@@ -178,6 +231,38 @@ public sealed class RobotGatewayReadOnlyTests
 
         Assert.Equal(-42.25, gateway.GetJointState().PositionsDeg[1]);
         Assert.Equal(DataSource.Measured, gateway.GetJointState().Source);
+    }
+
+    [Fact]
+    public async Task JointThreeFeedbackUsesProtocolIndexTwoAndPollsFasterThanSlowStatus()
+    {
+        var jointPollCount = 0;
+        var transport = new FakeAsciiTransport((query, _) => query switch
+        {
+            "#GETJPOS" => [FakeAsciiTransport.Ascii($"ok 10 20 {Interlocked.Increment(ref jointPollCount)} 40 50 60\n")],
+            "#GETMODE" => [FakeAsciiTransport.Ascii("ok 2 INT_POINT\n")],
+            "#GETENABLE" => [FakeAsciiTransport.Ascii("ok 0\n")],
+            _ => []
+        });
+        var options = FastOptions() with
+        {
+            JointPollInterval = TimeSpan.FromMilliseconds(50),
+            StatusPollInterval = TimeSpan.FromMilliseconds(500)
+        };
+        await using var gateway = CreateGateway(new FakeAsciiTransportFactory(_ => transport), options: options);
+
+        await gateway.ConnectAsync(new("COM4", GatewayContractV1.DummyProfileId), CancellationToken.None);
+        await TestWait.UntilAsync(() => gateway.GetJointState().PositionsDeg[2] >= 5);
+
+        var jointState = gateway.GetJointState();
+        Assert.Equal(10, jointState.PositionsDeg[0]);
+        Assert.Equal(20, jointState.PositionsDeg[1]);
+        Assert.True(jointState.PositionsDeg[2] >= 5);
+        Assert.Equal(40, jointState.PositionsDeg[3]);
+        Assert.True(transport.Writes.Count(line => line == "#GETJPOS")
+            > transport.Writes.Count(line => line == "#GETMODE"));
+        Assert.True(transport.Writes.Count(line => line == "#GETJPOS")
+            > transport.Writes.Count(line => line == "#GETENABLE"));
     }
 
     [Fact]
@@ -316,6 +401,8 @@ public sealed class RobotGatewayReadOnlyTests
 
     private static RobotGatewayOptions FastOptions() => new()
     {
+        JointPollInterval = TimeSpan.FromMilliseconds(50),
+        StatusPollInterval = TimeSpan.FromMilliseconds(50),
         PollInterval = TimeSpan.FromMilliseconds(50),
         QueryTimeout = TimeSpan.FromMilliseconds(50),
         ConsecutiveTimeoutLimit = 3,

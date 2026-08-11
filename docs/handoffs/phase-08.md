@@ -2,7 +2,7 @@
 
 ## 当前结论
 
-Phase 8A Windows 桌面软件门已实现并验证。Phase 8B 又完成了 Per-Monitor V2 运行时契约、代理无关的 loopback 生命周期、受控网关崩溃恢复、第三方生产依赖/SPDX 清单，以及发布签名的失败关闭流水线：崩溃后原生面板阻断工作区，不自动重启/重连；真实点击恢复按钮只启动唯一离线桌面，不创建网关。便携包只有在干净工作树、第三方法律摘要 `releaseReady=true`、七个自有 PE 文件签名、发布者和可信时间戳全部复验后才可能通过候选校验。当前 92 个组件中 6 个缺少包内许可正文，候选发布保持阻断。安装格式与数据保留已由 ADR-0008 锁定为 MSI + 独立 `%LOCALAPPDATA%` 数据根，但法律缺口处置、真实 Publisher/证书签名、安装器工具治理、四档 DPI 目视、升级/卸载和监督硬件回归尚未完成，因此 Phase 8 仍为 `IN PROGRESS`，不得创建 `phase-08-final.md` 或阶段完成提交。
+Phase 8A Windows 桌面软件门已实现并验证。Phase 8B 又完成了 Per-Monitor V2 运行时契约、代理无关的 loopback 生命周期、受控网关崩溃恢复、第三方生产依赖/SPDX 清单、精确版本许可正文闭包、双模型法律独立门，以及发布签名的失败关闭流水线。92 个生产组件已有 0 个依赖正文缺口，6 个需额外取得的权威正文已按版本与 SHA-256 锁定；两个模型再分发条款仍未完成，因此摘要继续 `releaseReady=false`。最新增量修复 packaged Web 错连开发 5127 的 bootstrap 优先级缺陷，并建立共享 single-flight 串口目录、连接/断开 owner 和跨前端/网关 operationId 探针。安装器、模型法律处置、真实 Publisher/证书签名、四档 DPI 目视、升级/卸载和监督硬件回归尚未完成，因此 Phase 8 仍为 `IN PROGRESS`，不得创建 `phase-08-final.md` 或阶段完成提交。
 
 ## 交付物
 
@@ -21,15 +21,19 @@ Phase 8A Windows 桌面软件门已实现并验证。Phase 8B 又完成了 Per-M
 - `docs/decisions/0007-desktop-process-and-bridge-boundary.md`：所有权与安全决策。
 - `docs/decisions/0008-windows-installer-and-user-data.md`：MSI、Major Upgrade、数据保留、签名与工具治理边界。
 - `docs/runbooks/phase-08-desktop-smoke.md`：构建、运行、诊断与清理入口。
+- `docs/runbooks/diagnostics.md`：Desktop/Web/Gateway 结构化探针、字段、安全边界和定位步骤。
 
 ## 关键设计
 
 - 父进程持有窗口、一次性令牌、网关进程和应用数据路径；C# 网关仍持有唯一机器人 session 与 transport。
 - WebView2 在 `http://localhost` 虚拟主机中加载包内页面，启动脚本在应用代码前注入冻结的 `DesktopBootstrapV1`。
 - WebView2 只允许 Stable Runtime；探测和环境创建位于网关启动之前，失败时不下载、不启动网关，并保留原生安全关闭入口。
-- 前端 bridge 只允许四种窗口动作；同动作在途请求合并。非关闭动作 2 秒超时，关闭动作 10 秒超时，以覆盖网关最多 8 秒的安全退出。
+- 前端 bridge 只允许四种窗口动作和诊断包导出；同类在途请求合并。普通窗口动作 2 秒、关闭 10 秒、诊断导出 120 秒超时。浏览器不声明这些原生能力，也不模拟成功。
 - 正常关闭调用认证的 `POST /api/v1/host/shutdown`。离线或明确 disabled 才接受；无法确认时失败关闭。
 - 无参数桌面继续启动 Production/disabled 网关；`--engineering` 是显式 Development 本机调试模式，仍不自动打开串口，也不改变 release smoke 必须验证 disabled/offline 的要求。
+- Desktop bootstrap（包括 `gateway=null`）覆盖所有 Vite 开发变量；production/e2e bundle 清空固定 URL/令牌，打包再扫描失败关闭。顶部与设备页共享串口目录，只有一个在途枚举 owner。
+- `X-Aethor-Operation` 把前端目录/会话探针与网关 Event 1006/1007/1002、1008/1009/1010 关联；只记录耗时、结果数、连接终态和失败分类，不记录令牌、端口身份、关节目标或协议 payload。
+- 顶栏与设备页的 connect/disconnect 使用同一 single-flight owner；相同意图合并、冲突意图失败关闭。Windows 包内部 staging 使用短名 `.stg-*` / `.dn`，避免自定义输出根造成 260+ 字符清理路径。
 - readiness 与 host shutdown 使用 proxy-free、redirect-free 的专用 loopback HTTP 客户端，不继承操作者的代理路径。
 - 发布构建默认拒绝脏工作树；`-AllowDirty` 只生成 `development-dirty`，干净未签名构建只能生成 `development-unsigned`。四项签名输入缺一即在输出变更前失败；脏工作树禁止签名。七个自有文件签名并复验发布者/时间戳后才生成 `release-candidate`，随后才计算 manifest 哈希。
 - 同一版本和 Runtime 的构建持有输出目录文件锁；并发构建在修改现有包前失败。最终提升使用目标已存在即失败的目录移动，避免 PowerShell 把暂存目录嵌套进已有包。包 smoke 同时拒绝重复/逃逸路径、长度或哈希不符、未声明文件和文件数不一致。
@@ -75,6 +79,24 @@ Phase 8A Windows 桌面软件门已实现并验证。Phase 8B 又完成了 Per-M
 - 当前包重新执行实际 96 DPI 采证：`PerMonitorV2=true`，1600×940 窗口完整位于 1920×1032 工作区，`gatewayProcessCount=0`。这只覆盖 100% 缩放；125/150/200% 与真实多显示器仍未验证。
 - Desktop/Web 对齐增量加入显式 engineering 启动参数、同源圆角应用图标和工程快捷方式脚本；desktop Debug/Release 79/79 通过。隔离 publish 在旧进程仍锁定常规 Release 目录时成功生成 689 文件/688 manifest 的 `development-dirty` 包，55 个 `web/` 文件来自当前 2639-module production build；disabled 与显式 engineering 两种 offline smoke 都校验 92 个组件、6 个缺失许可正文、shutdown 202、进程退出、零串口与零硬件命令。只读 release verifier 仍以 12 项资格问题按预期拒绝该开发包。桌面 `Aethor Studio V2.lnk` 已创建并指向该包的 `--engineering`，但尚未启动；旧未知 COM4 会话的精确清理和工程桌面实启仍等待物理安全确认，因此本项不写成 Phase 8 完成证据。
 
+## 增量验证（2026-08-11）
+
+- 桌面日志证明失败请求命中了固定 `127.0.0.1:5127`，而同次壳拥有的 child gateway 为随机 `64050`；根因是 `createRobotGateway` 让 `.env.local` 优先于 Desktop bootstrap。没有通过放宽 origin/header 绕过。
+- 串口目录 single-flight 与 bootstrap 权威性针对性前端 40/40 通过；strict TypeScript、production Web 和隔离 gateway Release build 通过。production `dist` 扫描 17 个脚本/HTML/CSS，对开发 URL/本机令牌命中 0。
+- 实际桌面启动日志又证明 child gateway 已在随机 `56904` 就绪但前端零请求；根因是 Desktop 新会话默认 Aethor_robo，Dummy coordinator 未挂载。现在带 Dummy gateway 的 Desktop 强制从 `Dummy` 启动并立即只读枚举，浏览器展示模式仍保留自己的 Profile 恢复；硬件调试启动也不再先加载体量更大的双七轴场景。
+- Desktop 新增严格 `Runtime.consoleAPICalled → web.probe` 入口；普通 console、扩展字段、非法 UUID/终态和超界数值均不落盘。实际工程桌面启动已得到前端/网关相同 operationId、`ResultCount=2`、零 Web 错误和零 `serial.opened`。同机新 Dummy 启动进程树工作集约 763 MiB；此前默认加载 Aethor_robo 的已知进程约 1.34 GiB，该单机观察用于定位优化方向，不替代正式性能基准。
+- 首次 `pnpm test` 在 contracts 93 与 frontend 193 通过后，被旧网关 PID 25204 锁定常规 `bin/Release`；未强杀未知会话。根 build/test 随后统一改用唯一的仓库内 `.run-*` artifacts path，严格验证删除目标且拒绝调用方覆盖。PID 25204、当前桌面及 child gateway 保持运行时，完整 `pnpm test` 与 `pnpm build` 均通过，隔离目录残留为 0。
+- 3D 新增按实际画布面积的自适应 DPR：balanced ≤1.75/350 万像素、constrained ≤1.2/180 万像素、最低 1；三档 E2E 直接读取 `data-render-dpr` 和画布范围，继续覆盖空闲帧收敛、资源释放与零硬件流量。
+- Desktop 新增 60 秒 single-flight 性能样本，CDP 只提取有界 JS heap、DOM/layout 计数。初版附加值只有 WinForms 宿主工作集，无法解释 WebView2 主体占用；现改为从 `CoreWebView2Environment.GetProcessInfos()` 按唯一 PID 聚合可观测 WebView2 进程数/工作集，并附宿主、可空网关和三者受跟踪合计。样本还从可信本地入口把当前路由归一化为 `console/scope/terminal/devices/actions/unknown`；非可信来源和未知路由只得到 `unknown`，完整 URL、查询参数和片段不落盘。所有句柄读取后释放，PID/路径/命令行、原始 CDP、页面和设备内容同样不落盘；官方快照排除 crashpad，合计不冒充完整 OS 进程树。
+- 旧包实测控制台切换终端后 WebView2 工作集从 585.7 MiB 降为连续 505.9–507.4 MiB；三次短周期往返保持 5 个进程，控制台约 656.7–666.1 MiB、终端约 575.8–587.7 MiB。浏览器三次往返始终恢复为控制台 433 个实时元素/1 Canvas/276396 缓冲像素和终端 895 个实时元素/0 Canvas。新包首个加载后控制台样本为 `workspace=console`、JS heap 9.3/10.5 MiB、1080 nodes、WebView2 596.3 MiB；切到终端后的样本为 `workspace=terminal`。这些证据证明资源归属和字段链，不是 Phase 7B 长测阈值。
+- 性能探针与串口目录增量当时的整仓回归为 contracts 93 + frontend 197 + gateway 83 + desktop 110 + legal inventory 6，共 489/489；2643-module production Web 与两个隔离 .NET Release build 通过，0 warning/0 error。标准 697 文件开发包已重建并通过 disabled/engineering 两种离线 smoke，新工程桌面也已从该包启动；三档生产 E2E 63/63 仍对应同源且未改动的 Web。自动化验证只读枚举 COM1/COM4。随后操作者显式连接 COM4，但旧网关占用使 `Open()` 在取得句柄前返回 AccessDenied；日志无 `serial.opened` 和硬件命令。
+- 重建 `development-dirty` 包为 697 个实际文件/696 项 manifest。disabled 与 engineering offline smoke 均校验 serial OPTIONS、只读枚举 COM1/COM4、不支持 Profile connect 的 400/operationId 关联且无 `serial.opened`、92 个第三方组件、6 个锁定正文、0 个依赖正文缺口、2 个模型条款缺口、shutdown 202、进程退出、`serialPortOpened=false / hardwareCommandSent=false`。
+- 操作者的占用端口连接失败暴露出独立生命周期缺陷：临时 transport 已释放，但 session 被留在 `faulted + motor unknown`，宿主 shutdown 连续拒绝，桌面随后被外部结束。修复后从未取得句柄的打开失败恢复 `offline`，错误证据仍保留；成功打开后的 faulted 会话和物理状态未知退出门没有放宽。旧 5127 gateway 仍在运行且未被强制终止。
+- 修复后的 697 文件标准包再次通过 disabled/engineering offline smoke。另以工程版启动但不连接串口，正常关闭后桌面、自有 Gateway 和 WebView2 根进程均退出；随后重新打开的最终工程会话只完成两次串口目录读取，均返回 2 个端口，运行段 `serial.opened=0`、session connect=0、硬件命令=0、Web error/exception=0。旧 PID 25204/5127 未受影响；由于没有再次操作 COM4，这条记录不冒充真实占用端口失败路径复验。
+- 串口打开阶段新增默认 5000 ms 总超时与 `serial.open.timeout/cancelled` 诊断；候选连接在超时/取消时主动 dispose，session 回到 offline，并禁止同 Gateway 重试直至进程重启。当前整仓为 494/494，2643-module Web 与两个隔离 Release build 0 warning/0 error。697/696 文件包已再次重建并通过 disabled/engineering offline smoke；最终工程版从新包启动，只读取得 2 个端口且无串口打开、连接请求、命令或 Web 错误。真实驱动停滞仍未在 COM4 注入。
+- 设备页新增桌面诊断包导出。宿主只打包 `README.txt`、`manifest.json` 和最多五份有界桌面日志，导出时再次遮蔽令牌及用户目录，排除终端/协议历史、命令审计、关节目标和模型资源；写盘采用同目录临时文件与最终原子移动，取消或失败不留半成品。浏览器入口明确不可用。
+- 该增量后的整仓回归为 contracts 93 + frontend 201 + gateway 88 + desktop 118 + legal inventory 6，共 506/506；2643-module production Web、两个隔离 .NET Release build 和三档生产 E2E 63/63 通过。重建开发包为 697 个实际文件/696 项 manifest，disabled/engineering offline smoke 均通过；本次只枚举到 COM1，session offline、shutdown 202、进程退出，未打开串口或发送命令。原生文件对话框尚未做人工目视验收，因此 Phase 8B 仍未完成。
+
 实际运行发现并修复两类跨层问题：
 
 1. bridge 单例在 class 初始化前创建，生产 WebView2 路径触发 `TypeError: ... is not a constructor`；已调整初始化顺序并增加 bootstrap-before-import 回归测试。
@@ -90,10 +112,11 @@ Phase 8A Windows 桌面软件门已实现并验证。Phase 8B 又完成了 Per-M
 - 2026-08-09 的崩溃注入只终止 `commandPolicy=disabled` 且 session offline 的当前包子网关；没有自动恢复网关或串口。当时 Windows 锁屏，因此界面恢复按钮未验证。
 - 2026-08-09 再次启动同一 `development-dirty` 离线包尝试恢复按钮验收时，Windows 仍只返回锁屏界面；按自动化安全规则未输入、未解锁。随后仅终止精确包根下的桌面 PID 与子网关 PID，复核两者为 0；没有串口或硬件命令。
 - 2026-08-10 在解锁桌面复验时发现本机 `HTTP_PROXY/HTTPS_PROXY` 存在而无 `NO_PROXY`，默认 `HttpClient` 使三个已监听候选均健康检查超时。监督器改为 proxy-free loopback client 后，单个候选取得 200 并稳定；终止精确子 PID 后 5 秒内无新网关，原生阻断面板可见。真实点击恢复按钮后旧桌面退出，只启动一个携带 `--offline --web-root` 的新桌面，网关为 0；正常清理后桌面/API 均为 0。未打开 COM4、未发送硬件命令。
+- 2026-08-11 新包 smoke 只调用 OS 串口目录并返回 COM1/COM4，明确保持端口未打开和硬件命令为零。旧 5127 进程状态未知，未以任务管理器/强杀掩盖；新桌面使用自有随机 loopback，不再向它发请求。
 
 ## Phase 8B 待办
 
-1. 为 6 个缺少包内正文的组件取得与锁定版本对应的权威许可文本或书面法律处置，并补齐两个模型的再分发条款；只有摘要变为 `releaseReady=true` 才继续正式候选。
+1. 完成两个模型的再分发条款审核；依赖正文已闭包，但只有模型门也完成、摘要变为 `releaseReady=true` 才继续正式候选。
 2. 按 ADR-0008 关闭 MSI 工具治理、Publisher/证书与 WebView2 离线 Runtime 决策；实现安装、修复、升级、降级拒绝和卸载，默认保留用户数据。
 3. 由发布负责人提供真实 Publisher、代码签名证书和 RFC 3161 服务，执行已实现的签名/复验门；从两个不同三段版本的干净提交生成候选。
 4. 在 Windows 100/125/150/200% DPI 与真实多显示器上验证标题栏命中、字体、窗口恢复和五工作区。

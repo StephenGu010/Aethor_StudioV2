@@ -36,11 +36,13 @@ function bridge(available: boolean): DesktopBridgeV1 {
       available,
       minimize: available,
       toggleMaximize: available,
-      close: available
+      close: available,
+      exportDiagnostics: available
     },
     minimize: vi.fn(async () => available),
     toggleMaximize: vi.fn(async () => available),
     close: vi.fn(async () => available),
-    beginDrag: vi.fn(async () => available)
+    beginDrag: vi.fn(async () => available),
+    exportDiagnostics: vi.fn(async () => available)
   };
 }

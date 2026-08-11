@@ -32,6 +32,7 @@ import {
   updateTargetHighlight
 } from './robotModel';
 import { detectSceneCapabilities, type SceneCapabilityState } from './sceneCapabilities';
+import { calculateSceneDevicePixelRatio } from './sceneRenderPolicy';
 import { disposeObjectGraphs, inspectObjectGraphs } from './sceneResources';
 import { acquireSceneResources } from './sceneResourceTracker';
 import { SharedGeometryLoadCache } from './sharedGeometryLoadCache';
@@ -135,6 +136,7 @@ export function RobotScene(props: RobotSceneProps) {
       data-camera-bounds-revision="0"
       data-camera-focus={props.cameraFocusGroupId ?? 'all'}
       data-render-policy="demand"
+      data-render-dpr="1.000"
       data-render-frame-count="0"
       data-reference-grid="pending"
     >
@@ -143,10 +145,11 @@ export function RobotScene(props: RobotSceneProps) {
           frameloop="demand"
           shadows={shadowsEnabled ? 'percentage' : false}
           camera={{ position: [0.78, 0.58, 0.84], fov: 39, near: 0.01, far: 40 }}
-          dpr={constrained ? [1, 1.2] : [1, 1.75]}
+          dpr={1}
           gl={{ antialias: !constrained, powerPreference: constrained ? 'default' : 'high-performance' }}
         >
           <RendererLifecycle onContextLost={handleRuntimeFailure} />
+          <AdaptiveSceneDpr quality={capability.quality} />
           <color attach="background" args={['#080a0c']} />
           <SceneLighting enabled={props.settings.showLighting} shadows={shadowsEnabled} />
           <CameraController
@@ -173,6 +176,40 @@ export function RobotScene(props: RobotSceneProps) {
       )}
     </div>
   );
+}
+
+function AdaptiveSceneDpr({ quality }: { quality: SceneCapabilityState['quality'] }) {
+  const gl = useThree((state) => state.gl);
+  const size = useThree((state) => state.size);
+  const setDpr = useThree((state) => state.setDpr);
+  const invalidate = useThree((state) => state.invalidate);
+  const [devicePixelRatio, setDevicePixelRatio] = useState(() => window.devicePixelRatio);
+
+  useEffect(() => {
+    const handleWindowMetricsChange = () => {
+      setDevicePixelRatio((current) => current === window.devicePixelRatio
+        ? current
+        : window.devicePixelRatio);
+    };
+    window.addEventListener('resize', handleWindowMetricsChange, { passive: true });
+    return () => window.removeEventListener('resize', handleWindowMetricsChange);
+  }, []);
+
+  useEffect(() => {
+    const dpr = calculateSceneDevicePixelRatio({
+      width: size.width,
+      height: size.height,
+      devicePixelRatio,
+      quality
+    });
+    const host = gl.domElement.closest<HTMLElement>('.robotSceneHost');
+    if (host) host.dataset.renderDpr = dpr.toFixed(3);
+    if (Math.abs(gl.getPixelRatio() - dpr) < 0.001) return;
+    setDpr(dpr);
+    invalidate();
+  }, [devicePixelRatio, gl, invalidate, quality, setDpr, size.height, size.width]);
+
+  return null;
 }
 
 function RendererLifecycle({ onContextLost }: { onContextLost: () => void }) {

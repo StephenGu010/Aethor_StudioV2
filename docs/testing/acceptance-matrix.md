@@ -7,15 +7,15 @@
 | 协议 | formatter/parser、随机分片/粘包、255 字符边界、异常行、FIFO、超时、取消、跨语言 vectors | 先用 fake serial | 与指定固件提交一致；未知帧保留可诊断信息；排除命令不可构造 |
 | 状态隔离与 Profile 切换 | feedback/target、showcase/session、命令状态机、全局 Profile 选择、草稿/runtime 清理、连接态切换拦截、首帧目标对齐 | 无 | 展示数据不能产生在线、使能或成功状态；Aethor_robo 与 Dummy 状态不串流；切换后隐藏目标复位；新 Dummy hardware session 首个可信实测帧只对齐目标一次，用户编辑优先且后续反馈不覆盖；Dummy 未 offline、联锁存在或未确认去使能时不能切走 |
 | UI | 五工作区组件测试、键盘焦点、视觉截图、关键矩形与文本溢出几何断言 | 无 | 1366×768、1920×1080、2560×1440 无关键裁切/重叠/跳动；`Aethor_robo` 单行名称不越框；关节滚动区、固定预览提示和下发区顺序不重叠；禁用原因可聚焦；无控制台错误 |
-| 3D | Dummy 六轴与 Aethor_robo 双七轴 URDF 原点/轴/分组、本体与分组包围盒相机适配、参考网格、拾取/拖动、按需渲染、WebGL/资源失败、重复卸载/切换 | 无 | 23 个 Aethor_robo STL 全部加载且 visual/collision 共享 23 份 geometry；目标 collision 不绘制，幽灵材质按受控关节共享，诊断含操纵器为 29 geometry / 22 material；参考网格位于完整整机最低点下方至少 8 cm、覆盖至少 2 倍足迹且边长不少于 6 m；关节只差量更新，连续目标输入不重算相机包围盒，工具窗坐标变化不重绘 3D 场景；空闲实际帧计数收敛，关节/相机/拖拽/模型变化立即恢复并再次停止；整机/左右臂取景可恢复，左右各七轴可独立预览，车轮模型专用；实体与幽灵独立；READY 时 DOM/可访问性树不存在场景失败告警，真实 WebGL/资源失败仍明确降级；初载/窗口变化/重置后模型完整入镜且不受固定雾距遮蔽；一次同源网络中断可恢复但持续失败可见；拖动目标变化而另一 Profile、反馈和硬件请求不变；renderer/controls/model/drag 所有权不累积 |
-| 网关 | 单元、集成、fake serial、顶栏/设备页端口选择、错误/占用/拔出端口、重复连接/断开、loopback/token、不合作事件 sink | Phase 4 已按监督手册完成只读连接；控制需对应 runbook | 顶栏枚举不自动连接，只有显式操作打开所选端口，连接端口在两个入口一致；错误端口处于 stale/unknown/faulted 时仍可人工释放，明确 enabled 或在途命令时拒绝普通断开；Aethor_robo 零枚举；单一串口所有者；查询/命令串行化；不自动重连；历史/事件有界；sink 忽略取消也不得阻塞 transport 释放或累积悬挂发布 |
+| 3D | Dummy 六轴与 Aethor_robo 双七轴 URDF 原点/轴/分组、本体与分组包围盒相机适配、参考网格、拾取/拖动、按需渲染、自适应 DPR、WebGL/资源失败、重复卸载/切换 | 无 | 23 个 Aethor_robo STL 全部加载且 visual/collision 共享 23 份 geometry；目标 collision 不绘制，幽灵材质按受控关节共享，诊断含操纵器为 29 geometry / 22 material；参考网格位于完整整机最低点下方至少 8 cm、覆盖至少 2 倍足迹且边长不少于 6 m；balanced DPR ≤1.75/350.5 万像素，constrained DPR ≤1.2/180 万像素且最低 1；关节只差量更新，连续目标输入不重算相机包围盒，工具窗坐标变化不重绘 3D 场景；空闲实际帧计数收敛，关节/相机/拖拽/模型变化立即恢复并再次停止；整机/左右臂取景可恢复，左右各七轴可独立预览，车轮模型专用；实体与幽灵独立；READY 时 DOM/可访问性树不存在场景失败告警，真实 WebGL/资源失败仍明确降级；初载/窗口变化/重置后模型完整入镜且不受固定雾距遮蔽；一次同源网络中断可恢复但持续失败可见；拖动目标变化而另一 Profile、反馈和硬件请求不变；renderer/controls/model/drag 所有权不累积 |
+| 网关 | 单元、集成、fake serial、顶栏/设备页端口选择、错误/占用/打开停滞/拔出端口、重复连接/断开、loopback/token、不合作事件 sink | Phase 4 已按监督手册完成只读连接；控制需对应 runbook | 顶栏枚举不自动连接，只有显式操作打开所选端口，连接端口在两个入口一致；普通打开失败释放临时 transport 后直接回到 offline；打开超时/取消主动 dispose 候选连接、回到 offline 并隔离本进程重试，宿主仍可退出；成功打开后的 stale/unknown/faulted 仍可人工释放，明确 enabled 或在途命令时拒绝普通断开；Aethor_robo 零枚举；单一串口所有者；查询/命令串行化；不自动重连；历史/事件有界；sink 忽略取消也不得阻塞 transport 释放或累积悬挂发布 |
 | 硬件命令 | capability、命令 ID/指纹、单在途、有界抢占、安全联锁、engineering 白名单/状态门/速度上限、超时、取消、三入口恢复、乱序终态、审计恢复/导出、SignalR 降级/REST 恢复、停止链、目标/运动包络双重校验 | Gate A 状态控制已验证；engineering 运动需操作者按手册现场执行；supervised Gate B 仍需独立授权、物理急停和低风险运动门 | 默认关闭；engineering 仅 Development + 令牌，终端无需管理员解锁；HOME/RESET/RGB/电流/PID/reboot/多行/任意 raw 零写入；关节组须 connected、fresh measured、enabled、有效 mode、六轴限位与显式 `0 < speed <= 100`，FIFO 只返回 `queued + deviceQueued`；supervised 到位仍须连续实测收敛；同 ID 不重复物理执行；所有串口所有权等待有界；停止响应未知继续锁存；去使能须 `#GETENABLE=0` |
 | 动作文档（6A） | Schema/Zod、来源、限位、文件上限、显式保存、持久化恢复、导入冲突、dirty guard、导出、三档 E2E | 禁止访问串口 | 只恢复校验通过的 V1；SHOWCASE/人工/实测不混淆；刷新恢复已保存库；页面零硬件请求且 runner 不存在 |
 | 动作执行内核（6B-S） | fake command port、单 owner、逐点确认、弱证据、取消/停止、checkpoint 恢复、并发、超时、dispose | 禁止访问串口 | 无 DI/API/UI/RobotGateway adapter；逐点只消费 `completed + feedbackConfirmed`；到位后才等待；异常至多一次有界停止；未确认停止不显示 Stopped；恢复绑定 revision/session/计划指纹 |
 | 动作执行接线（6B-H） | 运行计划 wire contract、真实 adapter、命令审计恢复、断线与未知结果 | Gate B 后监督执行低风险短动作 | 不预灌 FIFO；不以固定 sleep 或 ACK 判断完成；停止后不遗留待发队列；页面和后端均有运行态与冲突命令保护 |
 | 示波/终端 | 18 路有界 buffer、重复/乱序/缺口、可见性刷新节流、ECharts 生命周期、过滤、CSV/文本导出、视图清空、direct 白名单与状态门 | Phase 7B 验证真实帧、资源曲线与故障恢复；engineering 发送按独立手册 | 来源和单位字段存在；单路 ≤2400、总计 ≤43200；网关空缓冲不回填 SHOWCASE；离线编辑不产生伪 TX/RX；只有网关返回结果和协议帧才显示真实发送；120s 后真实资源仍有界 |
-| 桌面壳（8A） | bridge、参数、令牌、日志、窗口恢复、进程监督、便携包清单、Profile 法律/溯源闭包、生产依赖/SPDX 清单、并发打包门、离线 smoke、实际 WebView2 | 禁止连接串口 | 浏览器不伪造原生能力；同版本/Runtime 并发打包失败关闭；manifest 与实际文件集合完全相等；两个 Profile NOTICE/provenance 与第三方 SPDX/摘要/法律附件缺失时失败关闭；组件、PURL、关系和缺口计数一致；命令策略关闭；REST/SignalR 成功；正常退出不留桌面/网关进程 |
-| 桌面发布（8B） | 实际窗口句柄 DPI/Per-Monitor V2/可见范围、WebView2 Stable-only 前置条件、第三方许可完整性、四档 DPI、多显示器、安装/升级/卸载、签名、受控崩溃恢复 | Windows 真机与独立监督硬件门 | 缺少包内许可正文时 `third-party-license-incomplete` 失败关闭；每档 DPI 必须与 96/120/144/192 实测一致且窗口可见；Runtime 失败先于网关启动且不自动下载；网关崩溃立即阻断且只允许显式离线重启；干净 MSI 候选可修复/升级；用户数据默认保留；退出不留后台进程，COM4 句柄有监督释放证据 |
+| 桌面壳（8A） | bridge、参数、令牌、有界日志/性能探针、诊断包、窗口恢复、进程监督、便携包清单、Profile 法律/溯源闭包、生产依赖/SPDX 清单、并发打包门、离线 smoke、实际 WebView2 | 禁止连接串口 | 浏览器不伪造原生能力；诊断包只含说明、清单和最多五份有界脱敏日志，取消/失败不留半成品；性能采样 60 秒 single-flight，只保留规范化工作区、白名单 Web 指标及宿主/WebView2/可空网关的受跟踪聚合值，进程句柄即时释放且异常停止，完整 URL 不落盘；同版本/Runtime 并发打包失败关闭；manifest 与实际文件集合完全相等；两个 Profile NOTICE/provenance 与第三方 SPDX/摘要/法律附件缺失时失败关闭；组件、PURL、关系和缺口计数一致；命令策略关闭；REST/SignalR 成功；正常退出不留桌面/网关进程 |
+| 桌面发布（8B） | 实际窗口句柄 DPI/Per-Monitor V2/可见范围、WebView2 Stable-only 前置条件、第三方与模型许可完整性、四档 DPI、多显示器、安装/升级/卸载、签名、受控崩溃恢复 | Windows 真机与独立监督硬件门 | 依赖正文缺口以 `third-party-license-incomplete`、模型条款缺口以 `model-redistribution-incomplete` 失败关闭；仓库补充正文必须绑定精确组件版本、包完整性和不可变上游来源；每档 DPI 必须与 96/120/144/192 实测一致且窗口可见；Runtime 失败先于网关启动且不自动下载；网关崩溃立即阻断且只允许显式离线重启；干净 MSI 候选可修复/升级；用户数据默认保留；退出不留后台进程，COM4 句柄有监督释放证据 |
 | Aethor_robo 控制台（A0） | `/console` 路由、旧 `/twin` 重定向、全局 Profile 切换、14 轴独立 store、左右臂 tab、资产加载、三档截图、零网络/零命令 | 禁止访问串口 | 页面只操作两组七轴本地草稿；读取/下发/软件急停固定禁用；永不显示真实连接/反馈/使能；根文档无溢出且模型可见 |
 
 ## 实机安全门
@@ -89,9 +89,29 @@
 ## Phase 8B 第三方生产依赖清单增量（2026-08-10）
 
 - 第三方清单生成器对 pnpm 生产图去重、NuGet/runtime pack `.deps.json` 合并、文件型 LicenseRef、宿主路径不泄漏、确定性输出和缺失文本判定有独立 Node 回归；生成文档通过 SPDX 官方 2.3 JSON Schema。整仓为 406/406，完整三档生产 E2E 60/60。
-- 当前开发包为 688 个实际文件/687 项 manifest；离线 smoke 验证 93 个组件（88 npm、5 NuGet/runtime pack）、6 个缺失文本、网关 offline/disabled、shutdown 202、零串口/零硬件命令。
-- 只读发布 verifier 按预期增加唯一 `third-party-license-incomplete` 问题并列出六个包。该门证明缺口可见且失败关闭，不是法律审核完成证据。
+- 当前开发包为 697 个实际文件/696 项 manifest；disabled 与显式 engineering 两种离线 smoke 验证 92 个组件（87 npm、5 NuGet/runtime pack）、6 个锁定上游正文、0 个依赖文本缺口、2 个模型条款缺口、shutdown 202、进程退出、零串口/零硬件命令。
+- 只读发布 verifier 不再报告 `third-party-license-incomplete`，按预期以 `model-redistribution-incomplete` 列出两个内置 Profile；连同脏工作树、开发资格和七个未签名文件共 12 项问题拒绝当前包。该门证明工程记录和失败关闭，不是模型法律审核完成证据。
 - 双 Profile 增量后包内 54 个 Web 文件与当前 `dist/` 逐项哈希一致；整仓 411/411、三档 E2E 63/63。当前包离线 smoke 继续通过，发布 verifier 以 12 项资格/签名/许可问题拒绝且 `filesystemMutationPerformed=false`；实际 96 DPI 采证继续为 Per-Monitor V2、零网关。
+
+## Phase 8B Desktop 串口目录、会话 owner 与诊断探针增量（2026-08-11）
+
+- 失败复现由桌面日志闭环：壳创建随机 gateway `64050`，生产 Web 却请求固定 `5127`；后者的 CORS 错误是错误目的地的结果。有效 Desktop bootstrap 现覆盖 `.env.local`，离线 null 也不回退；production/e2e 清空固定配置，打包扫描本机开发 URL/令牌并失败关闭。
+- 顶栏与设备页的端口状态、选择和错误由单一 runtime owner 持有；并发 `refreshSerialPortCatalog` 合并为一个 `listSerialPorts` 调用。40 项针对性前端回归包含 single-flight、显式选择/连接、错误端口释放、断开重置和 bootstrap 权威性。
+- UUID `X-Aethor-Operation` 关联前端 `frontend.serial.catalog.started/completed/failed` 与网关 Event 1006/1007/1002；终态只记录 duration/result count/failure category。ASP.NET 成功请求噪声降到 Warning，产品事件和宿主生命周期保留。
+- 顶栏与设备页的连接/断开由一个 shared owner 仲裁，相同意图 single-flight、冲突意图零第二请求；前端 `frontend.serial.session.*` 与网关 Event 1008/1009/1010 使用同一 operationId，并共享 busy/error 状态。
+- 该串口目录/会话探针增量当时的自动化门为 contracts 93/93、frontend 193/193、gateway 83/83、desktop 84/84、legal inventory 6/6，共 459/459；strict TypeScript、2642-module production build 与三档生产 E2E 63/63 通过。根 `pnpm test` / `pnpm build` 已在旧网关和当前桌面同时运行时通过，唯一 `.run-*` artifacts path 全部自动清理，显式覆盖输出根以退出码 2 拒绝。带 Dummy bootstrap 的 Desktop 新会话固定从 `Dummy` 启动，确保唯一 coordinator 在用户操作前只读枚举；浏览器 Profile 恢复不受影响。`Runtime.consoleAPICalled` 探针解析器拒绝普通 console、扩展字段、非法终态和超界输入。
+- 697 文件开发包的 disabled/engineering smoke 均通过 serial OPTIONS、只读枚举 COM1/COM4，以及不支持 Profile connect 的 400/operationId 关联检查；验证在 transport 创建前返回，日志无 `serial.opened`。实际工程桌面还得到前端/网关 operationId 一致、`ResultCount=2`、零 Web 错误。session 保持 offline，shutdown 202，进程退出，`serialPortOpened=false / hardwareCommandSent=false`。该证据不表示 COM4 可安全打开，也不解决旧 5127 session 的 `disconnecting / motor unknown` 状态。
+- 277 字符深 staging 路径复现 Windows 清理失败；短名 `.stg-*` / `.dn` 后同一独立输出打包成功，旧失败 staging 经父目录与名称双重校验后清理。
+- 3D DPR 纯函数覆盖普通、高 DPI 大画布、constrained 和非法输入；三档生产 E2E 对实际画布断言 DPR 1–1.75 且 framebuffer ≤350.5 万像素，同时继续证明空闲帧收敛、交互恢复与零硬件请求。
+- Desktop 性能探针覆盖六值工作区分类、非可信来源/未知路由降级、白名单归一化、秘密/未知字段丢弃、缺失/重复/越界/非整数、不可能 heap/聚合关系，以及重复 PID、快照后进程退出、进程身份重叠和 256 项上限。新标准包已取得 `workspace=console` 与 `workspace=terminal` 实样本；旧包三次控制台/终端短周期往返保持 5 个 WebView2 进程且两类工作集各自有界，浏览器三次往返的实时元素和 Canvas 数也精确返回基线。该短时样本证明采集、归一化、路由释放和落盘链有效，不作为 Phase 7B 长测或泄漏阈值验收。
+- 最新自动化门为 contracts 93/93、frontend 197/197、gateway 88/88、desktop 110/110、legal inventory 6/6，共 494/494；2643-module production Web 和两个隔离 .NET Release build 通过，0 warning/0 error。网关新增打开总超时、调用方取消和底层同步 Open 忽略取消三类回归：请求在 1 秒测试门内收束，候选连接唯一 dispose、session offline、host shutdown 可接受，第二次打开不创建 transport；配置范围 `100–30000 ms` 失败关闭。重建 `development-dirty` 包仍为 697 个实际文件/696 项 manifest，disabled 与 engineering offline smoke 均验证 COM1/COM4 目录、session offline、shutdown 202、进程退出和零硬件写入。最终工程会话从该包启动后只读返回 2 个端口，运行段 `serial.opened/connect/hardware command/Web error=0`。实采阶段操作者此前对被旧进程占用的 COM4 发起一次连接，`Open()` 返回 AccessDenied；真实打开停滞/取消路径没有再次触碰 COM4，仍以 fake transport 边界测试为证据。
+
+## Phase 8A 诊断包增量（2026-08-11）
+
+- `DesktopBridgeV1` 新增 `exportDiagnostics`，浏览器能力固定为 false；原生导出以 120 秒为界并维持同动作 single-flight。设备页覆盖不可用、导出中、完成、取消/失败状态，只有宿主明确返回 true 才显示完成。
+- 导出器覆盖固定条目和顺序、单文件/总量边界、重复或未知日志、已有目标保护、显式覆盖、取消、异常清理、令牌多种表示与用户目录遮蔽，以及 manifest 字节数和 SHA-256。日志快照与应用写入共用锁，轮转不会产生半份快照；目标目录内临时文件完成后才原子移动。
+- 当前整仓为 contracts 93/93、frontend 201/201、gateway 88/88、desktop 118/118、legal inventory 6/6，共 506/506；strict TypeScript、2643-module production Web 和两个隔离 .NET Release build 通过，三档生产 E2E 63/63。浏览器三档布局检查确认诊断卡片无溢出或重叠，且按钮按预期禁用。
+- `development-dirty` Windows 包重建为 697 个实际文件/696 项 manifest。disabled 与 engineering offline smoke 均完成 gateway ready、串口目录预检、session offline、shutdown 202 和进程退出；本次系统仅枚举到 COM1，未打开串口或发送硬件命令。自动化已覆盖原生保存成功、取消和失败边界，本条不冒充人工点击系统保存对话框的目视验收。
 
 ## Phase 5/7 串口资源压力增量（2026-08-10）
 

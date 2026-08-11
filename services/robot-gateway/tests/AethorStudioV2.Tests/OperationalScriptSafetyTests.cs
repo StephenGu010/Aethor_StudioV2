@@ -177,6 +177,34 @@ public sealed class OperationalScriptSafetyTests
         Assert.Equal(
             "powershell -NoProfile -ExecutionPolicy Bypass -File services/robot-gateway/start-engineering-dev.ps1",
             scripts.GetProperty("dev:engineering").GetString());
+        Assert.Contains("dotnet-isolated.ps1 gateway test", scripts.GetProperty("gateway:test").GetString(), StringComparison.Ordinal);
+        Assert.Contains("dotnet-isolated.ps1 desktop test", scripts.GetProperty("desktop:test").GetString(), StringComparison.Ordinal);
+        Assert.Contains("gateway:build:verify", scripts.GetProperty("build").GetString(), StringComparison.Ordinal);
+        Assert.Contains("desktop:build:verify", scripts.GetProperty("build").GetString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DotnetVerificationUsesUniqueOwnedArtifactsAndAlwaysCleansThem()
+    {
+        var source = ReadOperationFile("dotnet-isolated.ps1");
+
+        Assert.Contains("artifacts\\validation\\dotnet", source, StringComparison.Ordinal);
+        Assert.Contains(".run-$scopeCode-$PID-", source, StringComparison.Ordinal);
+        Assert.Contains("--artifacts-path $runRoot", source, StringComparison.Ordinal);
+        Assert.Contains("Assert-OwnedRunPath", source, StringComparison.Ordinal);
+        Assert.Contains("[IO.Directory]::Delete($extendedPath, $true)", source, StringComparison.Ordinal);
+        Assert.Contains("Remove-OwnedRunDirectory $runRoot $artifactParent", source, StringComparison.Ordinal);
+        Assert.Contains("artifactsCleaned = $true", source, StringComparison.Ordinal);
+        Assert.Contains("serialPortOpened = $false", source, StringComparison.Ordinal);
+        Assert.Contains("hardwareCommandSent = $false", source, StringComparison.Ordinal);
+        AssertForbidden(
+            source,
+            "Stop-Process",
+            "taskkill",
+            "$env:ComSpec",
+            "System.IO.Ports",
+            "/session/connect",
+            "/commands/");
     }
 
     [Fact]

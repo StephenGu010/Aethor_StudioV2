@@ -26,6 +26,7 @@ describe('JSON Schema and TypeScript contract conformance', () => {
       ...actionProgramExample,
       schemaVersion: '1.0',
       profileId: 'dummy-6dof',
+      jointCoordinateSystem: 'dummy-device-joints-v1',
       source: 'showcaseExample',
       waypoints: actionProgramExample.waypoints.map((waypoint) => ({
         ...waypoint,
@@ -61,11 +62,22 @@ describe('JSON Schema and TypeScript contract conformance', () => {
       schemaVersion: '1.0',
       transportDefaults: { ...dummyProfile.transportDefaults, lineEnding: 'LF' },
       model: { ...dummyProfile.model, upAxis: 'Z', lengthUnit: 'm' },
+      joints: dummyProfile.joints.map((joint) => ({
+        ...joint,
+        modelTransform: { ...joint.modelTransform, sign: 1 as const }
+      })),
       capabilities: { ...dummyProfile.capabilities, controlModes: [1, 2, 3] }
     };
     const validate = ajv.compile(profileSchema);
     expect(validate(typedProfile), JSON.stringify(validate.errors)).toBe(true);
     expect(typedProfile.capabilities.controlModes).toEqual([1, 2, 3]);
+    expect(typedProfile.joints[2]?.modelTransform).toEqual({ sign: 1, offsetDeg: -90 });
+    expect(validate({
+      ...typedProfile,
+      joints: typedProfile.joints.map((joint, index) => index === 2
+        ? { ...joint, modelTransform: { sign: 0, offsetDeg: -90 } }
+        : joint)
+    })).toBe(false);
   });
 
   it('accepts the built-in Aethor_robo dual-arm preview manifest without hardware claims', () => {
@@ -106,6 +118,16 @@ describe('JSON Schema and TypeScript contract conformance', () => {
     expect(validate(result), JSON.stringify(validate.errors)).toBe(true);
     const { timestampUtc: _timestampUtc, ...withoutTimestamp } = result;
     expect(validate(withoutTimestamp)).toBe(false);
+  });
+
+  it('accepts an explicit null device reply from the JSON gateway boundary', () => {
+    const result = {
+      commandId: 'cmd-null-reply', sessionId: 'session-1', commandKind: 'enable', status: 'rejected',
+      code: 'notConnected', evidence: 'none', message: 'Robot is offline',
+      timestampUtc: '2026-08-08T00:00:00.000Z', deviceReply: null
+    } satisfies CommandResult;
+    const validate = gatewayValidator('CommandResult');
+    expect(validate(result), JSON.stringify(validate.errors)).toBe(true);
   });
 
   it('rejects schema extensions that would silently cross the wire boundary', () => {
@@ -243,11 +265,11 @@ describe('JSON Schema and TypeScript contract conformance', () => {
       timestampUtc: '2026-08-08T00:00:00.000Z', value: 1.25, validity: 'valid'
     }],
     ['DesktopBridgeCapabilities', {
-      available: false, minimize: false, toggleMaximize: false, close: false
+      available: false, minimize: false, toggleMaximize: false, close: false, exportDiagnostics: false
     }],
     ['DesktopBootstrapV1', {
       contractVersion: '1.0', gateway: { baseUrl: 'http://127.0.0.1:5127', sessionToken: 'A'.repeat(43) },
-      capabilities: { available: true, minimize: true, toggleMaximize: true, close: true }
+      capabilities: { available: true, minimize: true, toggleMaximize: true, close: true, exportDiagnostics: true }
     }],
     ['DesktopBridgeRequestV1', {
       contractVersion: '1.0', requestId: 'request-1', action: 'beginDrag'

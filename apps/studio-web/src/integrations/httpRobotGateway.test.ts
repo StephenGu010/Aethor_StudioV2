@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createRobotGateway } from './gatewayInstance';
+import { createRobotGateway, resolveRobotGatewayConfig } from './gatewayInstance';
 import { HttpRobotGateway, normalizeLoopbackGatewayUrl } from './httpRobotGateway';
 import { StaticShowcaseSource } from './staticShowcaseSource';
 
@@ -33,6 +33,7 @@ describe('HttpRobotGateway boundary', () => {
     const [url, init] = vi.mocked(fetcher).mock.calls[0]!;
     expect(url).toBe('http://127.0.0.1:5127/api/v1/serial/ports');
     expect(new Headers(init?.headers).get('X-Aethor-Session')).toBe(token);
+    expect(new Headers(init?.headers).get('X-Aethor-Operation')).toMatch(/^[0-9a-f-]{36}$/i);
   });
 
   it('rejects malformed gateway data instead of treating it as measured state', async () => {
@@ -42,6 +43,32 @@ describe('HttpRobotGateway boundary', () => {
     const gateway = new HttpRobotGateway({ baseUrl: 'http://127.0.0.1:5127', sessionToken: token }, fetcher);
 
     await expect(gateway.listSerialPorts()).rejects.toMatchObject({ status: 502 });
+  });
+
+  it('carries caller operation ids on serial connect and disconnect requests', async () => {
+    const snapshots = [
+      {
+        sessionId: 'session-1', profileId: 'dummy-6dof', connectionState: 'connected', motorState: 'disabled',
+        controlMode: 2, timestampUtc: '2026-08-11T00:00:00.000Z', source: 'measured', validity: 'valid'
+      },
+      {
+        sessionId: 'offline', profileId: 'dummy-6dof', connectionState: 'offline', motorState: 'unknown',
+        controlMode: null, timestampUtc: '2026-08-11T00:00:01.000Z', source: 'unavailable', validity: 'unavailable'
+      }
+    ];
+    const fetcher = vi.fn(async () => new Response(JSON.stringify(snapshots.shift()), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    })) as unknown as typeof fetch;
+    const gateway = new HttpRobotGateway({ baseUrl: 'http://127.0.0.1:5127', sessionToken: token }, fetcher);
+    const connectOperationId = '11111111-1111-4111-8111-111111111111';
+    const disconnectOperationId = '22222222-2222-4222-8222-222222222222';
+
+    await gateway.connect({ portName: 'COM4', profileId: 'dummy-6dof' }, connectOperationId);
+    await gateway.disconnect(disconnectOperationId);
+
+    expect(new Headers(vi.mocked(fetcher).mock.calls[0]?.[1]?.headers).get('X-Aethor-Operation')).toBe(connectOperationId);
+    expect(new Headers(vi.mocked(fetcher).mock.calls[1]?.[1]?.headers).get('X-Aethor-Operation')).toBe(disconnectOperationId);
   });
 
   it('keeps commands disabled until capability negotiation explicitly enables them', async () => {
@@ -109,7 +136,8 @@ describe('HttpRobotGateway boundary', () => {
   it('accepts bounded command request evidence and rejects inconsistent audit identities', async () => {
     const result = {
       commandId: 'mode-audit', sessionId: 'session-1', commandKind: 'setMode', status: 'completed',
-      code: 'ok', evidence: 'feedbackConfirmed', message: 'mode confirmed', timestampUtc: '2026-08-09T00:00:01.000Z'
+      code: 'ok', evidence: 'feedbackConfirmed', message: 'mode confirmed', timestampUtc: '2026-08-09T00:00:01.000Z',
+      deviceReply: null
     };
     const audit = {
       commandId: 'mode-audit', sessionId: 'session-1', profileId: 'dummy-6dof', commandKind: 'setMode',
@@ -202,7 +230,31 @@ describe('HttpRobotGateway boundary', () => {
   it('accepts the host-injected loopback configuration without baking credentials into Vite', () => {
     expect(createRobotGateway({}, {
       contractVersion: '1.0', gateway: { baseUrl: 'http://127.0.0.1:54321', sessionToken: token },
-      capabilities: { available: true, minimize: true, toggleMaximize: true, close: true }
+      capabilities: {
+        available: true, minimize: true, toggleMaximize: true, close: true, exportDiagnostics: true
+      }
     })).toBeInstanceOf(HttpRobotGateway);
+  });
+
+  it('treats the desktop bootstrap as authoritative over development environment values', () => {
+    expect(resolveRobotGatewayConfig({
+      VITE_AETHOR_GATEWAY_URL: 'http://127.0.0.1:5127',
+      VITE_AETHOR_GATEWAY_SESSION_TOKEN: token
+    }, {
+      contractVersion: '1.0', gateway: { baseUrl: 'http://127.0.0.1:64050', sessionToken: 'B'.repeat(32) },
+      capabilities: {
+        available: true, minimize: true, toggleMaximize: true, close: true, exportDiagnostics: true
+      }
+    })).toEqual({ baseUrl: 'http://127.0.0.1:64050', sessionToken: 'B'.repeat(32) });
+
+    expect(createRobotGateway({
+      VITE_AETHOR_GATEWAY_URL: 'http://127.0.0.1:5127',
+      VITE_AETHOR_GATEWAY_SESSION_TOKEN: token
+    }, {
+      contractVersion: '1.0', gateway: null,
+      capabilities: {
+        available: true, minimize: true, toggleMaximize: true, close: true, exportDiagnostics: true
+      }
+    })).toBeInstanceOf(StaticShowcaseSource);
   });
 });

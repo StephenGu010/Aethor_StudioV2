@@ -12,7 +12,10 @@ function filePath(url: URL) {
 }
 
 export default defineConfig(({ mode }) => ({
-  define: mode === 'e2e'
+  // Only the interactive development server may consume .env.local. Every
+  // production/e2e bundle receives its gateway URL and token at runtime from
+  // the desktop bootstrap, so no local endpoint or credential is baked in.
+  define: mode !== 'development'
     ? {
         'import.meta.env.VITE_AETHOR_GATEWAY_URL': JSON.stringify(''),
         'import.meta.env.VITE_AETHOR_GATEWAY_SESSION_TOKEN': JSON.stringify('')

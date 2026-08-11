@@ -93,15 +93,23 @@ pnpm dev
 
 ## 失败与清理
 
-### J2 或全部关节停止更新
+### J2、J3 或全部关节停止更新
 
 Dummy 回包 `#GETJPOS` 的第二个数值直接映射 `protocolIndex=1 → joint_2 → UI J2`，没有额外符号或索引转换。若 J2 与其他状态一起停止更新，先检查协议帧中是否在某条无回包命令后不再出现三查询轮询；这表示 I/O 所有权停滞，不应修改关节映射或伪造 J2。当前 adapter 已改为有界读窗口，direct 也进入可取消命令所有权；回归覆盖断开后重新连接并让 J2 从 `-70.85` 更新到 `-42.25`。
+
+J3 是 `#GETJPOS` 第三个数值，链路固定为 `protocolIndex=2 → UI J3 设备角 → modelTransform(-90°) → URDF joint_3`。滑条和表格保持设备角，只有 3D 渲染把 J3=90° 转为 URDF 0°。控制台反馈框会同时显示 J3 和递增的帧序号；手动转动 J3 时，先确认页面处于 `DEVICE FEEDBACK / VALID`，再观察 J3 数值、帧序号和实体模型。页面仍显示 `SHOWCASE FEEDBACK` 时，任何静止值都不是实机反馈证据。网关把关节位置查询从模式/使能慢查询中拆出，默认 50 ms 请求一次位置、500 ms 刷新一次慢状态；三类查询仍由同一串口 owner 串行执行。
+
+整组目标按 `J1,J2,J3,J4,J5,J6`、单位 `deg` 原序格式化为 `>j1,j2,j3,j4,j5,j6,speed`。这里发送的是滑条显示的设备角；J3 的 -90° 只服务模型渲染，不会进入 payload。新 hardware session 的首个可信实测帧只会把幽灵目标对齐一次；之后手动编辑目标不会被反馈覆盖。
+
+若运动期间帧序号递增但六轴数值保持不变，先检查固件位置模式是否周期调用 `UpdateJointAngles()`。当前参考提交在模式 1–3 中没有该调用，`#GETJPOS` 会返回静止的 `currentJoints`；不要增加第二个上位机串口连接，也不要用目标角模拟反馈。固件补齐有界 CAN 角度采集并重新烧录后，才进行逐轴正方向与到位一致性验收。
+
+在 supervised 关节组命令中，若到位等待期间至少三个有效 `#GETJPOS` 样本完全不变且目标仍超出容差，命令总超时消息会明确提示反馈冻结候选，Gateway 日志同时出现一次 `motion.feedback.frozen_suspected`。若日志是 `serial.query.timeout`，表示查询没有取得有效回包，排查方向不同。两种情况的物理结果都未知，均不得自动重发运动。
 
 ### 断开后的状态
 
 成功断开后应像新的软件会话：session 为 offline/unavailable，active port、协议帧、命令历史、遥测、目标草稿和相机临时态清空，模型回到 Profile 软件启动姿态。已显式保存的动作程序、布局、偏好与导出文件保留。软件启动姿态不是实机 HOME，不得据此发送回位动作。
 
-- 错误端口/无回包：点击断开，确认 session offline 后重新枚举；无需等待 validity 恢复。
+- 端口打开失败：确认错误提示与 session offline 后重新枚举，不需要再点击“释放”。成功打开后无回包或进入 stale/faulted：点击断开，确认 session offline 后重新枚举；无需等待 validity 恢复。
 - 请求超时或 transport error：物理结果未知，先物理急停，再检查串口和设备；不得自动重试运动。
 - motor 明确 enabled 时普通断开会被拒绝：先执行停止并去使能，读回 disabled。
 - 结束后确认页面 offline、网关无 active session；再用 `Ctrl+C` 结束网关。不要用进程强杀替代正常释放。

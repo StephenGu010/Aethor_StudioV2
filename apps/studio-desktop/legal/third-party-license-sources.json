@@ -1,0 +1,131 @@
+{
+  "schemaVersion": "aethor.third-party-license-sources.v1",
+  "sources": [
+    {
+      "ecosystem": "npm",
+      "name": "@microsoft/signalr",
+      "version": "10.0.11",
+      "declaredLicense": "MIT",
+      "licenseTextPath": "license-texts/dotnet-foundation-MIT.txt",
+      "licenseTextSha256": "cfc21f5e8bd655ae997eec916138b707b1d290b83272c02a95c9f821b8c87310",
+      "upstream": {
+        "repositoryUrl": "https://github.com/dotnet/aspnetcore",
+        "revision": "cab94ea64876e5c5059f8a75f728b91d4f3d3bbc",
+        "relation": "repository-license-on-release-branch",
+        "path": "LICENSE.txt",
+        "blobSha": "984713a49622a96da110443c15477613bc12656b",
+        "contentSha256": "cfc21f5e8bd655ae997eec916138b707b1d290b83272c02a95c9f821b8c87310"
+      },
+      "packageEvidence": {
+        "type": "npm-dist-integrity",
+        "url": "https://registry.npmjs.org/@microsoft%2fsignalr/10.0.11",
+        "integrity": "sha512-FulOJ2EEtKvLQcswe/U7v8pzyXyk7Jua5xgWJPPwyQU/2Z9ORvKcVjyO75VvLsem+CJ1ORRexJ+7Bz1FCei2aw=="
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@react-three/fiber",
+      "version": "9.7.0",
+      "declaredLicense": "MIT",
+      "licenseTextPath": "license-texts/poimandres-MIT.txt",
+      "licenseTextSha256": "9c35b5de7b7493a707fffe4eb23bd2f7f449153c1911f7c6eefb4e591fd5349a",
+      "upstream": {
+        "repositoryUrl": "https://github.com/pmndrs/react-three-fiber",
+        "revision": "0a107412ac64667b1908422e859447952f57feef",
+        "relation": "package-source-revision",
+        "path": "LICENSE",
+        "blobSha": "493cfb3c8335c31bea327e0e27a8cb22004111d7",
+        "contentSha256": "9c35b5de7b7493a707fffe4eb23bd2f7f449153c1911f7c6eefb4e591fd5349a"
+      },
+      "packageEvidence": {
+        "type": "npm-dist-integrity",
+        "url": "https://registry.npmjs.org/@react-three%2ffiber/9.7.0",
+        "integrity": "sha512-EWm9FwcaOZQu/ExFW5rggoCMM1NJet5YbxVxKaOE+KSncrjU0Wx7017qSyGFvupviK89nMYGCWU3BIK4dI1clw=="
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "react-remove-scroll-bar",
+      "version": "2.3.8",
+      "declaredLicense": "MIT",
+      "licenseTextPath": "license-texts/anton-korzunov-MIT.txt",
+      "licenseTextSha256": "a79aae0c0f21990d9d963bb3c5a79cdcea9a46f8523ba55c58d7fe776b6ebc84",
+      "upstream": {
+        "repositoryUrl": "https://github.com/theKashey/react-remove-scroll-bar",
+        "revision": "8ca9ba5ea52de03308fe8ced94f7b159a44d28ff",
+        "relation": "repository-license-after-package-release",
+        "path": "LICENSE",
+        "blobSha": "7c08c3990396ecefd90f99ff5d9a34f26f5b5616",
+        "contentSha256": "a79aae0c0f21990d9d963bb3c5a79cdcea9a46f8523ba55c58d7fe776b6ebc84"
+      },
+      "packageEvidence": {
+        "type": "npm-dist-integrity",
+        "url": "https://registry.npmjs.org/react-remove-scroll-bar/2.3.8",
+        "integrity": "sha512-9r+yi9+mgU33AKcj6IbT9oRCO78WriSj6t/cF8DWBZJ9aOGPOTEDvdUDz1FwKim7QXWwmHqtdHnRJfhAxEG46Q=="
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "tr46",
+      "version": "0.0.3",
+      "declaredLicense": "MIT",
+      "licenseTextPath": "license-texts/sebastian-mayr-MIT.txt",
+      "licenseTextSha256": "499d6d466d064e0460427967a344e2a32fcb86ea8c6cd1a285ec4f1fa03fba67",
+      "upstream": {
+        "repositoryUrl": "https://github.com/jsdom/tr46",
+        "revision": "7f1eb920768c794be40962a4f0cbad670a398d04",
+        "relation": "repository-license-after-package-release",
+        "path": "LICENSE.md",
+        "blobSha": "62c0de28a830d3ae3a006c9e1e7df19067e409a7",
+        "contentSha256": "499d6d466d064e0460427967a344e2a32fcb86ea8c6cd1a285ec4f1fa03fba67"
+      },
+      "packageEvidence": {
+        "type": "npm-dist-integrity",
+        "url": "https://registry.npmjs.org/tr46/0.0.3",
+        "integrity": "sha512-N3WMsuqV66lT30CrXNbEjx4GEwlow3v6rr4mCcv6prnfwhS01rkgyFdjPNBYd9br7LpXV1+Emh01fHnq2Gdgrw=="
+      }
+    },
+    {
+      "ecosystem": "npm",
+      "name": "urdf-loader",
+      "version": "0.13.1",
+      "declaredLicense": "Apache-2.0",
+      "licenseTextPath": "license-texts/caltech-Apache-2.0.txt",
+      "licenseTextSha256": "12ab00e5637ce70e16be1f6693dfa5f9b7a4fe0f5f976a0329477d0c32d53e86",
+      "upstream": {
+        "repositoryUrl": "https://github.com/gkjohnson/urdf-loaders",
+        "revision": "24feef2c267496d22d17bbbb5c1bf5b86dcf174f",
+        "relation": "package-source-revision",
+        "path": "LICENSE",
+        "blobSha": "ffd058277ffc11146cfb7bd29b0f1b9583bdfa33",
+        "contentSha256": "12ab00e5637ce70e16be1f6693dfa5f9b7a4fe0f5f976a0329477d0c32d53e86"
+      },
+      "packageEvidence": {
+        "type": "npm-dist-integrity",
+        "url": "https://registry.npmjs.org/urdf-loader/0.13.1",
+        "integrity": "sha512-bHHoh0Yxrgrw91dPAmVnzKleA8HiVMeHy6xYqOVRw3LuZ2hDOwUiQVCbrzPZckO5S30F1Yym8zLCINN0HfcM3w=="
+      }
+    },
+    {
+      "ecosystem": "nuget",
+      "name": "System.IO.Ports",
+      "version": "10.0.0",
+      "declaredLicense": "MIT",
+      "licenseTextPath": "license-texts/dotnet-foundation-MIT.txt",
+      "licenseTextSha256": "cfc21f5e8bd655ae997eec916138b707b1d290b83272c02a95c9f821b8c87310",
+      "upstream": {
+        "repositoryUrl": "https://github.com/dotnet/dotnet",
+        "revision": "b0f34d51fccc69fd334253924abd8d6853fad7aa",
+        "relation": "package-source-revision",
+        "path": "LICENSE.TXT",
+        "blobSha": "a616ed188dfce68ee308f674350ad242d8588c2b",
+        "contentSha256": "ae48df11a335dc1a615f4f938b69cba73bcf4485c4f97af49b38efb0f216353b"
+      },
+      "packageEvidence": {
+        "type": "nuget-package-sha512",
+        "url": "https://www.nuget.org/packages/System.IO.Ports/10.0.0",
+        "integrity": "JdTMrUAwZSK1A13tnyiV/9tKKyxBPmUq02bjmNu78L0Rl53aA0KpBJC2QTfb4vDGinCt/VrAfJ9qubffl8LXBA=="
+      }
+    }
+  ]
+}

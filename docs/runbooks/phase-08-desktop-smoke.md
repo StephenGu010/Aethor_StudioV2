@@ -52,10 +52,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File apps/studio-desktop/build-wi
 通过条件：
 
 - 发布清单中的每个文件存在且 SHA-256 匹配。
-- `Legal/` 中的 Dummy NOTICE、Aethor_robo NOTICE 和 Aethor_robo provenance 必须存在且进入 manifest；模型随包分发时不能丢失来源、能力限制或不完整许可条款的告警。
-- `Legal/THIRD-PARTY-INVENTORY.spdx.json` 必须为 SPDX 2.3，依赖组件、PURL 与 `DEPENDS_ON` 关系唯一；`THIRD-PARTY-SUMMARY.json` 必须绑定同一版本、Git commit 和构建时间，并与 npm/NuGet 组件数、缺失文本数及 `Legal/ThirdParty/` 附件一致。
-- 开发 smoke 允许 `releaseReady=false`，但必须原样报告缺失项；发布候选校验器必须以 `third-party-license-incomplete` 拒绝任何仍有包内许可正文缺口的产物。不得用声明的 SPDX 表达式冒充缺失的版权/许可正文。
-- manifest 路径必须唯一，文件长度和 SHA-256 必须匹配；除 `release-manifest.json` 本身外，包内实际文件集合必须与 manifest 完全相等，不接受未声明文件或嵌套 `.staging-*` 目录。
+- `Legal/` 中的 Dummy NOTICE、Aethor_robo NOTICE/provenance 和 `MODEL-REDISTRIBUTION-STATUS.json` 必须存在且进入 manifest；模型随包分发时不能丢失来源、能力限制或不完整许可条款的告警。
+- `Legal/THIRD-PARTY-INVENTORY.spdx.json` 必须为 SPDX 2.3，依赖组件、PURL 与 `DEPENDS_ON` 关系唯一；`THIRD-PARTY-SUMMARY.json` 必须绑定同一版本、Git commit 和构建时间，并与 npm/NuGet 组件数、缺失文本数、6 个精确版本许可来源、模型状态及所有法律附件一致。
+- 仓库补充正文必须同时匹配 exact ecosystem/name/version、声明许可证、包完整性、HTTPS 上游、40 位不可变 revision/blob、上游正文 SHA-256 和本地正文 SHA-256；重复、陈旧、哈希变化、路径穿越、symlink 逃逸或 Profile 漏项均在打包前失败。构建不下载法律材料。
+- 开发 smoke 允许 `releaseReady=false`，但必须分别报告依赖和模型缺口；发布候选校验器对依赖正文缺口返回 `third-party-license-incomplete`，对模型条款缺口返回 `model-redistribution-incomplete`。不得用 SPDX 声明、签名或依赖完整性覆盖模型条款。
+- manifest 路径必须唯一，文件长度和 SHA-256 必须匹配；除 `release-manifest.json` 本身外，包内实际文件集合必须与 manifest 完全相等，不接受未声明文件或嵌套 `.stg-*` / `.dn` 中间目录。
 - 同一版本和 Runtime 的并发打包必须失败关闭；第二个构建不能删除现有包，也不能留下暂存目录。
 - `development-dirty`、`development-unsigned` 与 `release-candidate` 必须严格对应脏工作树、干净未签名、干净已签名三种状态；发布校验器只接受最后一种。
 - 网关只监听随机 loopback 端口，`commandPolicy=disabled`，session 为 `offline`。
@@ -97,7 +98,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File apps/studio-desktop/build-wi
 - `web.runtime` 应显示 `readyState=complete` 且 `rootChildren=1`。
 - 不应出现 `web.exception` 或新的 `web.console` error。
 - SignalR 应先通过 `/hubs/robot-v1/negotiate`，随后建立 `/hubs/robot-v1`。
-- CORS 只允许 `http://localhost` 与明确的 `Authorization / X-Requested-With / X-SignalR-User-Agent / X-Aethor-Session` 请求头。
+- CORS 只允许 `http://localhost` 与明确的 `Authorization / X-Requested-With / X-SignalR-User-Agent / X-Aethor-Session / X-Aethor-Operation` 请求头。
+- `smoke-packaged.ps1 -EngineeringOffline` 必须先通过 serial catalog OPTIONS，再只读枚举本机端口；结果必须保持 `serialPortOpened=false / hardwareCommandSent=false`。
+- package smoke 还必须用不支持的 Profile 调用 connect validation boundary：HTTP 400、Event 1008/1010 operationId 一致、FailureCategory 为 validation，且日志没有 `serial.opened`。这不是端口连接测试。
+- 实际 Desktop UI 触发枚举时，应同时出现前端 `AETHOR_PROBE_V1` 与网关 `serial.catalog.started/completed`，operationId 一致；独立 package smoke 不启动 WebView，因此只断言网关事件。诊断方法见 [统一探针手册](diagnostics.md)。
 - 日志不得包含 session token 或 `access_token=`。
 - 就绪后的崩溃注入必须出现 `Gateway exited unexpectedly` 和 `only an explicit offline restart is available`；之后不得出现新的 `Gateway ready` 或 `web.console/web.exception` 重试噪声，除非操作者重新启动了正常模式的新桌面 session。
 
@@ -105,9 +109,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File apps/studio-desktop/build-wi
 
 - 启动失败：记录面板信息和日志，不反复启动；确认包内 `web` 与 `gateway` 目录完整。
 - 网关未就绪：桌面壳应显示失败面板或离线 bootstrap，不能自动连接串口。
-- 关闭被拒绝：说明串口会话或 disabled 状态不满足；保持窗口打开，按硬件 runbook 处理，不能强行把物理结果写成成功。
+- 关闭被拒绝：说明网关曾取得串口所有权且当前 disabled 状态不满足；保持窗口打开，按硬件 runbook 处理，不能强行把物理结果写成成功。从未打开成功的端口必须已经恢复 offline，若仍阻塞关闭则记录 `serial.open.failed`、session 快照和宿主 shutdown 结果并按缺陷处理。
 - 仅在确认目标进程来自当前测试包后才做进程清理；清理后重新运行只读 preflight，不能用第二个串口程序探测句柄。
 
 ## 7. 尚未覆盖
 
-当前证据证明签名流水线、并发打包和第三方清单的失败关闭行为，不证明真实证书签名或法律审核成功。现有 `development-dirty` 包共 689 个文件，manifest 闭包校验 688 项并通过离线 smoke；包内 `web/` 是当前 2639-module production build 的 55 个文件，包含全局 Dummy/Aethor_robo Profile 切换。smoke 验证 92 个第三方组件（87 npm、5 NuGet/runtime pack），并明确报告 6 个缺少包内许可正文的组件。当前构建通过 staging 内隔离 `.NET artifacts-path`，不复用被运行中旧网关锁定的常规 Release 输出。发布校验器仍应因未签名、脏工作树和法律缺口拒绝该包。2026-08-10 的实际 96 DPI 采集仍读到 `PerMonitorV2=true`，窗口完全位于工作区且零网关；该单档证据不能替代 125/150/200% 与真实多显示器。代理环境中的恢复按钮点击已得到唯一 `--offline` 新桌面、零网关。第三方缺口法律处置、安装、升级、卸载、其余三档 DPI 目视、真实多显示器、COM4 句柄释放或硬件动作安全仍未验证。MSI 与用户数据边界见 [ADR-0008](../decisions/0008-windows-installer-and-user-data.md)；实机项仍需相应监督门。
+当前证据证明签名流水线、并发打包、第三方清单、精确来源绑定和双模型法律门的失败关闭行为，不证明真实证书签名或模型法律审核成功。现有 `development-dirty` 包共 697 个文件，manifest 闭包校验 696 项；包内 `web/` 是当前 2643-module production build 的 56 个文件，包含全局 Dummy/Aethor_robo Profile 切换和自适应 3D 像素预算。disabled 与显式 engineering 两种离线 smoke 均验证 92 个第三方组件（87 npm、5 NuGet/runtime pack）、6 个锁定上游正文、0 个依赖正文缺口、2 个模型条款缺口、session validation 探针 400/关联成功、shutdown 202、进程退出、零串口和零硬件命令。标准包还实际取得带 `workspace=console/terminal` 的新口径 `AETHOR_PERF_V1` 样本；三次控制台/终端短周期往返的 WebView2 进程数保持 5，工作集按页面回到各自范围，浏览器实时元素和 Canvas 数也精确回到基线。该短时记录仅验证探针、路由和资源释放链，不构成长期资源阈值。打开失败生命周期修复后，当前包另完成一次不连接串口的原生正常关闭，桌面、自有 Gateway 与 WebView2 进程树均归零；随后重开的工程会话只读取得 2 个端口且无连接或写入。真实占用端口失败路径没有再次触碰 COM4，只由 fake transport 回归覆盖。只读发布校验器因脏工作树、开发资格、未签名和 `model-redistribution-incomplete` 共 12 项问题拒绝该包，不再报告依赖正文缺口。当前构建通过短名 staging 内隔离 `.NET artifacts-path`，不复用被运行中旧网关锁定的常规 Release 输出。2026-08-10 的实际 96 DPI 采集仍读到 `PerMonitorV2=true`，窗口完全位于工作区且零网关；该单档证据不能替代 125/150/200% 与真实多显示器。代理环境中的恢复按钮点击已得到唯一 `--offline` 新桌面、零网关。模型条款、安装、升级、卸载、其余三档 DPI 目视、真实多显示器、COM4 句柄释放或硬件动作安全仍未验证。MSI 与用户数据边界见 [ADR-0008](../decisions/0008-windows-installer-and-user-data.md)；实机项仍需相应监督门。

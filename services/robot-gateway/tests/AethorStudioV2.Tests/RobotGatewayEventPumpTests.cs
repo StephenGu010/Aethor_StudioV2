@@ -82,6 +82,8 @@ public sealed class RobotGatewayEventPumpTests
 
     private static RobotGatewayOptions Options() => new()
     {
+        JointPollInterval = TimeSpan.FromMilliseconds(50),
+        StatusPollInterval = TimeSpan.FromMilliseconds(50),
         PollInterval = TimeSpan.FromMilliseconds(50),
         QueryTimeout = TimeSpan.FromMilliseconds(50),
         ConsecutiveTimeoutLimit = 3,

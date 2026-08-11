@@ -1,5 +1,6 @@
 import dummyUrdf from '@profiles/dummy-6dof/model/dummy.urdf?raw';
 import { describe, expect, it } from 'vitest';
+import { deviceAngleToModelDeg } from './jointCoordinates';
 import { dummyProfile } from '../profile/dummyProfile';
 
 const expectedOrigins = [
@@ -12,7 +13,7 @@ const expectedOrigins = [
 ] as const;
 
 describe('Dummy URDF kinematic mapping', () => {
-  it('keeps all six zero-pose origins, axes and limits aligned with the profile', () => {
+  it('keeps all six zero-pose origins and axes aligned with the source model', () => {
     const document = new DOMParser().parseFromString(dummyUrdf, 'application/xml');
     expect(document.querySelector('parsererror')).toBeNull();
 
@@ -25,10 +26,14 @@ describe('Dummy URDF kinematic mapping', () => {
       expect(joint?.querySelector(':scope > axis')?.getAttribute('xyz')).toBe('0 0 1');
 
       const limit = joint?.querySelector(':scope > limit');
-      const lowerDeg = radiansToDegrees(Number(limit?.getAttribute('lower')));
-      const upperDeg = radiansToDegrees(Number(limit?.getAttribute('upper')));
-      expect(lowerDeg).toBeCloseTo(profileJoint.lowerDeg, 2);
-      expect(upperDeg).toBeCloseTo(profileJoint.upperDeg, 2);
+      const urdfLowerDeg = radiansToDegrees(Number(limit?.getAttribute('lower')));
+      const urdfUpperDeg = radiansToDegrees(Number(limit?.getAttribute('upper')));
+      const transformedLimits = [
+        deviceAngleToModelDeg(profileJoint, profileJoint.lowerDeg),
+        deviceAngleToModelDeg(profileJoint, profileJoint.upperDeg)
+      ].sort((left, right) => left - right);
+      expect(urdfLowerDeg).toBeCloseTo(transformedLimits[0]!, 4);
+      expect(urdfUpperDeg).toBeCloseTo(transformedLimits[1]!, 4);
     });
   });
 });

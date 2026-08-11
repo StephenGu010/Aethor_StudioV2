@@ -2,6 +2,8 @@ using System.Text;
 
 namespace AethorStudioV2.Desktop;
 
+public sealed record BoundedLogSnapshotFile(string Name, byte[] Content);
+
 public sealed class BoundedLogFile
 {
     private readonly string path;
@@ -42,6 +44,20 @@ public sealed class BoundedLogFile
         }
     }
 
+    public IReadOnlyList<BoundedLogSnapshotFile> CaptureSnapshot()
+    {
+        lock (gate)
+        {
+            var snapshot = new List<BoundedLogSnapshotFile>(retainedFiles + 1);
+            Capture(path, snapshot);
+            for (var index = 1; index <= retainedFiles; index += 1)
+            {
+                Capture($"{path}.{index}", snapshot);
+            }
+            return snapshot;
+        }
+    }
+
     private void Rotate()
     {
         if (retainedFiles <= 0)
@@ -57,6 +73,17 @@ public sealed class BoundedLogFile
             if (File.Exists(source)) File.Move(source, $"{path}.{index + 1}");
         }
         File.Move(path, $"{path}.1");
+    }
+
+    private void Capture(string sourcePath, List<BoundedLogSnapshotFile> snapshot)
+    {
+        if (!File.Exists(sourcePath)) return;
+        var content = File.ReadAllText(sourcePath, Encoding.UTF8);
+        foreach (var secret in secrets)
+        {
+            content = content.Replace(secret, "[REDACTED]", StringComparison.Ordinal);
+        }
+        snapshot.Add(new(Path.GetFileName(sourcePath), Encoding.UTF8.GetBytes(content)));
     }
 
     private static string Sanitize(string value, int maximumLength)

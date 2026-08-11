@@ -15,12 +15,13 @@
 | `name` | 1–80 字符，不能全为空白 |
 | `revision` | 1–2147483647 的整数；显式覆盖同一稳定 ID 时递增 |
 | `profileId` | 固定为 `dummy-6dof` |
+| `jointCoordinateSystem` | 固定为 `dummy-device-joints-v1`；表示点位与 `#GETJPOS`、固件关节命令使用同一设备角 |
 | `createdAtUtc/updatedAtUtc` | UTC ISO 8601；更新时间不得早于创建时间 |
 | `source` | `authored` 或 `showcaseExample` |
 | `notes` | 最多 2000 字符 |
 | `waypoints` | 0–256 个 `ActionWaypointV1`，顺序即未来执行顺序 |
 
-每个点位包含唯一 UUID、名称、恰好六个 `positionsDeg`、模式 1–3、备注、来源和可选的到位后等待。六轴顺序按 Profile 的 `protocolIndex`，角度单位为 degree，并重复校验 Dummy manifest 限位。
+每个点位包含唯一 UUID、名称、恰好六个 `positionsDeg`、模式 1–3、备注、来源和可选的到位后等待。六轴顺序按 Profile 的 `protocolIndex`，角度单位为 degree，并重复校验 Dummy 固件设备角限位。J3 点位 90° 对应 URDF 模型 0°；模型偏置不写入动作文件，也不进入串口 payload。缺少 `jointCoordinateSystem` 的早期本地记录会在恢复时隔离，避免将旧模型角静默解释为实机设备角。
 
 `postArrivalWait` 只有两种形式：
 

@@ -38,6 +38,21 @@ README 与代码冲突时，以固定提交代码和后续监督台架证据为�
 
 `shared/contracts/src/dummyAsciiV1.ts` 是 TypeScript 可执行规范；`shared/contracts/conformance/dummy-ascii-v1.vectors.json` 是未来 C# 适配器必须复用的语言无关样例。
 
+## 关节坐标约定
+
+`#GETJPOS` 的六个数值是 V2 唯一的设备角坐标。反馈表、滑条、目标草稿、动作点位、误差计算和 `>j1,...,j6,speed` 下发都保留这套坐标，不在串口命令前追加模型偏置。
+
+| 关节 | 设备角范围 (deg) | URDF 渲染换算 |
+|---|---:|---|
+| J1 | -170…170 | `model = device` |
+| J2 | -75…90 | `model = device` |
+| J3 | 0…180 | `model = device - 90` |
+| J4 | -180…180 | `model = device` |
+| J5 | -120…120 | `model = device` |
+| J6 | -720…720 | `model = device` |
+
+范围来自固定固件提交中 `DummyRobot` 的六个 `CtrlStepMotor` 构造参数。J3 偏置来自同一提交的 `Homing() = (0,0,90,0,0,0)`、`MoveJoints(target-initPose)` 与 `currentJoints=motor.angle+initPose`：设备 J3=90° 对应 URDF J3=0°。J2–J6 的电机反向标志在命令编码和反馈解码两侧对称应用，原 PySide profile 也把六轴 `joint_sign` 设为 `+1`，因此 V2 不再额外翻转符号。`RobotProfileManifestV1.joints[].modelTransform` 只在 3D 渲染边界应用，反向换算测试保证模型角不会混入设备下发；最终物理正方向仍以监督式逐轴小步测试为验收证据。
+
 ## 内部停止链例外
 
 规划的停止链仍为 `!STOP → $0,0,0,0,0,0 → !DISABLE → #GETENABLE`，但 `$0...` 不是公共白名单命令：
@@ -71,8 +86,21 @@ README 与代码冲突时，以固定提交代码和后续监督台架证据为�
 
 ## 固件实现风险与未知项
 
+### 运动中反馈修复要求
+
+参考固件保持只读。正式固件改动应沿用现有 FreeRTOS/CAN 回调链，不新增第二条上位机串口连接：
+
+1. 在位置模式 1–3 中按独立有界节拍发起一次广播角度查询；不要在每个 200 Hz 控制 tick 无条件增加查询。初始候选为 20 Hz，最终值由 CAN 帧率、丢帧率和控制抖动实测决定。
+2. 每次查询建立新的六轴响应位图；CAN `0x23` 回包按 node 1–6 置位，只在六轴齐全时把 `motorJ[i].angle + initPose[i]` 一次性提交为新的 `currentJoints`，并递增固件关节帧序号。超时丢弃不完整批次，保留上一完整帧。
+3. `#GETJPOS` 读取完整快照，不能在六个 float 更新到一半时拼出混合帧。若当前 MCU 上 24 bytes 复制不是原子的，应使用短临界区或双缓冲指针交换。
+4. `UpdateJointPose6D()` 只消费已提交的完整关节帧；不得用 `targetJoints` 或上位机插值替代 `currentJoints`。
+5. 回归至少覆盖 disabled、模式 1/2/3 运动、停止、去使能和 CAN 单轴丢包；验收证据是运动期间连续变化的 `#GETJPOS`，而不是命令队列 ACK。
+
+当前网关在关节组到位等待期间保留首个有效 `#GETJPOS` 样本。若目标仍在容差外、至少三个有效样本完全不变且最终到达总超时，网关记录一次 `motion.feedback.frozen_suspected`，命令仍以 `timedOut + deviceQueued` 结束并锁存联锁。这只是区分“查询有回包但反馈冻结”和“查询本身超时”的诊断证据，不能证明实机没有运动。
+
 - `!` 和 `#` 分支大量使用 substring 匹配；V2 必须发送精确白名单，禁止 `!NOTSTOP` 一类文本触发意外命令。
 - 固件 `#CMDMODE` 会回显请求数字，范围外输入不一定返回错误；V2 在 formatter 和 Schema 层先拒绝 4/5 及其他值，并通过 `#GETMODE` 复核。
 - 固件没有可信的速度上限、安全回位姿态、统一运动完成事件或已验证的反馈收敛策略。当前网关用 `#GETJPOS` 连续实测作为外部完成证据，但速度、到位容差、稳定窗口和总超时仍必须来自可追溯台架证据，不得从 README、URDF 零 velocity 或旧上位机默认值推断。
+- 固件已经以 FreeRTOS 分离实时控制、命令 FIFO 和 UART/USB 处理，电机角请求也通过 CAN 回调更新，因此上位机不应创建第二个串口 owner。当前缺陷位于固件反馈采集：位置模式 1–3 的 200 Hz 控制分支调用 `MoveJoints()` 和 `UpdateJointPose6D()`，但没有调用 `UpdateJointAngles()`；`#GETJPOS` 只能重复返回未刷新的 `currentJoints`。应在固件现有控制/CAN 所有权内加入有界周期的电机角请求并经 CAN 回调更新，先测量 CAN 负载再确定周期；不能用目标插值伪装为实测反馈。该固件修复尚未写入只读参考仓库。
 - `DummyRobot::Homing()` 与 `Resting()` 先把速度设为 10，再在 `while(IsMoving())` 中阻塞，协议层只有函数返回后才发送 ACK。运动期间命令处理可能无法及时解析 `!STOP`，因此当前不能把 HOME/RESET 视为可安全抢占动作。
 - Gate A 已取得使能、模式 1–3、停止链和最终 disabled 的真实回读；未验证模式 3 点列连续性、任何关节运动、运动中抢占或四参数运动包络。Gate A 证据不能复用为 Gate B 授权。

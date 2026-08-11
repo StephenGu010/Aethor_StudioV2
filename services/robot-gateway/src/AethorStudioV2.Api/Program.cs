@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using AethorStudioV2.Api;
@@ -11,7 +12,11 @@ builder.Configuration.AddEnvironmentVariables("AETHOR_GATEWAY_");
 var hostOptions = GatewayHostOptions.FromConfiguration(builder.Configuration, builder.Environment);
 
 builder.Logging.AddJsonConsole(options => options.IncludeScopes = true);
-builder.Logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.Warning);
+// Keep the desktop log probe-oriented. Framework request/CORS/endpoint success
+// chatter previously wrote several JSON lines per refresh and obscured the
+// stable gateway event IDs used for field diagnosis.
+builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
+builder.Logging.AddFilter("Microsoft.Hosting.Lifetime", LogLevel.Information);
 builder.WebHost.ConfigureKestrel(options => options.ListenLocalhost(hostOptions.Port));
 
 builder.Services.Configure<JsonOptions>(options => ConfigureJson(options.SerializerOptions));
@@ -27,12 +32,16 @@ builder.Services.AddCors(options => options.AddPolicy("development-loopback", po
             "Authorization",
             "X-Requested-With",
             "X-SignalR-User-Agent",
+            "X-Aethor-Operation",
             SessionTokenMiddleware.HeaderName)
         .AllowCredentials()));
 builder.Services.AddSingleton(new SessionTokenValidator(hostOptions.SessionToken));
 builder.Services.AddSingleton<ISerialPortCatalog, WindowsSerialPortCatalog>();
 var commandOptions = new RobotGatewayOptions
 {
+    SerialOpenTimeout = TimeSpan.FromMilliseconds(hostOptions.SerialOpenTimeoutMs),
+    JointPollInterval = TimeSpan.FromMilliseconds(hostOptions.JointPollIntervalMs),
+    StatusPollInterval = TimeSpan.FromMilliseconds(hostOptions.StatusPollIntervalMs),
     HardwareCommandsEnabled = hostOptions.CommandPolicy != GatewayCommandPolicy.Disabled,
     EngineeringCommandsEnabled = hostOptions.CommandPolicy == GatewayCommandPolicy.Engineering,
     JointGroupSpeedLimitDegS = hostOptions.JointGroupSpeedLimitDegS,
@@ -75,15 +84,25 @@ app.MapGet("/health/ready", () => Results.Ok(new { status = "ready", serialRequi
 
 var api = app.MapGroup("/api/v1");
 api.MapGet("/gateway/capabilities", (RobotGateway gateway) => gateway.Capabilities);
-api.MapGet("/serial/ports", async (RobotGateway gateway, CancellationToken cancellationToken) =>
+api.MapGet("/serial/ports", async (HttpContext context, RobotGateway gateway, CancellationToken cancellationToken) =>
 {
+    var operationId = ReadOperationId(context);
+    var stopwatch = Stopwatch.StartNew();
+    GatewayLog.SerialEnumerationStarted(app.Logger, operationId);
     try
     {
-        return Results.Ok(await gateway.ListPortsAsync(cancellationToken).ConfigureAwait(false));
+        var ports = await gateway.ListPortsAsync(cancellationToken).ConfigureAwait(false);
+        GatewayLog.SerialEnumerationCompleted(app.Logger, operationId, ports.Count, stopwatch.ElapsedMilliseconds);
+        return Results.Ok(ports);
     }
     catch (Exception exception)
     {
-        GatewayLog.SerialEnumerationFailed(app.Logger, exception);
+        GatewayLog.SerialEnumerationFailed(
+            app.Logger,
+            exception,
+            operationId,
+            stopwatch.ElapsedMilliseconds,
+            exception is OperationCanceledException ? "cancelled" : "dependency");
         return Results.Problem(
             statusCode: StatusCodes.Status503ServiceUnavailable,
             title: "Serial port enumeration failed",
@@ -127,37 +146,73 @@ api.MapGet("/commands/{commandId}", (string commandId, RobotGateway gateway) =>
     }
 });
 api.MapPost("/session/connect", async (
+    HttpContext context,
     RobotConnectRequest request,
     RobotGateway gateway,
     CancellationToken cancellationToken) =>
 {
+    const string operation = "connect";
+    var operationId = ReadOperationId(context);
+    var stopwatch = Stopwatch.StartNew();
+    GatewayLog.SerialSessionStarted(app.Logger, operationId, operation);
     try
     {
-        return Results.Ok(await gateway.ConnectAsync(request, cancellationToken).ConfigureAwait(false));
+        var snapshot = await gateway.ConnectAsync(request, cancellationToken).ConfigureAwait(false);
+        GatewayLog.SerialSessionCompleted(app.Logger, operationId, operation, snapshot.ConnectionState.ToString().ToLowerInvariant(), stopwatch.ElapsedMilliseconds);
+        return Results.Ok(snapshot);
     }
     catch (GatewayValidationException exception)
     {
+        GatewayLog.SerialSessionFailed(app.Logger, null, operationId, operation, stopwatch.ElapsedMilliseconds, "validation");
         return Problem(StatusCodes.Status400BadRequest, "Connection request rejected", exception.Message);
     }
     catch (GatewayConflictException exception)
     {
+        GatewayLog.SerialSessionFailed(app.Logger, null, operationId, operation, stopwatch.ElapsedMilliseconds, "conflict");
         return Problem(StatusCodes.Status409Conflict, "A serial session is already active", exception.Message);
     }
     catch (GatewayDependencyException exception)
     {
-        GatewayLog.SerialConnectionFailed(app.Logger, exception.InnerException);
+        GatewayLog.SerialSessionFailed(app.Logger, exception.InnerException, operationId, operation, stopwatch.ElapsedMilliseconds, "dependency");
         return Problem(StatusCodes.Status503ServiceUnavailable, "Serial connection failed", exception.Message);
     }
+    catch (OperationCanceledException exception)
+    {
+        GatewayLog.SerialSessionFailed(app.Logger, exception, operationId, operation, stopwatch.ElapsedMilliseconds, "cancelled");
+        throw;
+    }
+    catch (Exception exception)
+    {
+        GatewayLog.SerialSessionFailed(app.Logger, exception, operationId, operation, stopwatch.ElapsedMilliseconds, "unexpected");
+        throw;
+    }
 });
-api.MapPost("/session/disconnect", async (RobotGateway gateway, CancellationToken cancellationToken) =>
+api.MapPost("/session/disconnect", async (HttpContext context, RobotGateway gateway, CancellationToken cancellationToken) =>
 {
+    const string operation = "disconnect";
+    var operationId = ReadOperationId(context);
+    var stopwatch = Stopwatch.StartNew();
+    GatewayLog.SerialSessionStarted(app.Logger, operationId, operation);
     try
     {
-        return Results.Ok(await gateway.DisconnectAsync(cancellationToken).ConfigureAwait(false));
+        var snapshot = await gateway.DisconnectAsync(cancellationToken).ConfigureAwait(false);
+        GatewayLog.SerialSessionCompleted(app.Logger, operationId, operation, snapshot.ConnectionState.ToString().ToLowerInvariant(), stopwatch.ElapsedMilliseconds);
+        return Results.Ok(snapshot);
     }
     catch (GatewayConflictException exception)
     {
+        GatewayLog.SerialSessionFailed(app.Logger, null, operationId, operation, stopwatch.ElapsedMilliseconds, "conflict");
         return Problem(StatusCodes.Status409Conflict, "Serial release rejected", exception.Message);
+    }
+    catch (OperationCanceledException exception)
+    {
+        GatewayLog.SerialSessionFailed(app.Logger, exception, operationId, operation, stopwatch.ElapsedMilliseconds, "cancelled");
+        throw;
+    }
+    catch (Exception exception)
+    {
+        GatewayLog.SerialSessionFailed(app.Logger, exception, operationId, operation, stopwatch.ElapsedMilliseconds, "unexpected");
+        throw;
     }
 });
 api.MapPost("/commands/enable", async (SimpleRobotCommand command, RobotGateway gateway, CancellationToken cancellationToken) =>
@@ -198,6 +253,14 @@ static IResult Problem(int status, string title, string detail) => Results.Probl
     title: title,
     detail: detail,
     type: "https://aethor.local/problems/gateway-operation");
+
+static string ReadOperationId(HttpContext context)
+{
+    var candidate = context.Request.Headers["X-Aethor-Operation"].FirstOrDefault();
+    return Guid.TryParse(candidate, out var operationId)
+        ? operationId.ToString("D")
+        : context.TraceIdentifier;
+}
 
 static void ConfigureJson(JsonSerializerOptions options)
 {

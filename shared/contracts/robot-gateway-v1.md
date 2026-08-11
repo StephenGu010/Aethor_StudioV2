@@ -23,14 +23,14 @@ C# `RobotGateway` 是唯一的串口、轮询、命令仲裁、最新快照和�
 - `RobotSessionSnapshot`：session、连接、使能、模式、来源与有效性。
 - `JointStateFrame`：递增序号、六个角度、UTC 时间、来源与有效性，顺序按 Profile `protocolIndex`。
 - `ProtocolFrame`：有界 ASCII、方向、解析类别、来源和可选 correlation ID。
-- `CommandResult`：命令终态、稳定 code、evidence、面向操作者的信息和可选设备回包。
+- `CommandResult`：命令终态、稳定 code、evidence、面向操作者的信息和可选设备回包。C# JSON 边界会把无回包序列化为显式 `null`，客户端必须同时接受字段缺失、字符串和 `null`，不能因此丢弃整条命令审计。
 - `RobotCommandRequestSnapshot`：命令种类、SHA-256 请求指纹和有界参数快照；关节数组最多保留前六项，同时记录原数量和截断标志。
 - `CommandAuditRecord`：命令身份、接收时间、请求快照、实际成功写入 transport 的 payload 和当前/最终结果；默认最多保留 128 项。
 - `DirectCommandRequest/DirectCommandResult`：开发调试的一行白名单命令与明确的 `replied/queued/rejected/timedOut/failed` 结果；`queued` 只表示固件 FIFO 接受，不表示运动完成。
 
 ## REST
 
-所有 `/api/v1/*` 请求必须携带 `X-Aethor-Session`；健康检查无需认证。命令端点对协议级拒绝或不支持返回 HTTP 200 和明确 `CommandResult`，网络/认证错误仍使用 HTTP 状态码。
+所有 `/api/v1/*` 请求必须携带 `X-Aethor-Session`；健康检查无需认证。串口目录、显式连接和显式断开请求另携带 UUID `X-Aethor-Operation`，只用于关联有界诊断，不能授权连接、断开或命令；非法/缺失值由网关 trace id 代替。连接/断开在前端由同一 gateway 的 single-flight owner 仲裁：相同意图共享一个请求，不同意图在现有动作终态前失败关闭。命令端点对协议级拒绝或不支持返回 HTTP 200 和明确 `CommandResult`，网络/认证错误仍使用 HTTP 状态码。
 
 | Method | Path | Request | Response |
 |---|---|---|---|
@@ -64,6 +64,7 @@ C# `RobotGateway` 是唯一的串口、轮询、命令仲裁、最新快照和�
 - evidence 从 `none`、`gatewayAccepted`、`deviceQueued`、`deviceAck` 到 `feedbackConfirmed` 逐步增强；FIFO 数字或通用 `ok` 不能单独证明到位。
 - 每个命令都校验 session/profile、连接有效性和适用状态；整组关节还校验新鲜实测反馈、已使能、恰好六个有限角、manifest 限位、显式正速度和完整四参数运动包络。
 - FIFO 接受后，网关以有界频率读取 `#GETJPOS` 并计算六轴最大绝对误差。只有误差连续处于容差内达到稳定窗口才返回 `completed + feedbackConfirmed`；离开容差会重置窗口，总超时或查询超时返回 `timedOut + deviceQueued` 并锁存安全联锁。
+- 常规遥测按一个串口 owner 串行调度：连接首轮读取 `#GETJPOS/#GETMODE/#GETENABLE`，之后关节位置默认 50 ms、模式与使能默认 500 ms。位置帧仍按 Profile `protocolIndex` 原序发布并保留设备角；网关不应用 URDF 偏置，Dummy J3 的 -90° 只在前端模型边界处理。任何超时都会标记 stale，并要求下一次成功周期重新取得完整状态。
 - 任一命令进入 `unconfirmed/failed/timedOut` 后，网关锁存安全联锁并拒绝后续普通命令；只允许停止并去使能。停止读回 disabled 成功或操作者现场复核后重新建立新 session 才能清除联锁。
 - UI 必须先完成 capability negotiation；页面禁用不是安全边界，C# 会重复全部许可校验。
 - 客户端还必须先恢复当前 session 的 REST 命令历史；恢复状态不是 `ready` 时，普通硬件命令和关节组下发失败关闭，停止并去使能仍可用。客户端的最近展示结果与安全联锁状态必须分离；空白、陈旧或因容量截断的历史不能清除已知联锁，只有时间不早于联锁的成功停止证据或新 session 才能清除。命令 POST 的 HTTP 响应丢失属于物理结果未知，客户端以本地 `unconfirmed/transportError/none` 锁定控制，不能把网络异常当作“未发送”后重试。
@@ -111,8 +112,9 @@ Hub 为 `/hubs/robot-v1`，使用 Bearer token；没有 client-to-server Hub met
 
 - 115200、8-N-1、ASCII/LF、无 handshake，DTR/RTS 关闭。
 - 串口打开后先进入 `connected + stale`；完整有效查询循环后才是 `valid`。
-- 默认查询顺序为 `#GETJPOS/#GETMODE/#GETENABLE`，单次 2 秒超时；连续三次查询超时或 I/O 故障进入 `faulted` 并释放 transport。
-- 网关不会自动重连。恢复必须由操作者重新确认端口和现场条件后手动连接。
+- 串口打开有独立总超时，默认 5 秒，可由宿主在 `100–30000 ms` 内配置。从未取得串口所有权的普通打开失败在释放临时 transport 后回到 `offline`，错误由 HTTP 结果、operation probe 和 `serial.open.failed` 保留，不能留下需要人工释放的伪会话。打开超时或调用方取消使用 `serial.open.timeout/cancelled`，主动 dispose 候选连接，并隔离当前 Gateway 进程的后续打开尝试；只有重启进程才解除，避免无法取消的原生 `Open()` 工作项被重复累积。
+- 默认查询顺序为 `#GETJPOS/#GETMODE/#GETENABLE`，单次 2 秒超时；成功打开后的连续三次查询超时或 I/O 故障进入 `faulted` 并释放 transport。
+- 网关不会自动重连。普通失败后的再次连接仍由操作者重新确认端口和现场条件；打开超时/取消则必须先重启 Gateway。
 - 未知、畸形、非 ASCII、超长和半帧保留为有界诊断，不更新可信状态。
 - Infrastructure 使用 100 ms 有界同步读窗口并在每个窗口检查取消，不依赖 Windows `SerialPort.BaseStream.ReadAsync` 的非可靠取消；关闭仍先释放句柄，再等待轮询/命令收束和 dispose。
 - 成功断开是新的会话边界：REST session 回到 `offline/unavailable`，joint 回到 unavailable，协议帧、命令审计和安全联锁清空。调用方必须同时清空当前会话遥测和目标草稿；显式保存到持久层或已经导出的文件不属于该临时会话。

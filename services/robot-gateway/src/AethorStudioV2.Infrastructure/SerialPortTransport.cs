@@ -191,12 +191,12 @@ public sealed class SerialPortTransport : IAsciiTransport
             }
             catch (OperationCanceledException)
             {
-                _ = openTask.ContinueWith(
-                    static (_, state) => DisposeSerialPort((ISerialPortConnection)state!),
-                    candidate,
-                    CancellationToken.None,
-                    TaskContinuationOptions.ExecuteSynchronously,
-                    TaskScheduler.Default);
+                // SerialPort.Open is synchronous and some Windows drivers can ignore
+                // request cancellation. Start candidate disposal immediately so Close/
+                // Dispose can interrupt the native open without holding the lifecycle
+                // gate or the API request. The gateway quarantines further attempts
+                // until restart, preventing abandoned open workers from accumulating.
+                _ = AbortOpenAsync(candidate, openTask);
                 throw;
             }
             catch
@@ -349,6 +349,29 @@ public sealed class SerialPortTransport : IAsciiTransport
         finally
         {
             serialPort.Dispose();
+        }
+    }
+
+    private static async Task AbortOpenAsync(ISerialPortConnection candidate, Task openTask)
+    {
+        try
+        {
+            await Task.Run(() => DisposeSerialPort(candidate), CancellationToken.None).ConfigureAwait(false);
+        }
+        catch
+        {
+            // The application-level timeout already records the failed open. This
+            // cleanup path must observe every task without throwing on a finalizer or
+            // thread-pool thread.
+        }
+
+        try
+        {
+            await openTask.ConfigureAwait(false);
+        }
+        catch
+        {
+            // Observe the abandoned synchronous open outcome after candidate disposal.
         }
     }
 }

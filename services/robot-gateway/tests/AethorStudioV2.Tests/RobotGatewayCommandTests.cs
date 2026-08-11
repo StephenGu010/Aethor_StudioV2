@@ -451,6 +451,7 @@ public sealed class RobotGatewayCommandTests
     [Fact]
     public async Task JointGroupTimeoutLatchesInterlockAndDoesNotClaimCompletion()
     {
+        var diagnostics = new RecordingGatewayDiagnostics();
         var transport = new FakeAsciiTransport((line, _) => line switch
         {
             "#GETJPOS" => [FakeAsciiTransport.Ascii("ok 0 0 0 0 0 0\n")],
@@ -460,7 +461,10 @@ public sealed class RobotGatewayCommandTests
             _ => []
         });
         var completion = new JointGroupCompletionPolicy(0.1, 100, 500);
-        await using var gateway = CreateGateway(transport, SupervisedOptions(20, completion));
+        await using var gateway = CreateGateway(
+            transport,
+            SupervisedOptions(20, completion),
+            diagnostics: diagnostics);
         var session = await ConnectAndWaitAsync(gateway);
 
         var result = await gateway.SendJointGroupAsync(
@@ -470,6 +474,13 @@ public sealed class RobotGatewayCommandTests
         Assert.Equal(CommandStatus.TimedOut, result.Status);
         Assert.Equal(CommandResultCode.Timeout, result.Code);
         Assert.Equal(CommandEvidence.DeviceQueued, result.Evidence);
+        Assert.Contains("#GETJPOS 样本保持不变", result.Message);
+        var frozenFeedback = Assert.Single(
+            diagnostics.Events,
+            diagnostic => diagnostic.EventName == "motion.feedback.frozen_suspected");
+        Assert.Equal(GatewayDiagnosticSeverity.Warning, frozenFeedback.Severity);
+        Assert.Contains("CommandId=move-timeout", frozenFeedback.Detail);
+        Assert.Contains("physical result remains unknown", frozenFeedback.Detail);
         var blocked = await gateway.SetModeAsync(
             new("blocked-after-motion-timeout", session.SessionId, GatewayContractV1.DummyProfileId, 1),
             CancellationToken.None);
@@ -618,11 +629,12 @@ public sealed class RobotGatewayCommandTests
     private static RobotGateway CreateGateway(
         FakeAsciiTransport transport,
         RobotGatewayOptions options,
-        RecordingGatewayEventSink? events = null) => new(
+        RecordingGatewayEventSink? events = null,
+        RecordingGatewayDiagnostics? diagnostics = null) => new(
             new FakeAsciiTransportFactory(_ => transport),
             new FakeSerialPortCatalog("COM4"),
             events,
-            new RecordingGatewayDiagnostics(),
+            diagnostics ?? new RecordingGatewayDiagnostics(),
             TimeProvider.System,
             options);
 
@@ -648,6 +660,8 @@ public sealed class RobotGatewayCommandTests
 
     private static RobotGatewayOptions BaseOptions() => new()
     {
+        JointPollInterval = TimeSpan.FromMilliseconds(50),
+        StatusPollInterval = TimeSpan.FromMilliseconds(50),
         PollInterval = TimeSpan.FromMilliseconds(50),
         QueryTimeout = TimeSpan.FromMilliseconds(50),
         CommandTimeout = TimeSpan.FromMilliseconds(250),

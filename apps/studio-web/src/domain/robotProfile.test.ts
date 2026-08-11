@@ -9,6 +9,10 @@ describe('RobotProfileManifestV1', () => {
     expect(dummyProfile.joints.map((joint) => joint.urdfJointName)).toEqual([
       'joint_1', 'joint_2', 'joint_3', 'joint_4', 'joint_5', 'joint_6'
     ]);
+    expect(dummyProfile.joints.map((joint) => [joint.lowerDeg, joint.upperDeg])).toEqual([
+      [-170, 170], [-75, 90], [0, 180], [-180, 180], [-120, 120], [-720, 720]
+    ]);
+    expect(dummyProfile.joints[2]?.modelTransform).toEqual({ sign: 1, offsetDeg: -90 });
   });
 
   it('accepts Aethor_robo as two complete seven-axis control groups', () => {
@@ -32,6 +36,12 @@ describe('RobotProfileManifestV1', () => {
       capabilities: { ...dummyProfile.capabilities, controlModes: [1, 2, 3, 5] }
     })).toThrow();
     expect(() => parseRobotProfile({ ...dummyProfile, unexpectedOnlineState: true })).toThrow();
+    expect(() => parseRobotProfile({
+      ...dummyProfile,
+      joints: dummyProfile.joints.map((joint, index) => index === 2
+        ? { ...joint, modelTransform: { sign: 0, offsetDeg: -90 } }
+        : joint)
+    })).toThrow();
     expect(() => parseRobotProfile({
       ...aethorRoboProfile,
       jointGroups: aethorRoboProfile.jointGroups?.map((group, index) => index === 1

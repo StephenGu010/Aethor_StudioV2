@@ -11,7 +11,7 @@ AethorStudioV2.Api
        <- AethorStudioV2.Infrastructure
 ```
 
-- `Domain`：v1.2 DTO、Dummy ASCII formatter/parser、关节限位和命令状态枚举。
+- `Domain`：v1.2 DTO、Dummy ASCII formatter/parser、固件设备角限位和命令状态枚举。Dummy 限位为 J1 `-170…170`、J2 `-75…90`、J3 `0…180`、J4 `-180…180`、J5 `-120…120`、J6 `-720…720`；网关不执行 URDF 偏置换算。
 - `Application`：`RobotGateway` 单一所有者、轮询、许可门、幂等、单在途命令、停止抢占、安全联锁和有界历史；另含无生产接线的 Phase 6B-S `ActionProgramRunner`。
 - `Infrastructure`：Windows SerialPort adapter 和精确 payload policy；不接受任意 raw ASCII。
 - `Api`：loopback REST/SignalR、session token、精确 CORS 白名单和受控进程退出。
@@ -31,6 +31,8 @@ pnpm gateway:test
 
 需要 `.NET SDK 10.0.302`。`global.json` 固定 feature band，`dotnet.ps1` 优先使用未提交的 `.tools/dotnet/dotnet.exe`，否则使用 PATH SDK。
 
+`pnpm gateway:test` 通过 `dotnet-isolated.ps1` 为每次验证创建唯一的仓库内 `artifacts/validation/dotnet/.run-gw-*` 输出，并只清理该次目录；调用方不能覆盖 artifacts path。这样运行中的网关可以继续拥有自己的常规 Release 文件和串口会话，测试不会强杀进程、打开串口或复用运行输出。`pnpm gateway:build` 保留常规 Release 输出，供明确的开发/实机运行手册使用；根 `pnpm build` 则使用隔离的 `gateway:build:verify`。
+
 ## 本地只读开发
 
 ```powershell
@@ -49,6 +51,9 @@ pnpm gateway:dev
 | `AETHOR_GATEWAY_TOKEN_SOURCE` | `development` | `development` 或 `desktop`；非 Development 必须为 desktop |
 | `AETHOR_GATEWAY_DEV_ORIGINS` | 5173/5174 的 localhost 与 127.0.0.1 | 分号分隔、无 path 的 loopback HTTP(S) origin |
 | `AETHOR_GATEWAY_COMMAND_POLICY` | `disabled` | `disabled`、`supervised` 或 `engineering`；supervised 强制 desktop token，engineering 强制 Development + development token |
+| `AETHOR_GATEWAY_SERIAL_OPEN_TIMEOUT_MS` | `5000` | `100–30000` ms；打开超时或调用方取消后本 Gateway 禁止再次尝试，须重启进程 |
+| `AETHOR_GATEWAY_JOINT_POLL_INTERVAL_MS` | `50` | `50–1000` ms；只读取六轴 `#GETJPOS`，默认约 20 Hz 请求节拍 |
+| `AETHOR_GATEWAY_STATUS_POLL_INTERVAL_MS` | `500` | 不小于关节轮询且不大于 `10000` ms；读取模式与使能状态 |
 | `AETHOR_GATEWAY_JOINT_GROUP_SPEED_LIMIT_DEG_S` | 无 | 有限正数；关节组四项配置之一 |
 | `AETHOR_GATEWAY_JOINT_GROUP_POSITION_TOLERANCE_DEG` | 无 | `0.01–5` deg；关节组到位容差 |
 | `AETHOR_GATEWAY_JOINT_GROUP_SETTLED_DURATION_MS` | 无 | `100–5000` ms；必须连续处于容差内的窗口 |
@@ -65,11 +70,12 @@ pnpm gateway:dev
 - `enable`、`stopAndDisable`、`setMode` 和可选 `jointGroup` 已有类型化端点、能力协商和 fake-serial 证据；默认全部关闭。
 - HOME/RESET 端点仅保留稳定契约。固件在处理这两条命令时阻塞到动作结束，生产配置不宣告、不执行。
 - 关节组只有在连接有效、反馈新鲜、设备已使能、六轴目标合法、显式速度不超过外部已验证上限、完整到位策略已配置且无在途命令时才可执行。
-- FIFO 接受只产生 `deviceQueued` 证据。网关持续读取 `#GETJPOS`，只有六轴最大误差连续处于容差内达到稳定窗口才返回 `completed + feedbackConfirmed`；总超时或查询超时返回 `timedOut` 并锁存联锁。
+- FIFO 接受只产生 `deviceQueued` 证据。网关持续读取 `#GETJPOS`，只有六轴最大误差连续处于容差内达到稳定窗口才返回 `completed + feedbackConfirmed`；总超时或查询超时返回 `timedOut` 并锁存联锁。若目标仍在容差外且至少三个有效位置样本完全不变，总超时时还会记录一次 `motion.feedback.frozen_suspected` 告警，并在结果中提示检查固件运动模式的反馈采集；该告警不把目标值当作反馈，也不推断机械臂实际是否运动。
+- 关节位置与慢状态分开调度：连接后的首轮仍完整读取位置、模式和使能，之后位置默认每 50 ms 查询，模式/使能默认每 500 ms 刷新。任一查询超时都会把反馈标为 stale，并强制下一轮重新取得完整状态；不增加第二个串口 owner 或并行读写。
 - 停止链为 `!STOP -> internal fixed zero -> !DISABLE -> #GETENABLE`；只有读回 0 才能显示完成。
 - 所有硬件命令等待串口所有权均有界；普通命令超时且零写入时拒绝，STOP 超时返回未确认并锁存安全联锁。任一未知物理结果都会阻断后续普通命令，只允许再次停止，成功去使能或重建 session 才清除。
 - 任意 raw 串口写入、RGB、模式 4/5、电流/PID、标定和 reboot 没有公共端点；engineering direct 端点只是受限协议命令，不接受任意字节。
-- 如果仍有在途硬件命令，或电机已明确读回 enabled，人工 disconnect 会被拒绝；错误端口造成的 stale/unknown 会话允许释放。进程退出仍执行强制清理，但这不构成物理安全确认。
+- 如果仍有在途硬件命令，或电机已明确读回 enabled，人工 disconnect 会被拒绝；打开失败的临时 transport 在异常路径立即释放并把 session 恢复为 offline，不要求操作者再执行断开，也不能阻塞桌面关闭。已经成功打开过的 stale/unknown/faulted 会话仍允许人工释放。进程退出执行强制资源清理，但这不构成物理安全确认。
 - 每条命令审计保留规范化请求、SHA-256 请求指纹和最多 32 条实际成功写入 transport 的 payload；高频轮询协议环只用于补充诊断。
 
 ## 运行与恢复
@@ -77,9 +83,10 @@ pnpm gateway:dev
 - 正常退出会取消轮询/命令并关闭、dispose 唯一 transport。
 - HTTP 请求在命令接管前已取消时零审计、零硬件写入；接管后的请求断开不会取消物理 runner。网关继续形成唯一终态，同 ID 查询/恢复不会重复发送。session 断开会先取消轮询/runner 并关闭串口句柄，以打断不响应 token 取消的原生读，再等待任务形成终态并 dispose transport；不在仍打开句柄时无限等待。
 - SignalR 事件发布位于 transport 生命周期之外：每次发布与关闭排空均有独立超时。发布器超时后停止事件泵并记录诊断，不继续创建悬挂调用；网关 dispose 始终先释放 transport，再有界等待事件泵。REST 快照仍是权威状态。
-- 查询连续三次超时、拔线或 I/O 故障进入 `faulted` 并释放串口，不自动重连。
+- 成功打开后的查询连续三次超时、拔线或 I/O 故障进入 `faulted` 并释放串口，不自动重连；普通打开失败记录 `serial.open.failed` 和 API 错误后回到 `offline`。打开超时/取消记录 `serial.open.timeout/cancelled`，回到 offline 并隔离本进程后续打开；先正常重启 Gateway，不能在同一进程中连续重试。
 - SignalR 中断不停止串口所有者；REST 仍是权威状态，前端把旧遥测标为陈旧并显式恢复。
-- WebView2 的 SignalR negotiate 只允许已配置 loopback origin，以及 `Authorization`、`X-Requested-With`、`X-SignalR-User-Agent` 和 `X-Aethor-Session` 等明确请求头；不允许任意 origin/header。
+- WebView2 只允许已配置 loopback origin，以及 `Authorization`、`X-Requested-With`、`X-SignalR-User-Agent`、`X-Aethor-Session` 和串口目录/会话诊断用 `X-Aethor-Operation` 等明确请求头；不允许任意 origin/header。
+- `/serial/ports` 记录 Event 1006/1007/1002 的开始、终态、耗时、结果数或失败分类；`/session/connect` 与 `/session/disconnect` 记录 Event 1008/1009/1010 的动作、终态、耗时和失败分类。三条链均使用 `X-Aethor-Operation`，不会记录 token、端口身份、关节目标或协议内容。前端与桌面的对应排障见 `docs/runbooks/diagnostics.md`。
 - 认证的 `POST /api/v1/host/shutdown` 只在无串口会话或设备已明确 disabled 时返回 202，并在响应完成后停止宿主；状态不明确时返回 409。该端点只供桌面父进程安全退出使用。
 - 日志不得记录 session token 或带 `access_token` 的 URL。协议和命令历史均有界。
 

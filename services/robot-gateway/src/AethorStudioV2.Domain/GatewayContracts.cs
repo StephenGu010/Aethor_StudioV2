@@ -11,12 +11,12 @@ public static class DummyJointLimits
 {
     public static readonly IReadOnlyList<JointLimit> All =
     [
-        new(-179.91, 179.91),
-        new(-74.48, 124.90),
-        new(-93.39, 91.67),
-        new(-179.91, 179.91),
-        new(-100.84, 100.84),
-        new(-179.91, 179.91)
+        new(-170, 170),
+        new(-75, 90),
+        new(0, 180),
+        new(-180, 180),
+        new(-120, 120),
+        new(-720, 720)
     ];
 }
 

@@ -5,15 +5,19 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { basename, join, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SPDX_VERSION = 'SPDX-2.3';
-const SUMMARY_SCHEMA = 'aethor.third-party-inventory-summary.v1';
+const SUMMARY_SCHEMA = 'aethor.third-party-inventory-summary.v2';
+const CURATED_LICENSE_SCHEMA = 'aethor.third-party-license-sources.v1';
+const MODEL_REDISTRIBUTION_SCHEMA = 'aethor.model-redistribution-status.v1';
+const REQUIRED_MODEL_PROFILE_IDS = ['aethor-robo-dual-7dof', 'dummy-6dof'];
 const LICENSE_FILE_PATTERN = /^(?:licen[cs]e|unlicense|copying|copyright)(?:$|[._ -])/i;
 const LEGAL_FILE_PATTERN = /^(?:(?:licen[cs]e|unlicense|copying|copyright|notice)(?:$|[._ -])|third[._ -]?party[._ -]?notices?(?:$|[._ -]))/i;
 
@@ -62,6 +66,224 @@ function normalizeUrl(value) {
   }
 }
 
+function assertObject(value, label) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  return value;
+}
+
+function assertExactKeys(value, expected, label) {
+  const actual = Object.keys(value).sort((left, right) => left.localeCompare(right, 'en'));
+  const required = [...expected].sort((left, right) => left.localeCompare(right, 'en'));
+  if (actual.length !== required.length || actual.some((key, index) => key !== required[index])) {
+    throw new Error(`${label} has unsupported or missing fields: ${actual.join(', ')}`);
+  }
+}
+
+function requiredString(value, label) {
+  if (typeof value !== 'string' || value.trim().length === 0) throw new Error(`${label} must be a non-empty string`);
+  return value;
+}
+
+function requireHttpsUrl(value, label) {
+  const normalized = normalizeUrl(requiredString(value, label));
+  if (!normalized || new URL(normalized).protocol !== 'https:') throw new Error(`${label} must be an HTTPS URL`);
+  return normalized;
+}
+
+function isPathInside(root, candidate) {
+  const child = relative(root, candidate);
+  return child.length > 0 && child !== '..' && !child.startsWith(`..${sep}`) && !isAbsolute(child);
+}
+
+function resolveVerifiedTextFile(root, relativePath, expectedSha256, label) {
+  const pathValue = requiredString(relativePath, `${label}.path`);
+  if (isAbsolute(pathValue)) throw new Error(`${label}.path must be relative`);
+  const rootReal = realpathSync(root);
+  const candidate = resolve(root, pathValue);
+  if (!isPathInside(root, candidate) || !existsSync(candidate) || !statSync(candidate).isFile()) {
+    throw new Error(`${label}.path is missing or escapes its manifest directory: ${pathValue}`);
+  }
+  const candidateReal = realpathSync(candidate);
+  if (!isPathInside(rootReal, candidateReal)) throw new Error(`${label}.path resolves outside its manifest directory`);
+  const bytes = readFileSync(candidateReal);
+  if (bytes.length === 0 || bytes.length > 256 * 1024) throw new Error(`${label}.path has an invalid text length`);
+  const content = bytes.toString('utf8');
+  if (!Buffer.from(content, 'utf8').equals(bytes)) throw new Error(`${label}.path must be valid UTF-8`);
+  const actualSha256 = sha256(bytes);
+  if (!/^[a-f0-9]{64}$/.test(expectedSha256) || actualSha256 !== expectedSha256) {
+    throw new Error(`${label}.sha256 does not match ${pathValue}`);
+  }
+  return { sourcePath: candidateReal, content, sha256: actualSha256 };
+}
+
+function readCuratedLicenseSources(manifestPath) {
+  if (!manifestPath) return new Map();
+  const resolvedManifest = resolve(manifestPath);
+  const document = assertObject(readJson(resolvedManifest), 'Curated license manifest');
+  assertExactKeys(document, ['schemaVersion', 'sources'], 'Curated license manifest');
+  if (document.schemaVersion !== CURATED_LICENSE_SCHEMA || !Array.isArray(document.sources)) {
+    throw new Error(`Unsupported curated license manifest schema: ${document.schemaVersion ?? '<missing>'}`);
+  }
+  const manifestRoot = dirname(resolvedManifest);
+  const sources = new Map();
+  for (const [index, value] of document.sources.entries()) {
+    const label = `Curated license source ${index}`;
+    const source = assertObject(value, label);
+    assertExactKeys(
+      source,
+      ['declaredLicense', 'ecosystem', 'licenseTextPath', 'licenseTextSha256', 'name', 'packageEvidence', 'upstream', 'version'],
+      label,
+    );
+    if (!['npm', 'nuget'].includes(source.ecosystem)) throw new Error(`${label}.ecosystem is unsupported`);
+    const name = requiredString(source.name, `${label}.name`);
+    const version = requiredString(source.version, `${label}.version`);
+    const key = `${source.ecosystem}:${name}@${version}`;
+    if (sources.has(key)) throw new Error(`Duplicate curated license identity: ${key}`);
+    const declaredLicense = requiredString(source.declaredLicense, `${label}.declaredLicense`);
+    const textFile = resolveVerifiedTextFile(
+      manifestRoot,
+      source.licenseTextPath,
+      requiredString(source.licenseTextSha256, `${label}.licenseTextSha256`),
+      `${label}.licenseText`,
+    );
+    const upstream = assertObject(source.upstream, `${label}.upstream`);
+    assertExactKeys(upstream, ['blobSha', 'contentSha256', 'path', 'relation', 'repositoryUrl', 'revision'], `${label}.upstream`);
+    const revision = requiredString(upstream.revision, `${label}.upstream.revision`);
+    const blobSha = requiredString(upstream.blobSha, `${label}.upstream.blobSha`);
+    const contentSha256 = requiredString(upstream.contentSha256, `${label}.upstream.contentSha256`);
+    if (!/^[a-f0-9]{40}$/.test(revision) || !/^[a-f0-9]{40}$/.test(blobSha)) {
+      throw new Error(`${label}.upstream revision and blob SHA must be lowercase immutable Git hashes`);
+    }
+    if (!/^[a-f0-9]{64}$/.test(contentSha256)) throw new Error(`${label}.upstream.contentSha256 is invalid`);
+    if (!['package-source-revision', 'repository-license-after-package-release', 'repository-license-on-release-branch'].includes(upstream.relation)) {
+      throw new Error(`${label}.upstream.relation is unsupported`);
+    }
+    const upstreamPath = requiredString(upstream.path, `${label}.upstream.path`).replace(/\\/g, '/');
+    if (upstreamPath.startsWith('/') || upstreamPath.split('/').includes('..')) {
+      throw new Error(`${label}.upstream.path must be repository-relative`);
+    }
+    const packageEvidence = assertObject(source.packageEvidence, `${label}.packageEvidence`);
+    assertExactKeys(packageEvidence, ['integrity', 'type', 'url'], `${label}.packageEvidence`);
+    if (!['npm-dist-integrity', 'nuget-package-sha512'].includes(packageEvidence.type)) {
+      throw new Error(`${label}.packageEvidence.type is unsupported`);
+    }
+    sources.set(key, {
+      key,
+      ecosystem: source.ecosystem,
+      name,
+      version,
+      declaredLicense,
+      textFile,
+      upstream: {
+        repositoryUrl: requireHttpsUrl(upstream.repositoryUrl, `${label}.upstream.repositoryUrl`),
+        revision,
+        relation: upstream.relation,
+        path: upstreamPath,
+        blobSha,
+        contentSha256,
+      },
+      packageEvidence: {
+        type: packageEvidence.type,
+        url: requireHttpsUrl(packageEvidence.url, `${label}.packageEvidence.url`),
+        integrity: requiredString(packageEvidence.integrity, `${label}.packageEvidence.integrity`),
+      },
+    });
+  }
+  return sources;
+}
+
+function applyCuratedLicenseSources(components, manifestPath) {
+  const sources = readCuratedLicenseSources(manifestPath);
+  const componentsByKey = new Map(components.map((component) => [component.key, component]));
+  for (const source of sources.values()) {
+    const component = componentsByKey.get(source.key);
+    if (!component) throw new Error(`Curated license source does not match a packaged component: ${source.key}`);
+    if (component.declaredLicense !== source.declaredLicense) {
+      throw new Error(`Curated license declaration does not match package metadata: ${source.key}`);
+    }
+    if (component.licenseTextAvailable) {
+      throw new Error(`Curated license source is stale because the package now contains license text: ${source.key}`);
+    }
+    component.legalFiles.push({
+      name: basename(source.textFile.sourcePath),
+      content: source.textFile.content,
+      sha256: source.textFile.sha256,
+      containsLicenseText: true,
+      sourceKind: 'curated-upstream',
+      sourcePath: source.textFile.sourcePath,
+    });
+    component.licenseTextAvailable = true;
+    component.curatedLicense = {
+      textSha256: source.textFile.sha256,
+      upstream: source.upstream,
+      packageEvidence: source.packageEvidence,
+    };
+  }
+  return sources.size;
+}
+
+function readModelRedistributionStatus(statusPath) {
+  const resolvedStatusPath = resolve(statusPath);
+  const document = assertObject(readJson(resolvedStatusPath), 'Model redistribution status');
+  assertExactKeys(document, ['profiles', 'schemaVersion'], 'Model redistribution status');
+  if (document.schemaVersion !== MODEL_REDISTRIBUTION_SCHEMA || !Array.isArray(document.profiles)) {
+    throw new Error(`Unsupported model redistribution status schema: ${document.schemaVersion ?? '<missing>'}`);
+  }
+  const statusRoot = dirname(resolvedStatusPath);
+  const profileIds = new Set();
+  const profiles = document.profiles.map((value, index) => {
+    const label = `Model redistribution profile ${index}`;
+    const profile = assertObject(value, label);
+    assertExactKeys(
+      profile,
+      ['declaredLicense', 'evidence', 'profileId', 'redistributionTermsComplete', 'unresolvedReason'],
+      label,
+    );
+    const profileId = requiredString(profile.profileId, `${label}.profileId`);
+    if (profileIds.has(profileId)) throw new Error(`Duplicate model redistribution profile: ${profileId}`);
+    profileIds.add(profileId);
+    if (typeof profile.redistributionTermsComplete !== 'boolean') {
+      throw new Error(`${label}.redistributionTermsComplete must be boolean`);
+    }
+    if (!Array.isArray(profile.evidence) || profile.evidence.length === 0) throw new Error(`${label}.evidence is required`);
+    const packagedPaths = new Set();
+    const evidence = profile.evidence.map((evidenceValue, evidenceIndex) => {
+      const evidenceLabel = `${label}.evidence[${evidenceIndex}]`;
+      const item = assertObject(evidenceValue, evidenceLabel);
+      assertExactKeys(item, ['packagedPath', 'sourcePath', 'sourceSha256'], evidenceLabel);
+      const source = resolveVerifiedTextFile(
+        statusRoot,
+        item.sourcePath,
+        requiredString(item.sourceSha256, `${evidenceLabel}.sourceSha256`),
+        evidenceLabel,
+      );
+      const packagedPath = requiredString(item.packagedPath, `${evidenceLabel}.packagedPath`).replace(/\\/g, '/');
+      if (!packagedPath.startsWith('Legal/') || packagedPath.split('/').includes('..') || packagedPaths.has(packagedPath)) {
+        throw new Error(`${evidenceLabel}.packagedPath is unsafe or duplicated`);
+      }
+      packagedPaths.add(packagedPath);
+      return { packagedPath, sourceSha256: source.sha256 };
+    });
+    if (typeof profile.unresolvedReason !== 'string' || (!profile.redistributionTermsComplete && profile.unresolvedReason.trim().length === 0)) {
+      throw new Error(`${label}.unresolvedReason is required while redistribution terms are incomplete`);
+    }
+    return {
+      profileId,
+      declaredLicense: requiredString(profile.declaredLicense, `${label}.declaredLicense`),
+      redistributionTermsComplete: profile.redistributionTermsComplete,
+      unresolvedReason: profile.unresolvedReason,
+      evidence,
+    };
+  });
+  const actualProfileIds = [...profileIds].sort((left, right) => left.localeCompare(right, 'en'));
+  if (JSON.stringify(actualProfileIds) !== JSON.stringify(REQUIRED_MODEL_PROFILE_IDS)) {
+    throw new Error(`Model redistribution status must cover exactly: ${REQUIRED_MODEL_PROFILE_IDS.join(', ')}`);
+  }
+  return { resolvedStatusPath, profiles: profiles.sort((left, right) => left.profileId.localeCompare(right.profileId, 'en')) };
+}
+
 function packageMetadata(packageRoot) {
   const packageJsonPath = join(packageRoot, 'package.json');
   if (!existsSync(packageJsonPath)) return undefined;
@@ -80,6 +302,8 @@ function readLegalFiles(packageRoot) {
         content,
         sha256: sha256(content),
         containsLicenseText: LICENSE_FILE_PATTERN.test(entry.name),
+        sourceKind: 'package',
+        sourcePath: path,
       };
     })
     .sort((left, right) => left.name.localeCompare(right.name, 'en'));
@@ -283,7 +507,7 @@ function toSpdxPackage(component) {
             : nugetPurl(component.name, component.version),
       },
     ],
-    comment: `Used by: ${component.usedBy.join(', ')}. License text bundled: ${component.licenseTextAvailable ? 'yes' : 'no'}.`,
+    comment: `Used by: ${component.usedBy.join(', ')}. License text bundled: ${component.licenseTextAvailable ? 'yes' : 'no'}. Text source: ${component.curatedLicense ? 'repository-curated pinned upstream record' : 'installed package'}.`,
   };
   if (component.homepage) result.homepage = component.homepage;
   if (component.description) result.summary = component.description;
@@ -294,7 +518,7 @@ function buildNpmLicenseBundle(components) {
   const sections = [
     '# npm production dependency license texts',
     '',
-    'Generated from the installed production dependency graph. Text is reproduced from package-root legal files without modification.',
+    'Generated from the installed production dependency graph. Package-root text is reproduced from the installed package; curated text is a hash-verified UTF-8 copy bound to the exact component version and an immutable upstream revision.',
     '',
   ];
   for (const component of components.filter((item) => item.ecosystem === 'npm')) {
@@ -304,7 +528,14 @@ function buildNpmLicenseBundle(components) {
       continue;
     }
     for (const file of component.legalFiles) {
-      sections.push(`### ${file.name}`, '', '~~~~text', file.content.replace(/\s+$/u, ''), '~~~~', '');
+      sections.push(`### ${file.name}`, '');
+      if (file.sourceKind === 'curated-upstream') {
+        sections.push(
+          `Source: pinned upstream license record at \`${component.curatedLicense.upstream.revision}\` (${component.curatedLicense.upstream.path}); local SHA-256 \`${file.sha256}\`.`,
+          '',
+        );
+      }
+      sections.push('~~~~text', file.content.replace(/\s+$/u, ''), '~~~~', '');
     }
   }
   return `${sections.join('\n').replace(/\n{3,}/g, '\n\n')}\n`;
@@ -314,7 +545,7 @@ function copyDotnetLegalFiles(components, thirdPartyOutput) {
   const artifacts = [];
   const usedNames = new Set();
   for (const component of components.filter((item) => item.ecosystem === 'nuget')) {
-    for (const file of component.legalFiles) {
+    for (const file of component.legalFiles.filter((item) => item.sourceKind !== 'curated-upstream')) {
       const legalName = safeSlug(file.name).replace(/\.txt$/i, '');
       const baseName = `nuget-${safeSlug(component.name)}-${safeSlug(component.version)}-${legalName}.txt`;
       let outputName = baseName;
@@ -324,11 +555,53 @@ function copyDotnetLegalFiles(components, thirdPartyOutput) {
         suffix += 1;
       }
       usedNames.add(outputName.toLowerCase());
-      cpSync(join(component.packageRoot, file.name), join(thirdPartyOutput, outputName));
+      cpSync(file.sourcePath, join(thirdPartyOutput, outputName));
       artifacts.push(`Legal/ThirdParty/${outputName}`);
     }
   }
   return artifacts.sort((left, right) => left.localeCompare(right, 'en'));
+}
+
+function copyCuratedLicenseFiles(components, thirdPartyOutput) {
+  const artifacts = [];
+  const usedNames = new Set();
+  for (const component of components.filter((item) => item.curatedLicense)) {
+    const file = component.legalFiles.find((item) => item.sourceKind === 'curated-upstream');
+    if (!file) throw new Error(`Curated license text is missing after validation: ${component.key}`);
+    const baseName = `curated-${component.ecosystem}-${safeSlug(component.name)}-${safeSlug(component.version)}-LICENSE.txt`;
+    let outputName = baseName;
+    let suffix = 2;
+    while (usedNames.has(outputName.toLowerCase())) {
+      outputName = `${baseName.slice(0, -4)}-${suffix}.txt`;
+      suffix += 1;
+    }
+    usedNames.add(outputName.toLowerCase());
+    cpSync(file.sourcePath, join(thirdPartyOutput, outputName));
+    const artifact = `Legal/ThirdParty/${outputName}`;
+    component.curatedLicense.artifact = artifact;
+    artifacts.push(artifact);
+  }
+  return artifacts.sort((left, right) => left.localeCompare(right, 'en'));
+}
+
+function packageModelRedistributionStatus(modelStatus, legalOutput) {
+  const artifacts = new Set(['Legal/MODEL-REDISTRIBUTION-STATUS.json']);
+  for (const profile of modelStatus.profiles) {
+    for (const evidence of profile.evidence) {
+      const relativeToLegal = evidence.packagedPath.slice('Legal/'.length);
+      const packagedEvidence = resolve(legalOutput, relativeToLegal);
+      if (!isPathInside(legalOutput, packagedEvidence) || !existsSync(packagedEvidence) || !statSync(packagedEvidence).isFile()) {
+        throw new Error(`Model redistribution evidence is absent from the package: ${evidence.packagedPath}`);
+      }
+      const actualSha256 = sha256(readFileSync(packagedEvidence));
+      if (actualSha256 !== evidence.sourceSha256) {
+        throw new Error(`Model redistribution evidence hash changed during packaging: ${evidence.packagedPath}`);
+      }
+      artifacts.add(evidence.packagedPath);
+    }
+  }
+  cpSync(modelStatus.resolvedStatusPath, join(legalOutput, 'MODEL-REDISTRIBUTION-STATUS.json'));
+  return [...artifacts].sort((left, right) => left.localeCompare(right, 'en'));
 }
 
 function createSpdxDocument({ components, productVersion, sourceCommit, createdAt }) {
@@ -337,7 +610,17 @@ function createSpdxDocument({ components, productVersion, sourceCommit, createdA
       components.map((component) => ({
         key: component.key,
         declaredLicense: component.declaredLicense,
-        legalFiles: component.legalFiles.map((file) => ({ name: file.name, sha256: file.sha256 })),
+        legalFiles: component.legalFiles.map((file) => ({
+          name: file.name,
+          sha256: file.sha256,
+          sourceKind: file.sourceKind,
+        })),
+        curatedLicense: component.curatedLicense
+          ? {
+              upstream: component.curatedLicense.upstream,
+              packageEvidence: component.curatedLicense.packageEvidence,
+            }
+          : undefined,
       })),
     ),
   );
@@ -394,29 +677,44 @@ function buildHumanNotice(summary, components) {
     '## Qualification',
     '',
     `- Components: ${summary.componentCount} (${summary.npmComponentCount} npm, ${summary.dotnetComponentCount} NuGet/runtime pack).`,
-    `- Package-local license text gaps: ${summary.missingLicenseTextCount}.`,
+    `- Dependency license text gaps: ${summary.missingLicenseTextCount}.`,
+    `- Curated, version-bound upstream texts: ${summary.curatedLicenseSourceCount}.`,
+    `- Model redistribution gaps: ${summary.incompleteModelRedistributionCount}.`,
     `- Release legal gate: ${summary.releaseReady ? 'READY' : 'BLOCKED'}.`,
     '',
   ];
   if (!summary.releaseReady) {
-    lines.push(
-      'A release candidate remains blocked until every item below has an authoritative license text or an approved legal disposition. Declared SPDX expressions are recorded, but they do not replace missing package copyright/license notices.',
-      '',
-      ...summary.missingLicenseTexts.map(
-        (item) => `- ${item.ecosystem}: \`${item.name}@${item.version}\` — declared \`${item.declaredLicense}\`.`,
-      ),
-      '',
-    );
+    lines.push('A release candidate remains blocked until every dependency and model item below has authoritative terms or an approved legal disposition.', '');
+    if (summary.missingLicenseTexts.length > 0) {
+      lines.push(
+        '### Dependency text gaps',
+        '',
+        ...summary.missingLicenseTexts.map(
+          (item) => `- ${item.ecosystem}: \`${item.name}@${item.version}\` — declared \`${item.declaredLicense}\`.`,
+        ),
+        '',
+      );
+    }
+    if (summary.incompleteModelRedistributions.length > 0) {
+      lines.push(
+        '### Model redistribution gaps',
+        '',
+        ...summary.incompleteModelRedistributions.map(
+          (item) => `- \`${item.profileId}\` — declared \`${item.declaredLicense}\`; ${item.unresolvedReason}`,
+        ),
+        '',
+      );
+    }
   }
   lines.push(
     '## Inventory',
     '',
-    '| Ecosystem | Component | Version | Declared license | Bundled package text | Used by |',
-    '| --- | --- | --- | --- | --- | --- |',
+    '| Ecosystem | Component | Version | Declared license | Bundled text | Text source | Used by |',
+    '| --- | --- | --- | --- | --- | --- | --- |',
   );
   for (const component of components) {
     lines.push(
-      `| ${markdownCell(component.ecosystem)} | ${markdownCell(component.name)} | ${markdownCell(component.version)} | ${markdownCell(component.declaredLicense)} | ${component.licenseTextAvailable ? 'Yes' : 'No'} | ${markdownCell(component.usedBy.join(', '))} |`,
+      `| ${markdownCell(component.ecosystem)} | ${markdownCell(component.name)} | ${markdownCell(component.version)} | ${markdownCell(component.declaredLicense)} | ${component.licenseTextAvailable ? 'Yes' : 'No'} | ${component.curatedLicense ? 'Pinned upstream' : 'Installed package'} | ${markdownCell(component.usedBy.join(', '))} |`,
     );
   }
   lines.push(
@@ -427,6 +725,8 @@ function buildHumanNotice(summary, components) {
     '- `THIRD-PARTY-SUMMARY.json`: machine-readable completeness gate.',
     '- `ThirdParty/NPM-LICENSE-TEXTS.md`: package-root npm legal texts.',
     '- `ThirdParty/nuget-*.txt`: exact legal files copied from the restored NuGet/runtime packages.',
+    '- `ThirdParty/curated-*.txt`: version-bound, hash-verified upstream license texts for packages that omitted a root license file.',
+    '- `MODEL-REDISTRIBUTION-STATUS.json`: machine-readable model redistribution completeness gate.',
     '',
   );
   return lines.join('\n');
@@ -438,6 +738,8 @@ export function generateThirdPartyInventory(options) {
     desktopDepsPath,
     gatewayDepsPath,
     nugetRoot,
+    curatedLicenseManifestPath,
+    modelRedistributionStatusPath,
     outputDirectory,
     productVersion,
     sourceCommit = 'NOASSERTION',
@@ -456,6 +758,8 @@ export function generateThirdPartyInventory(options) {
   );
   const duplicateKeys = components.filter((component, index) => components.findIndex((item) => item.key === component.key) !== index);
   if (duplicateKeys.length > 0) throw new Error(`Duplicate inventory component: ${duplicateKeys[0].key}`);
+  const curatedLicenseSourceCount = applyCuratedLicenseSources(components, curatedLicenseManifestPath);
+  const modelRedistributionStatus = readModelRedistributionStatus(modelRedistributionStatusPath);
 
   const legalOutput = resolve(outputDirectory);
   const thirdPartyOutput = join(legalOutput, 'ThirdParty');
@@ -464,10 +768,13 @@ export function generateThirdPartyInventory(options) {
 
   const npmBundlePath = join(thirdPartyOutput, 'NPM-LICENSE-TEXTS.md');
   writeFileSync(npmBundlePath, buildNpmLicenseBundle(components), 'utf8');
+  const curatedArtifacts = copyCuratedLicenseFiles(components, thirdPartyOutput);
   const legalArtifacts = [
     'Legal/ThirdParty/NPM-LICENSE-TEXTS.md',
     ...copyDotnetLegalFiles(components, thirdPartyOutput),
+    ...curatedArtifacts,
   ];
+  const modelLegalArtifacts = packageModelRedistributionStatus(modelRedistributionStatus, legalOutput);
   const missingLicenseTexts = components
     .filter((component) => !component.licenseTextAvailable)
     .map((component) => ({
@@ -476,6 +783,15 @@ export function generateThirdPartyInventory(options) {
       version: component.version,
       declaredLicense: component.declaredLicense,
     }));
+  const incompleteModelRedistributions = modelRedistributionStatus.profiles
+    .filter((profile) => !profile.redistributionTermsComplete)
+    .map((profile) => ({
+      profileId: profile.profileId,
+      declaredLicense: profile.declaredLicense,
+      unresolvedReason: profile.unresolvedReason,
+    }));
+  const dependencyLicenseTextReady = missingLicenseTexts.length === 0;
+  const modelRedistributionReady = incompleteModelRedistributions.length === 0;
   const { document, inventoryFingerprint } = createSpdxDocument({
     components,
     productVersion,
@@ -491,10 +807,29 @@ export function generateThirdPartyInventory(options) {
     componentCount: components.length,
     npmComponentCount: npmComponents.length,
     dotnetComponentCount: dotnetComponents.length,
+    curatedLicenseSourceCount,
+    curatedLicenseSources: components
+      .filter((component) => component.curatedLicense)
+      .map((component) => ({
+        ecosystem: component.ecosystem,
+        name: component.name,
+        version: component.version,
+        declaredLicense: component.declaredLicense,
+        textSha256: component.curatedLicense.textSha256,
+        artifact: component.curatedLicense.artifact,
+        upstream: component.curatedLicense.upstream,
+        packageEvidence: component.curatedLicense.packageEvidence,
+      })),
     missingLicenseTextCount: missingLicenseTexts.length,
     missingLicenseTexts,
-    releaseReady: missingLicenseTexts.length === 0,
+    dependencyLicenseTextReady,
+    modelRedistributionStatuses: modelRedistributionStatus.profiles,
+    incompleteModelRedistributionCount: incompleteModelRedistributions.length,
+    incompleteModelRedistributions,
+    modelRedistributionReady,
+    releaseReady: dependencyLicenseTextReady && modelRedistributionReady,
     legalArtifacts,
+    modelLegalArtifacts,
   };
 
   writeJson(join(legalOutput, 'THIRD-PARTY-INVENTORY.spdx.json'), document);
@@ -516,6 +851,8 @@ function parseArguments(argv) {
     'desktop-deps-path',
     'gateway-deps-path',
     'nuget-root',
+    'curated-license-manifest-path',
+    'model-redistribution-status-path',
     'output-directory',
     'product-version',
     'source-commit',
@@ -529,6 +866,8 @@ function parseArguments(argv) {
     desktopDepsPath: values['desktop-deps-path'],
     gatewayDepsPath: values['gateway-deps-path'],
     nugetRoot: values['nuget-root'],
+    curatedLicenseManifestPath: values['curated-license-manifest-path'],
+    modelRedistributionStatusPath: values['model-redistribution-status-path'],
     outputDirectory: values['output-directory'],
     productVersion: values['product-version'],
     sourceCommit: values['source-commit'],

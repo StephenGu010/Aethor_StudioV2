@@ -1,4 +1,4 @@
-import type { CommandAuditRecord, RobotCommandKind, SerialPortDescriptor } from '@aethor/contracts';
+import type { CommandAuditRecord, RobotCommandKind } from '@aethor/contracts';
 import { Archive, CheckCircle2, CircleAlert, Cpu, Download, FileCheck2, HardDrive, Link2Off, PackageCheck, RefreshCw, ShieldCheck, Upload, Waypoints } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Hint } from '../../components/ui/Hint';
@@ -6,28 +6,42 @@ import { SourceTag } from '../../components/ui/SourceTag';
 import type { ProfilePackageValidation } from '../../domain/profilePackage';
 import { PROFILE_PACKAGE_LIMITS, validateProfilePackage } from '../../domain/profilePackage';
 import { runGatewayCommandLifecycle } from '../../integrations/GatewayCommandLifecycle';
+import { desktopBridge, type DesktopBridgeV1 } from '../../integrations/desktopBridge';
 import { robotGateway } from '../../integrations/gatewayInstance';
 import type { RobotGatewayV1 } from '../../integrations/robotGateway';
+import { refreshSerialPortCatalog } from '../../integrations/serialPortCatalog';
+import { connectSerialSession, disconnectSerialSession } from '../../integrations/serialSessionOperations';
 import { aethorRoboJointGroups, aethorRoboProfile } from '../../profile/aethorRoboProfile';
 import { dummyProfile } from '../../profile/dummyProfile';
 import { useActiveRobotProfileStore } from '../../stores/useActiveRobotProfileStore';
 import { useGatewayRuntimeStore } from '../../stores/useGatewayRuntimeStore';
 import { useRobotSessionStore } from '../../stores/useRobotSessionStore';
 
-export function DeviceModelPage({ gateway = robotGateway }: { gateway?: RobotGatewayV1 }) {
+export function DeviceModelPage({
+  gateway = robotGateway,
+  bridge = desktopBridge
+}: {
+  gateway?: RobotGatewayV1;
+  bridge?: DesktopBridgeV1;
+}) {
   const activeProfileId = useActiveRobotProfileStore((state) => state.activeProfileId);
   return activeProfileId === aethorRoboProfile.profileId
-    ? <AethorRoboDeviceModelPage />
-    : <DummyDeviceModelPage gateway={gateway} />;
+    ? <AethorRoboDeviceModelPage bridge={bridge} />
+    : <DummyDeviceModelPage gateway={gateway} bridge={bridge} />;
 }
 
-function DummyDeviceModelPage({ gateway }: { gateway: RobotGatewayV1 }) {
+function DummyDeviceModelPage({ gateway, bridge }: { gateway: RobotGatewayV1; bridge: DesktopBridgeV1 }) {
   const [packageResult, setPackageResult] = useState<ProfilePackageValidation | null>(null);
   const [packageName, setPackageName] = useState('');
   const [validating, setValidating] = useState(false);
   const packageValidationController = useRef<AbortController | null>(null);
-  const [ports, setPorts] = useState<SerialPortDescriptor[]>([]);
-  const [selectedPort, setSelectedPort] = useState('');
+  const ports = useGatewayRuntimeStore((state) => state.serialPorts);
+  const selectedPort = useGatewayRuntimeStore((state) => state.selectedPortName);
+  const setSelectedPort = useGatewayRuntimeStore((state) => state.setSelectedPortName);
+  const serialPortCatalogStatus = useGatewayRuntimeStore((state) => state.serialPortCatalogStatus);
+  const serialPortCatalogError = useGatewayRuntimeStore((state) => state.serialPortCatalogError);
+  const serialSessionOperationStatus = useGatewayRuntimeStore((state) => state.serialSessionOperationStatus);
+  const serialSessionOperationError = useGatewayRuntimeStore((state) => state.serialSessionOperationError);
   const session = useGatewayRuntimeStore((state) => state.session);
   const setSession = useGatewayRuntimeStore((state) => state.setSession);
   const setActivePortName = useGatewayRuntimeStore((state) => state.setActivePortName);
@@ -52,25 +66,14 @@ function DummyDeviceModelPage({ gateway }: { gateway: RobotGatewayV1 }) {
   const commandRunSequence = useRef(0);
   const gatewayAvailable = gateway.capabilities.readOnlyConnection;
   const sessionActive = session.connectionState !== 'offline';
+  const serialCatalogBusy = serialPortCatalogStatus === 'loading';
+  const serialSessionBusy = serialSessionOperationStatus === 'connecting' || serialSessionOperationStatus === 'disconnecting';
+  const visibleGatewayError = gatewayError ?? serialSessionOperationError ?? serialPortCatalogError;
 
   useEffect(() => {
-    if (!gatewayAvailable) return;
-    let mounted = true;
-    const load = async () => {
-      try {
-        const nextPorts = await gateway.listSerialPorts();
-        if (!mounted) return;
-        setPorts(nextPorts);
-        setGatewayError(null);
-      } catch (error) {
-        if (mounted) setGatewayError(error instanceof Error ? error.message : '串口枚举失败');
-      }
-    };
-    void load();
-    return () => {
-      mounted = false;
-    };
-  }, [gateway, gatewayAvailable]);
+    if (!gatewayAvailable || sessionActive) return;
+    void refreshSerialPortCatalog(gateway).catch(() => undefined);
+  }, [gateway, gatewayAvailable, sessionActive]);
 
   useEffect(() => () => packageValidationController.current?.abort(), []);
 
@@ -115,7 +118,7 @@ function DummyDeviceModelPage({ gateway }: { gateway: RobotGatewayV1 }) {
   };
 
   const refreshGateway = async () => {
-    if (!gatewayAvailable || gatewayBusy) return;
+    if (!gatewayAvailable || gatewayBusy || serialSessionBusy) return;
     setGatewayBusy(true);
     setGatewayError(null);
     const preserveDegradedTelemetry = telemetryWarning !== null
@@ -123,9 +126,8 @@ function DummyDeviceModelPage({ gateway }: { gateway: RobotGatewayV1 }) {
       || jointState.validity === 'stale';
     try {
       const [nextPorts, nextSession, nextJointState] = await Promise.all([
-        gateway.listSerialPorts(), gateway.getSession(), gateway.getJointState()
+        refreshSerialPortCatalog(gateway), gateway.getSession(), gateway.getJointState()
       ]);
-      setPorts(nextPorts);
       setSession(nextSession);
       setJointState(nextJointState);
       if (preserveDegradedTelemetry) {
@@ -145,11 +147,10 @@ function DummyDeviceModelPage({ gateway }: { gateway: RobotGatewayV1 }) {
   };
 
   const connectGateway = async () => {
-    if (!gatewayAvailable || !selectedPort || gatewayBusy || sessionActive) return;
-    setGatewayBusy(true);
+    if (!gatewayAvailable || !selectedPort || gatewayBusy || serialSessionBusy || sessionActive) return;
     setGatewayError(null);
     try {
-      const nextSession = await gateway.connect({ portName: selectedPort, profileId: 'dummy-6dof' });
+      const nextSession = await connectSerialSession(gateway, { portName: selectedPort, profileId: 'dummy-6dof' });
       setActivePortName(selectedPort);
       useRobotSessionStore.getState().beginHardwareSession(nextSession.sessionId);
       setSession(nextSession);
@@ -157,18 +158,15 @@ function DummyDeviceModelPage({ gateway }: { gateway: RobotGatewayV1 }) {
       const message = error instanceof Error ? error.message : '只读串口连接失败';
       setGatewayError(message);
       markTelemetryDegraded(`连接请求结果未知：${message}`);
-    } finally {
-      setGatewayBusy(false);
     }
   };
 
   const disconnectGateway = async () => {
-    if (!gatewayAvailable || gatewayBusy || !sessionActive || session.connectionState === 'disconnecting'
+    if (!gatewayAvailable || gatewayBusy || serialSessionBusy || !sessionActive || session.connectionState === 'disconnecting'
       || session.motorState === 'enabled' || commandBusy !== null) return;
-    setGatewayBusy(true);
     setGatewayError(null);
     try {
-      const nextSession = await gateway.disconnect();
+      const nextSession = await disconnectSerialSession(gateway);
       let nextJointState: Awaited<ReturnType<RobotGatewayV1['getJointState']>> | undefined;
       try {
         nextJointState = await gateway.getJointState();
@@ -181,8 +179,6 @@ function DummyDeviceModelPage({ gateway }: { gateway: RobotGatewayV1 }) {
       const message = error instanceof Error ? error.message : '断开只读串口失败';
       setGatewayError(message);
       markTelemetryDegraded(`断开请求结果未知：${message}`);
-    } finally {
-      setGatewayBusy(false);
     }
   };
 
@@ -238,7 +234,9 @@ function DummyDeviceModelPage({ gateway }: { gateway: RobotGatewayV1 }) {
     }
   };
 
-  const commonCommandReason = !gatewayCapabilities
+  const commonCommandReason = serialSessionBusy
+    ? '串口会话操作正在进行'
+    : !gatewayCapabilities
     ? '尚未完成能力协商'
     : !gatewayCapabilities.hardwareCommands
       ? '本机网关未启用硬件命令'
@@ -289,12 +287,12 @@ function DummyDeviceModelPage({ gateway }: { gateway: RobotGatewayV1 }) {
 
       <section className="deviceControls panelSurface">
         <div className="cardHeading"><div><span>HARDWARE SESSION</span><h2>设备连接与安全控制</h2></div><div className={`offlinePill gateway-${session.connectionState}`}><Link2Off size={13} /> {gatewayAvailable ? session.connectionState.toUpperCase() : 'BACKEND ABSENT'}</div></div>
-        <div className={gatewayError ? 'hardwareNotice gatewayError' : 'hardwareNotice'}><CircleAlert size={16} /><span>{gatewayError ?? (gatewayAvailable ? (gatewayCapabilities?.commandPolicy === 'engineering' ? 'ENGINEERING DIRECT · 可调试真实机械臂；软件停止不能替代物理急停。' : gatewayCapabilities?.hardwareCommands ? 'SUPERVISED COMMANDS · 每次动作均需人工确认；软件停止不能替代物理急停。' : 'READ-ONLY GATEWAY · 硬件命令未启用。') : `${gateway.unavailableReason ?? '机器人网关未配置'}；静态数据不会提升为在线状态。`)}</span></div>
+        <div className={visibleGatewayError ? 'hardwareNotice gatewayError' : 'hardwareNotice'}><CircleAlert size={16} /><span>{visibleGatewayError ?? (gatewayAvailable ? (gatewayCapabilities?.commandPolicy === 'engineering' ? 'ENGINEERING DIRECT · 可调试真实机械臂；软件停止不能替代物理急停。' : gatewayCapabilities?.hardwareCommands ? 'SUPERVISED COMMANDS · 每次动作均需人工确认；软件停止不能替代物理急停。' : 'READ-ONLY GATEWAY · 硬件命令未启用。') : `${gateway.unavailableReason ?? '机器人网关未配置'}；静态数据不会提升为在线状态。`)}</span></div>
         <div className="serialConnectRow">
-          <label><span>SERIAL PORT</span><select aria-label="串口" value={selectedPort} disabled={!gatewayAvailable || gatewayBusy || sessionActive} onChange={(event) => setSelectedPort(event.currentTarget.value)}><option value="">手动选择端口</option>{ports.map((port) => <option key={port.portName} value={port.portName}>{port.displayName ?? port.portName}</option>)}</select></label>
-          <button className="gatewayOperation primaryReadOnly" type="button" disabled={!gatewayAvailable || !selectedPort || gatewayBusy || sessionActive} onClick={() => void connectGateway()}><strong>连接设备</strong><small>EXPLICIT SESSION OPEN</small></button>
-          <button className="gatewayOperation" type="button" disabled={!gatewayAvailable || gatewayBusy || !sessionActive || session.connectionState === 'disconnecting' || session.motorState === 'enabled' || commandBusy !== null} title={session.motorState === 'enabled' ? '电机已确认使能；请先停止并去使能' : '释放当前串口；错误端口、陈旧反馈和未知状态均可释放'} onClick={() => void disconnectGateway()}><strong>断开连接</strong><small>RELEASE SERIAL</small></button>
-          <button className="gatewayOperation" type="button" disabled={!gatewayAvailable || gatewayBusy} onClick={() => void refreshGateway()}><RefreshCw size={13} /><strong>刷新状态</strong><small>REST SNAPSHOT</small></button>
+          <label><span>SERIAL PORT</span><select aria-label="串口" value={selectedPort} disabled={!gatewayAvailable || gatewayBusy || serialCatalogBusy || serialSessionBusy || sessionActive} onChange={(event) => setSelectedPort(event.currentTarget.value)}><option value="">{serialCatalogBusy ? '正在扫描…' : serialSessionOperationStatus === 'connecting' ? '正在连接…' : '手动选择端口'}</option>{ports.map((port) => <option key={port.portName} value={port.portName}>{port.displayName ?? port.portName}</option>)}</select></label>
+          <button className="gatewayOperation primaryReadOnly" type="button" disabled={!gatewayAvailable || !selectedPort || gatewayBusy || serialCatalogBusy || serialSessionBusy || sessionActive} onClick={() => void connectGateway()}><strong>{serialSessionOperationStatus === 'connecting' ? '连接中' : '连接设备'}</strong><small>EXPLICIT SESSION OPEN</small></button>
+          <button className="gatewayOperation" type="button" disabled={!gatewayAvailable || gatewayBusy || serialSessionBusy || !sessionActive || session.connectionState === 'disconnecting' || session.motorState === 'enabled' || commandBusy !== null} title={session.motorState === 'enabled' ? '电机已确认使能；请先停止并去使能' : '释放当前串口；错误端口、陈旧反馈和未知状态均可释放'} onClick={() => void disconnectGateway()}><strong>{serialSessionOperationStatus === 'disconnecting' ? '断开中' : '断开连接'}</strong><small>RELEASE SERIAL</small></button>
+          <button className="gatewayOperation" type="button" disabled={!gatewayAvailable || gatewayBusy || serialCatalogBusy || serialSessionBusy} onClick={() => void refreshGateway()}><RefreshCw size={13} /><strong>刷新状态</strong><small>REST SNAPSHOT</small></button>
         </div>
         <div className="gatewaySessionGrid">
           <StatusDatum label="CONNECTION" value={session.connectionState.toUpperCase()} tone={session.connectionState === 'connected' ? 'ok' : session.connectionState === 'faulted' ? 'error' : 'warning'} />
@@ -344,7 +342,7 @@ function DummyDeviceModelPage({ gateway }: { gateway: RobotGatewayV1 }) {
           <thead><tr><th>INDEX</th><th>PROFILE ID</th><th>URDF JOINT</th><th>LOWER</th><th>UPPER</th><th>EFFORT</th><th>VELOCITY</th></tr></thead>
           <tbody>{dummyProfile.joints.map((joint) => <tr key={joint.jointId}><td>{joint.protocolIndex}</td><th>{joint.displayName}</th><td><code>{joint.urdfJointName}</code></td><td>{joint.lowerDeg.toFixed(2)}°</td><td>{joint.upperDeg.toFixed(2)}°</td><td><span className="unknownValue">UNVERIFIED</span></td><td><span className="unknownValue">UNVERIFIED</span></td></tr>)}</tbody>
         </table>
-        <div className="mappingFootnote"><CircleAlert size={14} /> 原 URDF 的 effort / velocity 为 0，不能解释为可信硬件上限；展示位也不是安全回位姿态。</div>
+        <div className="mappingFootnote"><CircleAlert size={14} /> LOWER / UPPER 使用固件设备角；J3 渲染执行 model = device - 90°，滑条、动作点位与整组下发仍保持 #GETJPOS 坐标。原 URDF 的 effort / velocity 为 0，不能解释为可信硬件上限。</div>
       </section>
 
       <section className="packageInspector panelSurface">
@@ -382,12 +380,13 @@ function DummyDeviceModelPage({ gateway }: { gateway: RobotGatewayV1 }) {
           <div><dt>NORMALIZED NAMES</dt><dd><code>dummy / base_link / link_1…6 / joint_1…6</code></dd></div>
           <div><dt>PROFILE INSTALLATION</dt><dd><span className="unknownValue">NOT IMPLEMENTED</span></dd></div>
         </dl>
+        <DiagnosticExportPanel bridge={bridge} />
       </section>
     </div>
   );
 }
 
-function AethorRoboDeviceModelPage() {
+function AethorRoboDeviceModelPage({ bridge }: { bridge: DesktopBridgeV1 }) {
   const switchProfile = useActiveRobotProfileStore((state) => state.switchProfile);
   return (
     <div className="workspacePage devicesPage aethorDevicePage" data-profile-id={aethorRoboProfile.profileId}>
@@ -449,7 +448,52 @@ function AethorRoboDeviceModelPage() {
           <div><dt>CONTROL GROUPS</dt><dd><code>left_arm_joint_1…7 / right_arm_joint_1…7</code></dd></div>
           <div><dt>HARDWARE INTEGRATION</dt><dd><span className="unknownValue">A1 BLOCKED</span></dd></div>
         </dl>
+        <DiagnosticExportPanel bridge={bridge} />
       </section>
+    </div>
+  );
+}
+
+function DiagnosticExportPanel({ bridge }: { bridge: DesktopBridgeV1 }) {
+  const [status, setStatus] = useState<'idle' | 'exporting' | 'exported' | 'notCreated'>('idle');
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+  const available = bridge.capabilities.available && bridge.capabilities.exportDiagnostics;
+  const exportBundle = async () => {
+    if (!available || status === 'exporting') return;
+    setStatus('exporting');
+    const exported = await bridge.exportDiagnostics();
+    if (mounted.current) setStatus(exported ? 'exported' : 'notCreated');
+  };
+  const message = !available
+    ? '需要 Windows 桌面版；浏览器不会模拟文件导出。'
+    : status === 'exporting'
+      ? '等待选择保存位置并生成诊断包…'
+      : status === 'exported'
+        ? '诊断包已生成到所选位置。'
+        : status === 'notCreated'
+          ? '已取消或未能生成；可查看桌面日志后重试。'
+          : '包含脱敏后的有界桌面、WebView2、网关日志和运行环境摘要。';
+
+  return (
+    <div className="diagnosticExport" aria-label="桌面诊断包">
+      <div>
+        <span>SUPPORT BUNDLE</span>
+        <strong>桌面诊断包</strong>
+        <small>不包含串口终端、命令审计、关节目标或模型文件</small>
+      </div>
+      <button
+        type="button"
+        disabled={!available || status === 'exporting'}
+        aria-label="导出桌面诊断包"
+        onClick={() => void exportBundle()}
+      >
+        <Download size={14} />{status === 'exporting' ? '生成中' : '导出 ZIP'}
+      </button>
+      <p className={`diagnosticExportStatus status-${status}`} aria-live="polite">{message}</p>
     </div>
   );
 }

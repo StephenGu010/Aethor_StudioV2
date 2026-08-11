@@ -24,6 +24,7 @@ export interface ActionProgramV1 {
   name: string;
   revision: number;
   profileId: 'dummy-6dof';
+  jointCoordinateSystem: 'dummy-device-joints-v1';
   createdAtUtc: string;
   updatedAtUtc: string;
   source: ActionProgramSourceV1;

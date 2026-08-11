@@ -96,6 +96,37 @@ public sealed class GatewaySecurityTests
             new GatewayHostOptions(port, ValidToken, "development", []).Validate(isDevelopment: true));
     }
 
+    [Theory]
+    [InlineData(99)]
+    [InlineData(30001)]
+    public void InvalidSerialOpenTimeoutIsRejected(int timeoutMs)
+    {
+        Assert.Throws<InvalidOperationException>(() =>
+            new GatewayHostOptions(
+                5127,
+                ValidToken,
+                "development",
+                [],
+                SerialOpenTimeoutMs: timeoutMs).Validate(isDevelopment: true));
+    }
+
+    [Theory]
+    [InlineData(49, 500)]
+    [InlineData(1_001, 1_001)]
+    [InlineData(100, 99)]
+    [InlineData(100, 10_001)]
+    public void InvalidTelemetryPollCadenceIsRejected(int jointIntervalMs, int statusIntervalMs)
+    {
+        Assert.Throws<InvalidOperationException>(() =>
+            new GatewayHostOptions(
+                5127,
+                ValidToken,
+                "development",
+                [],
+                JointPollIntervalMs: jointIntervalMs,
+                StatusPollIntervalMs: statusIntervalMs).Validate(isDevelopment: true));
+    }
+
     [Fact]
     public async Task ProtectedApiRejectsMissingTokenWithoutCallingTheEndpoint()
     {

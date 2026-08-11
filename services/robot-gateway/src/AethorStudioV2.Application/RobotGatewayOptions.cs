@@ -4,6 +4,9 @@ namespace AethorStudioV2.Application;
 
 public sealed record RobotGatewayOptions
 {
+    public TimeSpan SerialOpenTimeout { get; init; } = TimeSpan.FromSeconds(5);
+    public TimeSpan JointPollInterval { get; init; } = TimeSpan.FromMilliseconds(50);
+    public TimeSpan StatusPollInterval { get; init; } = TimeSpan.FromMilliseconds(500);
     public TimeSpan PollInterval { get; init; } = TimeSpan.FromMilliseconds(500);
     public TimeSpan QueryTimeout { get; init; } = TimeSpan.FromSeconds(2);
     public int ConsecutiveTimeoutLimit { get; init; } = 3;
@@ -22,9 +25,31 @@ public sealed record RobotGatewayOptions
 
     public void Validate()
     {
+        if (SerialOpenTimeout < TimeSpan.FromMilliseconds(100)
+            || SerialOpenTimeout > TimeSpan.FromSeconds(30))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(SerialOpenTimeout),
+                "Serial open timeout must be between 100 ms and 30 s");
+        }
+
         if (PollInterval < TimeSpan.FromMilliseconds(50) || PollInterval > TimeSpan.FromSeconds(10))
         {
             throw new ArgumentOutOfRangeException(nameof(PollInterval), "Poll interval must be between 50 ms and 10 s");
+        }
+
+        if (JointPollInterval < TimeSpan.FromMilliseconds(50) || JointPollInterval > TimeSpan.FromSeconds(1))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(JointPollInterval),
+                "Joint poll interval must be between 50 ms and 1 s");
+        }
+
+        if (StatusPollInterval < JointPollInterval || StatusPollInterval > TimeSpan.FromSeconds(10))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(StatusPollInterval),
+                "Status poll interval must be at least the joint poll interval and no more than 10 s");
         }
 
         if (QueryTimeout < TimeSpan.FromMilliseconds(50) || QueryTimeout > TimeSpan.FromSeconds(30))

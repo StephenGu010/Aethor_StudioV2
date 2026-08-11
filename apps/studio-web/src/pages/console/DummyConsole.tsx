@@ -207,9 +207,10 @@ export function DummyConsole() {
             />
           </Suspense>
           <div className="feedbackHud">
-            <div><small>{measuredFrame ? 'DEVICE FEEDBACK' : 'SHOWCASE FEEDBACK'}</small><strong>{measuredFrame ? jointState.validity.toUpperCase() : 'STATIC CAPTURE'}</strong></div>
+            <div><small>{measuredFrame ? 'DEVICE FEEDBACK' : 'SHOWCASE FEEDBACK'}</small><strong>{measuredFrame ? `${jointState.validity.toUpperCase()} · #${jointState.sequence}` : 'STATIC CAPTURE'}</strong></div>
             <div><span>J1</span><strong>{actual[0]?.toFixed(2)}°</strong></div>
             <div><span>J2</span><strong>{actual[1]?.toFixed(2)}°</strong></div>
+            <div><span>J3</span><strong>{actual[2]?.toFixed(2)}°</strong></div>
             <div><span>FRAME</span><strong>BASE / Z-UP</strong></div>
           </div>
           <div className="sceneLegend">
@@ -245,7 +246,7 @@ export function DummyConsole() {
       </section>
 
       <aside className="jointControlPanel">
-        <div className="panelTitle"><div><h2>六轴关节控制</h2><span>Dummy · 6-DOF</span></div><SourceTag source="commanded" /></div>
+        <div className="panelTitle"><div><h2>六轴关节控制</h2><span>Dummy · #GETJPOS 设备角</span></div><SourceTag source="commanded" /></div>
         <div className="controlModeTabs"><button type="button" className="active">关节</button><Hint content="首版不包含末端位姿与 IK"><button type="button" disabled>末端位姿</button></Hint></div>
         <div className="jointRows">
           {dummyProfile.joints.map((joint) => {
@@ -285,7 +286,7 @@ export function DummyConsole() {
 
       <section className="twinBottom">
         <MiniTrend />
-        <div className="jointTableWrap"><table className="dataTable"><thead><tr><th>JOINT</th><th>{measuredFrame ? 'FEEDBACK' : 'SHOWCASE'} (deg)</th><th>TARGET (deg)</th><th>ERROR (deg)</th><th>STATE</th></tr></thead><tbody>{dummyProfile.joints.map((joint) => { const index = joint.protocolIndex; return <tr key={joint.jointId} data-joint-id={joint.jointId}><th>{joint.displayName}</th><td data-column="actual">{actual[index]?.toFixed(2)}</td><td data-column="target">{target[index]?.toFixed(2)}</td><td>{(errors[index] ?? 0).toFixed(2)}</td><td><span className={measuredFrame ? `tableState ${jointState.validity}` : 'tableState showcase'}>{measuredFrame ? jointState.validity.toUpperCase() : 'SHOWCASE'}</span></td></tr>; })}</tbody></table></div>
+        <div className="jointTableWrap"><table className="dataTable"><thead><tr><th>JOINT</th><th>{measuredFrame ? '#GETJPOS' : 'SHOWCASE'} (deg)</th><th>TARGET (deg)</th><th>ERROR (deg)</th><th>STATE</th></tr></thead><tbody>{dummyProfile.joints.map((joint) => { const index = joint.protocolIndex; return <tr key={joint.jointId} data-joint-id={joint.jointId}><th>{joint.displayName}</th><td data-column="actual">{actual[index]?.toFixed(2)}</td><td data-column="target">{target[index]?.toFixed(2)}</td><td>{(errors[index] ?? 0).toFixed(2)}</td><td><span className={measuredFrame ? `tableState ${jointState.validity}` : 'tableState showcase'}>{measuredFrame ? jointState.validity.toUpperCase() : 'SHOWCASE'}</span></td></tr>; })}</tbody></table></div>
         <div className="recentEvents"><div className="bottomTitle"><strong>最近事件</strong><span>{measuredFrame ? 'DEVICE SESSION' : 'SHOWCASE CAPTURE'}</span></div>{recentEvents.map((event) => <div className="eventRow" key={event.id}><time>{formatTime(event.timestampUtc)}</time><span className={`eventMark ${event.severity}`} /><div><strong>{event.title}</strong></div></div>)}</div>
       </section>
     </div>

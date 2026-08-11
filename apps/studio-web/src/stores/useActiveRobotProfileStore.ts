@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { aethorRoboProfile } from '../profile/aethorRoboProfile';
 import { dummyProfile } from '../profile/dummyProfile';
 import { isRobotProfileId, type RobotProfileId } from '../profile/profileCatalog';
+import { readDesktopBootstrap } from '../integrations/desktopBridge';
 import { useAethorRoboConsoleStore } from './useAethorRoboConsoleStore';
 import { useGatewayRuntimeStore } from './useGatewayRuntimeStore';
 import { useRobotSessionStore } from './useRobotSessionStore';
@@ -61,10 +62,20 @@ function readInitialProfileId(): RobotProfileId {
   if (typeof window === 'undefined') return aethorRoboProfile.profileId;
   try {
     const stored = window.sessionStorage.getItem(PROFILE_SESSION_KEY);
-    return stored && isRobotProfileId(stored) ? stored : aethorRoboProfile.profileId;
+    return resolveInitialRobotProfileId(stored, Boolean(readDesktopBootstrap()?.gateway));
   } catch {
     return aethorRoboProfile.profileId;
   }
+}
+
+export function resolveInitialRobotProfileId(
+  storedProfileId: string | null,
+  desktopDummyGatewayAvailable = false
+): RobotProfileId {
+  if (desktopDummyGatewayAvailable) return dummyProfile.profileId;
+  return storedProfileId && isRobotProfileId(storedProfileId)
+    ? storedProfileId
+    : aethorRoboProfile.profileId;
 }
 
 function writeProfileId(profileId: RobotProfileId) {

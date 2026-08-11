@@ -69,6 +69,7 @@ internal sealed class FakeAsciiTransport : IAsciiTransport
     public string PortName => AssignedPortName;
     public bool IsOpen { get; private set; }
     public bool FailOpen { get; init; }
+    public bool BlockOpenUntilCancelled { get; init; }
     public bool IgnoreReadCancellation { get; init; }
     public bool BlockWritesUntilClose { get; init; }
     public bool IgnoreWriteCancellation { get; init; }
@@ -78,7 +79,7 @@ internal sealed class FakeAsciiTransport : IAsciiTransport
     public int DisposeCount { get; private set; }
     public ConcurrentQueue<string> Writes { get; } = new();
 
-    public ValueTask OpenAsync(CancellationToken cancellationToken)
+    public async ValueTask OpenAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         OpenCount++;
@@ -87,8 +88,12 @@ internal sealed class FakeAsciiTransport : IAsciiTransport
             throw new UnauthorizedAccessException("fake port occupied");
         }
 
+        if (BlockOpenUntilCancelled)
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken).ConfigureAwait(false);
+        }
+
         IsOpen = true;
-        return ValueTask.CompletedTask;
     }
 
     public async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken)

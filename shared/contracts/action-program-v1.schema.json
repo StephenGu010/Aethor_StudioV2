@@ -10,6 +10,7 @@
     "name",
     "revision",
     "profileId",
+    "jointCoordinateSystem",
     "createdAtUtc",
     "updatedAtUtc",
     "source",
@@ -22,6 +23,7 @@
     "name": { "type": "string", "minLength": 1, "maxLength": 80, "pattern": "\\S" },
     "revision": { "type": "integer", "minimum": 1, "maximum": 2147483647 },
     "profileId": { "const": "dummy-6dof" },
+    "jointCoordinateSystem": { "const": "dummy-device-joints-v1" },
     "createdAtUtc": { "type": "string", "format": "date-time" },
     "updatedAtUtc": { "type": "string", "format": "date-time" },
     "source": { "enum": ["authored", "showcaseExample"] },
@@ -54,12 +56,12 @@
           "minItems": 6,
           "maxItems": 6,
           "prefixItems": [
-            { "type": "number", "minimum": -179.91, "maximum": 179.91 },
-            { "type": "number", "minimum": -74.48, "maximum": 124.9 },
-            { "type": "number", "minimum": -93.39, "maximum": 91.67 },
-            { "type": "number", "minimum": -179.91, "maximum": 179.91 },
-            { "type": "number", "minimum": -100.84, "maximum": 100.84 },
-            { "type": "number", "minimum": -179.91, "maximum": 179.91 }
+            { "type": "number", "minimum": -170, "maximum": 170 },
+            { "type": "number", "minimum": -75, "maximum": 90 },
+            { "type": "number", "minimum": 0, "maximum": 180 },
+            { "type": "number", "minimum": -180, "maximum": 180 },
+            { "type": "number", "minimum": -120, "maximum": 120 },
+            { "type": "number", "minimum": -720, "maximum": 720 }
           ],
           "items": false
         },

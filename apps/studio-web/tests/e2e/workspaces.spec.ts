@@ -239,6 +239,12 @@ test.describe('Aethor Studio V2 workspaces', () => {
     await expect(page.getByText('Aethor_robo · URDF READY')).toBeVisible({ timeout: WORKSPACE_READY_TIMEOUT_MS });
     const scene = page.locator('.robotSceneHost');
     await expect(scene).toHaveAttribute('data-render-policy', 'demand');
+    await expect.poll(async () => Number(await scene.getAttribute('data-render-dpr'))).toBeGreaterThanOrEqual(1);
+    const renderDpr = Number(await scene.getAttribute('data-render-dpr'));
+    const sceneBounds = await scene.boundingBox();
+    expect(renderDpr).toBeLessThanOrEqual(1.75);
+    expect(sceneBounds).not.toBeNull();
+    expect(sceneBounds!.width * sceneBounds!.height * renderDpr * renderDpr).toBeLessThanOrEqual(3_505_000);
     await expect.poll(async () => Number(await scene.getAttribute('data-render-frame-count'))).toBeGreaterThan(1);
 
     await page.waitForTimeout(500);

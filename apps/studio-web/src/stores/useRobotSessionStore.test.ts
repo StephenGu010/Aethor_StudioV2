@@ -8,7 +8,7 @@ describe('target and feedback isolation', () => {
   it('edits only the target draft and clamps it to profile limits', () => {
     const feedbackBefore = [...showcaseJointFrame.positionsDeg];
     useRobotSessionStore.getState().setJointTarget(0, 999);
-    expect(useRobotSessionStore.getState().targetPositionsDeg[0]).toBe(179.91);
+    expect(useRobotSessionStore.getState().targetPositionsDeg[0]).toBe(170);
     expect(showcaseJointFrame.positionsDeg).toEqual(feedbackBefore);
   });
 

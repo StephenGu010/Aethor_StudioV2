@@ -30,10 +30,10 @@ describe('ActionProgrammingPage offline editor', () => {
     fireEvent.click(screen.getByRole('button', { name: '添加目标草稿' }));
     expect(screen.getByText('点位 01')).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('J1 点位角度'), { target: { value: '200' } });
-    expect(useActionProgramStore.getState().draft?.waypoints[0]?.positionsDeg[0]).toBe(179.91);
+    expect(useActionProgramStore.getState().draft?.waypoints[0]?.positionsDeg[0]).toBe(170);
 
     fireEvent.click(screen.getByRole('button', { name: '加载到 Dummy 本地目标草稿' }));
-    expect(useRobotSessionStore.getState().targetPositionsDeg[0]).toBe(179.91);
+    expect(useRobotSessionStore.getState().targetPositionsDeg[0]).toBe(170);
     expect(screen.getByText('TARGET PREVIEW · NO SEND')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '保存' }));

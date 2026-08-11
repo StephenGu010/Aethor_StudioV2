@@ -16,7 +16,11 @@ const jointSchema = z.object({
   urdfJointName: z.string().min(1).max(80),
   protocolIndex: z.number().int().min(0).max(31),
   lowerDeg: z.number().min(-3600).max(3600),
-  upperDeg: z.number().min(-3600).max(3600)
+  upperDeg: z.number().min(-3600).max(3600),
+  modelTransform: z.object({
+    sign: z.union([z.literal(-1), z.literal(1)]),
+    offsetDeg: z.number().min(-3600).max(3600)
+  }).strict().optional()
 }).strict();
 
 const jointGroupSchema = z.object({

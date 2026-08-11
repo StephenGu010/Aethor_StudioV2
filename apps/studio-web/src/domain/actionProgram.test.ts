@@ -29,6 +29,13 @@ describe('ActionProgramV1 domain', () => {
     expect(result.errors.join(' ')).toMatch(/不支持.*版本|不会静默迁移/);
   });
 
+  it('rejects documents that do not declare the Dummy device-angle coordinate system', () => {
+    const program = validProgram();
+    const { jointCoordinateSystem: _jointCoordinateSystem, ...legacyProgram } = program;
+    expect(validateActionProgramV1(legacyProgram, dummyProfile).valid).toBe(false);
+    expect(validateActionProgramV1({ ...program, jointCoordinateSystem: 'urdf-model-joints' }, dummyProfile).valid).toBe(false);
+  });
+
   it('rejects wrong DOF, unsupported modes, duplicate IDs, and joint-limit violations', () => {
     const program = validProgram();
     const waypoint = program.waypoints[0]!;

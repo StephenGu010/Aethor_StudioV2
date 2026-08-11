@@ -4,7 +4,10 @@ import { dummyProfile } from '../profile/dummyProfile';
 import { useAethorRoboConsoleStore } from './useAethorRoboConsoleStore';
 import { useGatewayRuntimeStore } from './useGatewayRuntimeStore';
 import { useRobotSessionStore } from './useRobotSessionStore';
-import { useActiveRobotProfileStore } from './useActiveRobotProfileStore';
+import {
+  resolveInitialRobotProfileId,
+  useActiveRobotProfileStore
+} from './useActiveRobotProfileStore';
 
 describe('active robot profile session', () => {
   beforeEach(() => {
@@ -13,6 +16,13 @@ describe('active robot profile session', () => {
     useRobotSessionStore.getState().resetSession();
     useAethorRoboConsoleStore.getState().resetPreview();
     useActiveRobotProfileStore.setState({ activeProfileId: aethorRoboProfile.profileId });
+  });
+
+  it('starts a desktop gateway session on Dummy without changing browser profile restoration', () => {
+    expect(resolveInitialRobotProfileId(null, true)).toBe(dummyProfile.profileId);
+    expect(resolveInitialRobotProfileId(aethorRoboProfile.profileId, true)).toBe(dummyProfile.profileId);
+    expect(resolveInitialRobotProfileId(aethorRoboProfile.profileId)).toBe(aethorRoboProfile.profileId);
+    expect(resolveInitialRobotProfileId('unknown-profile')).toBe(aethorRoboProfile.profileId);
   });
 
   it('resets robot-specific draft intent on profile switch', () => {

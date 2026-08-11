@@ -14,7 +14,10 @@ public sealed record GatewayHostOptions(
     double? JointGroupSpeedLimitDegS = null,
     double? JointGroupPositionToleranceDeg = null,
     int? JointGroupSettledDurationMs = null,
-    int? JointGroupCompletionTimeoutMs = null)
+    int? JointGroupCompletionTimeoutMs = null,
+    int SerialOpenTimeoutMs = 5_000,
+    int JointPollIntervalMs = 50,
+    int StatusPollIntervalMs = 500)
 {
     public const int DefaultPort = 5127;
 
@@ -54,6 +57,18 @@ public sealed record GatewayHostOptions(
         int? jointGroupCompletionTimeout = ParseOptionalInt(
             configuration["JOINT_GROUP_COMPLETION_TIMEOUT_MS"],
             "AETHOR_GATEWAY_JOINT_GROUP_COMPLETION_TIMEOUT_MS");
+        var serialOpenTimeout = ParseOptionalInt(
+                configuration["SERIAL_OPEN_TIMEOUT_MS"],
+                "AETHOR_GATEWAY_SERIAL_OPEN_TIMEOUT_MS")
+            ?? 5_000;
+        var jointPollInterval = ParseOptionalInt(
+                configuration["JOINT_POLL_INTERVAL_MS"],
+                "AETHOR_GATEWAY_JOINT_POLL_INTERVAL_MS")
+            ?? 50;
+        var statusPollInterval = ParseOptionalInt(
+                configuration["STATUS_POLL_INTERVAL_MS"],
+                "AETHOR_GATEWAY_STATUS_POLL_INTERVAL_MS")
+            ?? 500;
         var result = new GatewayHostOptions(
             port,
             token,
@@ -63,7 +78,10 @@ public sealed record GatewayHostOptions(
             jointGroupSpeedLimit,
             jointGroupPositionTolerance,
             jointGroupSettledDuration,
-            jointGroupCompletionTimeout);
+            jointGroupCompletionTimeout,
+            serialOpenTimeout,
+            jointPollInterval,
+            statusPollInterval);
         result.Validate(environment.IsDevelopment());
         return result;
     }
@@ -73,6 +91,24 @@ public sealed record GatewayHostOptions(
         if (Port is < 1024 or > 65535)
         {
             throw new InvalidOperationException("AETHOR_GATEWAY_PORT must be between 1024 and 65535");
+        }
+
+        if (SerialOpenTimeoutMs is < 100 or > 30_000)
+        {
+            throw new InvalidOperationException(
+                "AETHOR_GATEWAY_SERIAL_OPEN_TIMEOUT_MS must be between 100 and 30000");
+        }
+
+        if (JointPollIntervalMs is < 50 or > 1_000)
+        {
+            throw new InvalidOperationException(
+                "AETHOR_GATEWAY_JOINT_POLL_INTERVAL_MS must be between 50 and 1000");
+        }
+
+        if (StatusPollIntervalMs < JointPollIntervalMs || StatusPollIntervalMs > 10_000)
+        {
+            throw new InvalidOperationException(
+                "AETHOR_GATEWAY_STATUS_POLL_INTERVAL_MS must be at least the joint poll interval and no more than 10000");
         }
 
         if (SessionToken.Length is < 32 or > 256 || SessionToken.Any(character => character is < (char)0x21 or > (char)0x7e))

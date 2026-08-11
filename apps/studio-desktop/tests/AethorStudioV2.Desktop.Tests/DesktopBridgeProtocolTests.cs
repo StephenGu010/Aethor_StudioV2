@@ -9,6 +9,7 @@ public sealed class DesktopBridgeProtocolTests
     [InlineData("toggleMaximize", DesktopBridgeAction.ToggleMaximize)]
     [InlineData("close", DesktopBridgeAction.Close)]
     [InlineData("beginDrag", DesktopBridgeAction.BeginDrag)]
+    [InlineData("exportDiagnostics", DesktopBridgeAction.ExportDiagnostics)]
     public void TryParseRequestAcceptsOnlyVersionedAllowlistedActions(string action, DesktopBridgeAction expected)
     {
         var json = $$"""{"contractVersion":"1.0","requestId":"request-1","action":"{{action}}"}""";
@@ -51,6 +52,7 @@ public sealed class DesktopBridgeProtocolTests
 
         Assert.Contains("\"contractVersion\":\"1.0\"", script, StringComparison.Ordinal);
         Assert.Contains("\"gateway\":null", script, StringComparison.Ordinal);
+        Assert.Contains("\"exportDiagnostics\":true", script, StringComparison.Ordinal);
         Assert.Contains("Object.defineProperty", script, StringComparison.Ordinal);
         Assert.Contains("configurable: false", script, StringComparison.Ordinal);
     }

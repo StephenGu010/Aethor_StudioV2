@@ -13,15 +13,15 @@
     "urdfPath": "model/dummy.urdf",
     "upAxis": "Z",
     "lengthUnit": "m",
-    "showcasePoseDeg": [12.4, -36.2, 18.6, 45.0, -22.3, 90.0]
+    "showcasePoseDeg": [12.4, -36.2, 108.6, 45.0, -22.3, 90.0]
   },
   "joints": [
-    { "jointId": "j1", "displayName": "J1", "urdfJointName": "joint_1", "protocolIndex": 0, "lowerDeg": -179.91, "upperDeg": 179.91 },
-    { "jointId": "j2", "displayName": "J2", "urdfJointName": "joint_2", "protocolIndex": 1, "lowerDeg": -74.48, "upperDeg": 124.90 },
-    { "jointId": "j3", "displayName": "J3", "urdfJointName": "joint_3", "protocolIndex": 2, "lowerDeg": -93.39, "upperDeg": 91.67 },
-    { "jointId": "j4", "displayName": "J4", "urdfJointName": "joint_4", "protocolIndex": 3, "lowerDeg": -179.91, "upperDeg": 179.91 },
-    { "jointId": "j5", "displayName": "J5", "urdfJointName": "joint_5", "protocolIndex": 4, "lowerDeg": -100.84, "upperDeg": 100.84 },
-    { "jointId": "j6", "displayName": "J6", "urdfJointName": "joint_6", "protocolIndex": 5, "lowerDeg": -179.91, "upperDeg": 179.91 }
+    { "jointId": "j1", "displayName": "J1", "urdfJointName": "joint_1", "protocolIndex": 0, "lowerDeg": -170, "upperDeg": 170, "modelTransform": { "sign": 1, "offsetDeg": 0 } },
+    { "jointId": "j2", "displayName": "J2", "urdfJointName": "joint_2", "protocolIndex": 1, "lowerDeg": -75, "upperDeg": 90, "modelTransform": { "sign": 1, "offsetDeg": 0 } },
+    { "jointId": "j3", "displayName": "J3", "urdfJointName": "joint_3", "protocolIndex": 2, "lowerDeg": 0, "upperDeg": 180, "modelTransform": { "sign": 1, "offsetDeg": -90 } },
+    { "jointId": "j4", "displayName": "J4", "urdfJointName": "joint_4", "protocolIndex": 3, "lowerDeg": -180, "upperDeg": 180, "modelTransform": { "sign": 1, "offsetDeg": 0 } },
+    { "jointId": "j5", "displayName": "J5", "urdfJointName": "joint_5", "protocolIndex": 4, "lowerDeg": -120, "upperDeg": 120, "modelTransform": { "sign": 1, "offsetDeg": 0 } },
+    { "jointId": "j6", "displayName": "J6", "urdfJointName": "joint_6", "protocolIndex": 5, "lowerDeg": -720, "upperDeg": 720, "modelTransform": { "sign": 1, "offsetDeg": 0 } }
   ],
   "capabilities": {
     "jointPositionFeedback": true,

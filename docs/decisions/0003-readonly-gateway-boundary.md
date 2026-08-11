@@ -15,7 +15,7 @@ Dummy 六轴当前连接在 Windows COM4，但固件没有完整的运动完成�
 2. Phase 4 串口写入采用两层白名单：Domain 只能格式化 `#GETJPOS/#GETMODE/#GETENABLE`，Infrastructure 只接受这三个带 LF 的精确 ASCII payload。API 不提供 raw 或任何状态改变端点。
 3. API 使用 Kestrel `ListenLocalhost`。`/api/v1` 与 `/hubs/robot-v1` 必须通过同一 opaque session token；开发令牌只允许 Development，生产令牌只能由未来桌面壳声明为 `desktop` 来源。
 4. REST session/joint-state 是权威快照；SignalR 是容量 128 的有界通知通道，协议历史默认容量 256。拥塞时可以丢弃旧通知，但不能丢失或篡改权威状态。
-5. 串口打开只证明 transport 可用，session 先进入 `connected + stale`；完整有效查询循环后才进入 valid。连续三次查询超时或 transport 故障进入 `faulted` 并释放资源，不自动串口重连。
+5. 串口打开只证明 transport 可用，session 先进入 `connected + stale`；完整有效查询循环后才进入 valid。从未取得句柄的打开失败释放临时 transport、保留关联错误并恢复 `offline`；成功打开后的连续三次查询超时或 transport 故障进入 `faulted` 并释放资源。不自动串口重连。
 6. 网关启动不枚举、不连接；COM4 只能由设备页人工选择，并且必须在单独的现场监督门之后执行。
 
 ## 已考虑的替代方案

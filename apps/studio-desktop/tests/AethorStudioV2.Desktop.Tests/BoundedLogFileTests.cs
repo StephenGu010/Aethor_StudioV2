@@ -36,6 +36,23 @@ public sealed class BoundedLogFileTests : IDisposable
         Assert.True(new FileInfo(path).Length <= 1200);
     }
 
+    [Fact]
+    public void CaptureSnapshotUsesAStableRotationOrderAndRedactsSecretsRegisteredAfterWrite()
+    {
+        var path = Path.Combine(root, "desktop.log");
+        const string secret = "late-registered-secret-value";
+        var log = new BoundedLogFile(path, maximumBytes: 1024, retainedFiles: 2);
+        log.Write("test", secret);
+        for (var index = 0; index < 30; index += 1) log.Write("test", $"line-{index}-{new string('x', 80)}");
+        File.AppendAllText(path + ".2", secret);
+        log.RegisterSecret(secret);
+
+        var snapshot = log.CaptureSnapshot();
+
+        Assert.Equal(["desktop.log", "desktop.log.1", "desktop.log.2"], snapshot.Select(file => file.Name));
+        Assert.DoesNotContain(secret, string.Concat(snapshot.Select(file => System.Text.Encoding.UTF8.GetString(file.Content))), StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData(0, 1)]
     [InlineData(1023, 1)]

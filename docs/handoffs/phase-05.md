@@ -20,7 +20,7 @@ Phase 5 已完成默认关闭的 RobotGatewayV1.2、C# 结构化命令安全链�
 ## 已完成
 
 - C# `RobotGateway` 是串口、轮询、命令仲裁和审计的唯一所有者；同一时刻最多一个普通命令，停止可有界抢占。
-- 串口防堵门已增加 fake-driver 验收：所有命令等待串口所有权均有界，STOP 超时返回未确认并锁存联锁；人工断连不能遗留在途硬件命令；宿主清理先关闭句柄打断忽略 cancellation token 的 pending read，再等待 runner 终态和 dispose。尚未在 COM4 上做驱动卡死/拔线故障注入，因此不能把软件门写成 Gate B 实机完成。
+- 串口防堵门已增加 fake-driver 验收：所有命令等待串口所有权均有界，STOP 超时返回未确认并锁存联锁；人工断连不能遗留在途硬件命令；宿主清理先关闭句柄打断忽略 cancellation token 的 pending read，再等待 runner 终态和 dispose。打开阶段默认限时 5 秒；超时/取消会主动 dispose 尚未接管的候选连接、恢复 offline、记录稳定诊断并隔离本 Gateway 后续打开，避免原生 Open 停滞任务累积。尚未在 COM4 上做驱动卡死/拔线故障注入，因此不能把软件门写成 Gate B 实机完成。
 - 事件发布关闭门已增加不合作 fake sink 验收：单次发布超时后事件泵停止，不启动更多悬挂调用；dispose 先释放 transport，再按独立窗口排空/取消事件泵。SignalR sink 即使忽略 cancellation 也不能无限阻塞网关退出。
 - 命令以 ID + 请求指纹幂等；同请求只物理执行一次，同 ID 不同请求拒绝。
 - 许可门覆盖 session/profile、连接、反馈新鲜度、使能、模式、六轴有限值、manifest 限位、速度、完整四参数运动包络和在途状态。
@@ -99,6 +99,7 @@ Phase 5 已完成默认关闭的 RobotGatewayV1.2、C# 结构化命令安全链�
 | 2026-08-10 全局串口入口与目标基准复验 | contracts 91 + frontend 182 + gateway 72 + desktop 74 + legal inventory 1，共 420/420；strict TypeScript、完整 Release build 和三档生产 E2E 63/63 通过；顶部/设备页 active port 一致、零自动连接、Aethor_robo 零枚举、首个可信实测帧一次性对齐且用户编辑优先；只读网关以 disabled/offline 启动并枚举 COM1/COM4，未打开串口、未验证实机原点/方向/运动 |
 | 2026-08-10 engineering direct 与错误端口释放复验 | contracts 93 + frontend 182 + gateway 79 + desktop 74 + legal inventory 1，共 429/429；strict TypeScript、完整 Release build 0 warning/0 error、三档生产 E2E 63/63；覆盖错误端口 stale/unknown 释放、无管理员终端、白名单/状态门/速度界限、控制台 queued 非完成语义、统一启动入口和 E2E 本机配置隔离；真实入口以 v1.2 engineering/offline 启动，仅枚举 COM1/COM4，未打开 COM4、未发送硬件命令 |
 | 2026-08-10 无回包 I/O、STOP 抢占与 J2 重连软件门 | contracts 93/93、frontend 184/184、gateway Debug 82/82、desktop Debug/Release 79/79、三档生产 E2E 63/63；覆盖 100 ms 可取消读窗口、无回包 direct 被 STOP 取消、未知 STOP 后可释放并显式重连、断开清空临时证据、下一 session 的 J2 从 -70.85 更新到 -42.25，以及前端模型/目标/runtime 复位；gateway Release/包/COM4 仍待旧未知会话在物理安全确认后清理，不构成 Gate B |
+| 2026-08-11 串口打开停滞软件门 | contracts 93/93、frontend 197/197、gateway 88/88、desktop 110/110、legal inventory 6/6，共 494/494；2643-module Web 和两个隔离 Release build 0 warning/0 error；覆盖原生 Open 忽略取消、应用总超时、调用方取消、候选连接唯一 dispose、offline/host shutdown 与零第二 transport。697/696 文件开发包两种 offline smoke 通过；未打开 COM4、未发送硬件命令，不构成真实驱动故障注入或 Gate B |
 | `pnpm typecheck` | strict TypeScript 通过 |
 | `pnpm build` | Vite/Profile 与 .NET Release 通过；C# 0 warning/0 error |
 | `pnpm test:e2e` | 当前 Edge 三档视口 63/63 通过 |

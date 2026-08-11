@@ -10,6 +10,27 @@ gateway lifecycle. It is not a production installer or a signed release.
   its own left/right seven-axis arm selector; no Dummy runtime state is reused.
 - The shell creates an ephemeral session token and a random loopback gateway
   port. The token is never written to the package, URL, local storage, or logs.
+- The injected desktop gateway is authoritative over developer environment
+  settings. Production bundles reject embedded development URLs or tokens.
+- A desktop session with the Dummy child gateway starts on the Dummy profile,
+  so its single coordinator performs one read-only catalog scan immediately;
+  browser showcase sessions keep their own profile restoration behavior.
+- Serial-port discovery is shared across the header and device workspace,
+  coalesces concurrent scans, and emits correlated bounded diagnostics. It
+  enumerates the Windows catalog without opening a port.
+- Explicit connect and disconnect actions are also shared across both entry
+  points. Duplicate intent is coalesced, conflicting intent fails closed, and
+  one operation ID correlates the UI with the gateway terminal log.
+- Bounded frontend operation probes are captured from the WebView runtime only
+  after strict field and terminal-state validation; ordinary console messages,
+  expanded fields, and secret-bearing payloads are rejected.
+- The 3D framebuffer now uses a canvas-area pixel budget instead of applying a
+  fixed high DPR to large or high-DPI windows. A low-frequency, single-flight
+  desktop probe records only a normalized workspace label, bounded JS heap,
+  DOM/layout counters, visibility, host working set, aggregate WebView2 process
+  memory, optional gateway memory, and their tracked total. The label is mapped
+  from trusted packaged routes; full URLs, queries, fragments, PIDs, process
+  paths/arguments, raw CDP payloads, and page/device content are discarded.
 - Phase 8A launches the gateway with hardware commands disabled and never opens
   a serial port automatically. Offline UI remains available if the gateway is
   missing or fails to start.
@@ -35,13 +56,12 @@ gateway lifecycle. It is not a production installer or a signed release.
   `Legal/aethor-robo-dual-7dof-provenance.json`.
 - Neither model notice is a substitute for complete redistribution terms. A
   public release remains blocked until those terms are verified.
+- `Legal/MODEL-REDISTRIBUTION-STATUS.json` records that model gate separately;
+  dependency completeness and signing cannot override it.
 - `Legal/THIRD-PARTY-INVENTORY.spdx.json` and
-  `Legal/THIRD-PARTY-SUMMARY.json` record 93 production components from the
+  `Legal/THIRD-PARTY-SUMMARY.json` record 92 production components from the
   installed pnpm graph and the exact published .NET dependency manifests.
-  Package-root npm texts and restored NuGet/runtime legal files are bundled
-  below `Legal/ThirdParty/`.
-- Six components currently lack a package-local license text: SignalR,
-  React Three Fiber, react-remove-scroll-bar, tr46, urdf-loader, and
-  System.IO.Ports. The development smoke reports this truthfully; the release
-  candidate verifier rejects the package until every gap has an authoritative
-  text or approved legal disposition.
+  Package-root npm texts, restored NuGet/runtime legal files, and six
+  exact-version/hash-bound upstream texts are bundled below
+  `Legal/ThirdParty/`. Dependency text coverage is complete; the release
+  candidate remains blocked by the two model redistribution records above.

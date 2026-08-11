@@ -68,8 +68,8 @@ $outputParent = if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
 }
 $packageName = "AethorStudioV2-$version-$Runtime"
 $finalRoot = Join-Path $outputParent $packageName
-$stagingRoot = Join-Path $outputParent ".staging-$packageName-$([Guid]::NewGuid().ToString('N'))"
-$dotnetArtifactsRoot = Join-Path $stagingRoot '.dotnet-artifacts'
+$stagingRoot = Join-Path $outputParent ".stg-$([Guid]::NewGuid().ToString('N'))"
+$dotnetArtifactsRoot = Join-Path $stagingRoot '.dn'
 $buildLockPath = Join-Path $outputParent ".$packageName.build.lock"
 
 function Assert-ChildPath {
@@ -78,6 +78,26 @@ function Assert-ChildPath {
     $fullParent = [IO.Path]::GetFullPath($Parent).TrimEnd('\') + '\'
     if (!$fullCandidate.StartsWith($fullParent, [StringComparison]::OrdinalIgnoreCase)) {
         throw "Refusing filesystem mutation outside the intended output root: $fullCandidate"
+    }
+}
+
+function Remove-OwnedDirectory {
+    param(
+        [Parameter(Mandatory = $true)][string]$Candidate,
+        [Parameter(Mandatory = $true)][string]$Parent
+    )
+
+    Assert-ChildPath -Candidate $Candidate -Parent $Parent
+    $resolvedCandidate = [IO.Path]::GetFullPath($Candidate)
+    if (![IO.Directory]::Exists($resolvedCandidate)) { return }
+    try {
+        [IO.Directory]::Delete($resolvedCandidate, $true)
+    }
+    catch {
+        $cause = if ($_.Exception.InnerException) { $_.Exception.InnerException } else { $_.Exception }
+        if ($cause -isnot [IO.DirectoryNotFoundException] -or [IO.Directory]::Exists($resolvedCandidate)) {
+            throw
+        }
     }
 }
 
@@ -147,6 +167,29 @@ try {
     & $pnpmExecutable --dir $repositoryRoot build:web
     if ($LASTEXITCODE -ne 0) { throw 'Frontend production build failed.' }
 
+    $forbiddenGatewayValues = [Collections.Generic.List[string]]::new()
+    $forbiddenGatewayValues.Add('http://127.0.0.1:5127')
+    $localFrontendEnvironment = Join-Path $repositoryRoot 'apps\studio-web\.env.local'
+    if (Test-Path -LiteralPath $localFrontendEnvironment -PathType Leaf) {
+        foreach ($line in [IO.File]::ReadAllLines($localFrontendEnvironment)) {
+            if ($line -match '^\s*(VITE_AETHOR_GATEWAY_URL|VITE_AETHOR_GATEWAY_SESSION_TOKEN)\s*=\s*(.+?)\s*$') {
+                $value = $Matches[2].Trim().Trim('"').Trim("'")
+                if ($value.Length -ge 8 -and !$forbiddenGatewayValues.Contains($value)) {
+                    $forbiddenGatewayValues.Add($value)
+                }
+            }
+        }
+    }
+    foreach ($asset in Get-ChildItem -LiteralPath $frontendOutput -Recurse -File) {
+        if ($asset.Extension -notin '.js', '.html', '.css') { continue }
+        $content = [IO.File]::ReadAllText($asset.FullName)
+        foreach ($forbiddenValue in $forbiddenGatewayValues) {
+            if ($content.IndexOf($forbiddenValue, [StringComparison]::Ordinal) -ge 0) {
+                throw 'Packaged frontend contains a development gateway URL or session token.'
+            }
+        }
+    }
+
     $gatewayOutput = Join-Path $stagingRoot 'gateway'
     & $dotnetExecutable publish $gatewayProject --configuration Release --runtime $Runtime `
         --self-contained true --output $gatewayOutput `
@@ -161,7 +204,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Desktop publish failed.' }
 
     if (Test-Path -LiteralPath $dotnetArtifactsRoot) {
-        Remove-Item -LiteralPath $dotnetArtifactsRoot -Recurse -Force
+        Remove-OwnedDirectory -Candidate $dotnetArtifactsRoot -Parent $stagingRoot
     }
 
     $webOutput = Join-Path $stagingRoot 'web'
@@ -207,6 +250,8 @@ try {
         --desktop-deps-path (Join-Path $stagingRoot 'AethorStudioV2.Desktop.deps.json') `
         --gateway-deps-path (Join-Path $gatewayOutput 'AethorStudioV2.Api.deps.json') `
         --nuget-root $nugetRoot `
+        --curated-license-manifest-path (Join-Path $PSScriptRoot 'legal\third-party-license-sources.json') `
+        --model-redistribution-status-path (Join-Path $repositoryRoot 'shared\robot-profiles\model-redistribution-status.json') `
         --output-directory $legalOutput `
         --product-version $version `
         --source-commit $commit `
@@ -294,7 +339,7 @@ try {
         Set-Content -Encoding UTF8 -LiteralPath (Join-Path $stagingRoot 'release-manifest.json')
 
     if (Test-Path -LiteralPath $finalRoot) {
-        Remove-Item -LiteralPath $finalRoot -Recurse -Force
+        Remove-OwnedDirectory -Candidate $finalRoot -Parent $outputParent
     }
     [IO.Directory]::Move($stagingRoot, $finalRoot)
     [ordered]@{
@@ -310,7 +355,7 @@ try {
 }
 finally {
     if (Test-Path -LiteralPath $stagingRoot) {
-        Remove-Item -LiteralPath $stagingRoot -Recurse -Force
+        Remove-OwnedDirectory -Candidate $stagingRoot -Parent $outputParent
     }
     if ($null -ne $buildLock) {
         $buildLock.Dispose()

@@ -12,7 +12,9 @@ describe('DesktopBridgeV1 module initialization', () => {
     const bootstrap: DesktopBootstrapV1 = {
       contractVersion: '1.0',
       gateway: null,
-      capabilities: { available: true, minimize: true, toggleMaximize: true, close: true }
+      capabilities: {
+        available: true, minimize: true, toggleMaximize: true, close: true, exportDiagnostics: true
+      }
     };
     Object.defineProperty(window, '__AETHOR_DESKTOP_BOOTSTRAP__', {
       value: bootstrap, configurable: true

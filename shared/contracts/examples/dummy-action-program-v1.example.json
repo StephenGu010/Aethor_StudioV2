@@ -4,6 +4,7 @@
   "name": "Dummy 展示点位示例",
   "revision": 1,
   "profileId": "dummy-6dof",
+  "jointCoordinateSystem": "dummy-device-joints-v1",
   "createdAtUtc": "2026-08-09T00:00:00.000Z",
   "updatedAtUtc": "2026-08-09T00:00:00.000Z",
   "source": "showcaseExample",
@@ -12,7 +13,7 @@
     {
       "waypointId": "9ef34ad8-50e0-4ad0-b754-272e83df0001",
       "name": "展示位 01",
-      "positionsDeg": [12.4, -36.2, 18.6, 45, -22.3, 90],
+      "positionsDeg": [12.4, -36.2, 108.6, 45, -22.3, 90],
       "mode": 2,
       "postArrivalWait": { "kind": "none" },
       "notes": "SHOWCASE DATA；不得解释为安全回位姿态。",

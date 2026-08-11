@@ -36,6 +36,7 @@ public sealed class RobotGateway : IAsyncDisposable
     private string? exclusiveCommandId;
     private int commandDemand;
     private int commandInterlockLatched;
+    private int serialOpenRecoveryRequired;
     private bool disposed;
 
     public RobotGateway(
@@ -353,6 +354,12 @@ public sealed class RobotGateway : IAsyncDisposable
         try
         {
             ThrowIfDisposed();
+            if (Volatile.Read(ref serialOpenRecoveryRequired) != 0)
+            {
+                throw new GatewayConflictException(
+                    "A previous serial open was interrupted; restart the gateway before retrying");
+            }
+
             if (activeTransport is not null
                 || HasRunningCommand()
                 || GetSession().ConnectionState is ConnectionState.Connecting or ConnectionState.Connected or ConnectionState.Disconnecting)
@@ -380,20 +387,49 @@ public sealed class RobotGateway : IAsyncDisposable
                 Validity.Unavailable));
 
             var transport = transportFactory.Create(request.PortName, DummyAsciiProtocol.BaudRate);
+            using var openCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            openCancellation.CancelAfter(options.SerialOpenTimeout);
             try
             {
-                await transport.OpenAsync(cancellationToken).ConfigureAwait(false);
+                await transport.OpenAsync(openCancellation.Token).ConfigureAwait(false);
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
             {
+                Interlocked.Exchange(ref serialOpenRecoveryRequired, 1);
                 await DisposeTransportAsync(transport).ConfigureAwait(false);
                 UpdateSession(OfflineSession(timeProvider.GetUtcNow()));
+                diagnostics.Record(new(
+                    "serial.open.timeout",
+                    GatewayDiagnosticSeverity.Error,
+                    sessionId,
+                    request.PortName,
+                    $"Serial open exceeded {options.SerialOpenTimeout.TotalMilliseconds:F0} ms; gateway restart required before retry",
+                    exception));
+                throw new GatewayDependencyException(
+                    "Serial port open timed out; restart the gateway before retrying",
+                    exception);
+            }
+            catch (OperationCanceledException exception)
+            {
+                Interlocked.Exchange(ref serialOpenRecoveryRequired, 1);
+                await DisposeTransportAsync(transport).ConfigureAwait(false);
+                UpdateSession(OfflineSession(timeProvider.GetUtcNow()));
+                diagnostics.Record(new(
+                    "serial.open.cancelled",
+                    GatewayDiagnosticSeverity.Warning,
+                    sessionId,
+                    request.PortName,
+                    "Serial open was cancelled; gateway restart required before retry",
+                    exception));
                 throw;
             }
             catch (Exception exception)
             {
                 await DisposeTransportAsync(transport).ConfigureAwait(false);
-                UpdateSession(FaultedSession(sessionId, timeProvider.GetUtcNow()));
+                // Open never transferred transport ownership to the gateway. Keep the
+                // failure in diagnostics and the API result, but return the session to
+                // offline so a port owned by another process cannot trap Desktop close.
+                UpdateSession(OfflineSession(timeProvider.GetUtcNow()));
                 diagnostics.Record(new(
                     "serial.open.failed",
                     GatewayDiagnosticSeverity.Error,
@@ -1032,6 +1068,9 @@ public sealed class RobotGateway : IAsyncDisposable
         var completion = options.JointGroupCompletion!;
         DateTimeOffset? withinToleranceSince = null;
         var maximumErrorDeg = double.PositiveInfinity;
+        IReadOnlyList<double>? firstObservedPositionsDeg = null;
+        var validFeedbackSampleCount = 0;
+        var maximumObservedMovementDeg = 0d;
         var lastReply = queue.Raw;
         using var completionCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         completionCancellation.CancelAfter(TimeSpan.FromMilliseconds(completion.TimeoutMs));
@@ -1048,6 +1087,20 @@ public sealed class RobotGateway : IAsyncDisposable
                     spec.CommandId,
                     completionCancellation.Token).ConfigureAwait(false);
                 lastReply = positions.Raw;
+                validFeedbackSampleCount++;
+                if (firstObservedPositionsDeg is null)
+                {
+                    firstObservedPositionsDeg = [.. positions.PositionsDeg!];
+                }
+                else
+                {
+                    maximumObservedMovementDeg = Math.Max(
+                        maximumObservedMovementDeg,
+                        positions.PositionsDeg!
+                            .Zip(firstObservedPositionsDeg, (current, first) => Math.Abs(current - first))
+                            .Max());
+                }
+
                 maximumErrorDeg = positions.PositionsDeg!
                     .Zip(spec.PositionsDeg!, (actual, target) => Math.Abs(target - actual))
                     .Max();
@@ -1076,12 +1129,27 @@ public sealed class RobotGateway : IAsyncDisposable
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
+            var feedbackFrozenCandidate = validFeedbackSampleCount >= 3
+                && maximumErrorDeg > completion.PositionToleranceDeg
+                && maximumObservedMovementDeg <= 1e-6;
+            if (feedbackFrozenCandidate)
+            {
+                diagnostics.Record(new(
+                    "motion.feedback.frozen_suspected",
+                    GatewayDiagnosticSeverity.Warning,
+                    spec.SessionId,
+                    transport.PortName,
+                    $"CommandId={spec.CommandId} Samples={validFeedbackSampleCount} MaxObservedMovementDeg={maximumObservedMovementDeg:F6} LastMaxTargetErrorDeg={maximumErrorDeg:F3}; valid #GETJPOS replies remained unchanged while the target was outside tolerance; verify firmware currentJoints acquisition in motion modes 1-3; physical result remains unknown"));
+            }
+
             return Result(
                 spec,
                 CommandStatus.TimedOut,
                 CommandResultCode.Timeout,
                 CommandEvidence.DeviceQueued,
-                $"目标已入队，但未在经批准的超时内保持到位；最后最大误差 {maximumErrorDeg:F3} deg",
+                feedbackFrozenCandidate
+                    ? $"目标已入队，但连续 {validFeedbackSampleCount} 个有效 #GETJPOS 样本保持不变；疑似固件运动模式未刷新关节反馈，物理结果未知；最后最大误差 {maximumErrorDeg:F3} deg"
+                    : $"目标已入队，但未在经批准的超时内保持到位；最后最大误差 {maximumErrorDeg:F3} deg",
                 lastReply);
         }
         catch (GatewayQueryTimeoutException exception)
@@ -1710,6 +1778,8 @@ public sealed class RobotGateway : IAsyncDisposable
         var decoder = new DummyAsciiLineDecoder();
         var readBuffer = new byte[options.ReadBufferBytes];
         var consecutiveTimeouts = 0;
+        var statusRefreshRequired = true;
+        var lastStatusRefreshTimestamp = timeProvider.GetTimestamp();
         try
         {
             while (!cancellationToken.IsCancellationRequested)
@@ -1717,22 +1787,33 @@ public sealed class RobotGateway : IAsyncDisposable
                 try
                 {
                     var positions = await QueryAsync(transport, DummyReadQuery.JointPositions, decoder, readBuffer, sessionId, cancellationToken).ConfigureAwait(false);
-                    var mode = await QueryAsync(transport, DummyReadQuery.Mode, decoder, readBuffer, sessionId, cancellationToken).ConfigureAwait(false);
-                    var enable = await QueryAsync(transport, DummyReadQuery.Enable, decoder, readBuffer, sessionId, cancellationToken).ConfigureAwait(false);
-
-                    if (positions.Kind != DummyResponseKind.JointPositions
-                        || mode.Kind != DummyResponseKind.Mode
-                        || enable.Kind != DummyResponseKind.Enable)
+                    if (positions.Kind != DummyResponseKind.JointPositions)
                     {
-                        throw new GatewayProtocolException("Status cycle returned incompatible response types");
+                        throw new GatewayProtocolException("Joint polling returned an incompatible response type");
+                    }
+
+                    if (statusRefreshRequired
+                        || timeProvider.GetElapsedTime(lastStatusRefreshTimestamp) >= options.StatusPollInterval)
+                    {
+                        var mode = await QueryAsync(transport, DummyReadQuery.Mode, decoder, readBuffer, sessionId, cancellationToken).ConfigureAwait(false);
+                        var enable = await QueryAsync(transport, DummyReadQuery.Enable, decoder, readBuffer, sessionId, cancellationToken).ConfigureAwait(false);
+
+                        if (mode.Kind != DummyResponseKind.Mode || enable.Kind != DummyResponseKind.Enable)
+                        {
+                            throw new GatewayProtocolException("Status polling returned incompatible response types");
+                        }
+
+                        MarkStatusCycleValid(mode.Mode!.Value, enable.Enabled!.Value);
+                        lastStatusRefreshTimestamp = timeProvider.GetTimestamp();
+                        statusRefreshRequired = false;
                     }
 
                     consecutiveTimeouts = 0;
-                    MarkStatusCycleValid(mode.Mode!.Value, enable.Enabled!.Value);
                 }
                 catch (GatewayQueryTimeoutException exception)
                 {
                     consecutiveTimeouts++;
+                    statusRefreshRequired = true;
                     MarkFeedbackStale();
                     RecordProtocolError("queryTimeout", exception.Message, sessionId);
                     diagnostics.Record(new(
@@ -1748,7 +1829,7 @@ public sealed class RobotGateway : IAsyncDisposable
                     }
                 }
 
-                await Task.Delay(options.PollInterval, timeProvider, cancellationToken).ConfigureAwait(false);
+                await Task.Delay(options.JointPollInterval, timeProvider, cancellationToken).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

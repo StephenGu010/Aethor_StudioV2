@@ -8,7 +8,8 @@ public enum DesktopBridgeAction
     Minimize,
     ToggleMaximize,
     Close,
-    BeginDrag
+    BeginDrag,
+    ExportDiagnostics
 }
 
 public enum DesktopBridgeErrorCode
@@ -35,7 +36,8 @@ public sealed record DesktopBridgeCapabilitiesV1(
     bool Available,
     bool Minimize,
     bool ToggleMaximize,
-    bool Close);
+    bool Close,
+    bool ExportDiagnostics);
 
 public sealed record DesktopBootstrapV1(
     string ContractVersion,
@@ -80,7 +82,7 @@ public static class DesktopBridgeProtocol
         var bootstrap = new DesktopBootstrapV1(
             ContractVersion,
             gateway is null ? null : new(gateway.BaseUri.GetLeftPart(UriPartial.Authority), gateway.SessionToken),
-            new(true, true, true, true));
+            new(true, true, true, true, true));
         var json = JsonSerializer.Serialize(bootstrap, JsonOptions);
         return "(() => { const value = " + json
             + "; if (value.gateway) Object.freeze(value.gateway); Object.freeze(value.capabilities); Object.freeze(value);"

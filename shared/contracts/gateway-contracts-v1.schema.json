@@ -180,7 +180,7 @@
         "normalizedLine": { "type": "string", "maxLength": 255 },
         "message": { "type": "string", "maxLength": 500 },
         "timestampUtc": { "type": "string", "format": "date-time" },
-        "deviceReply": { "type": "string", "maxLength": 4096 }
+        "deviceReply": { "type": ["string", "null"], "maxLength": 4096 }
       }
     },
     "SimpleRobotCommand": {
@@ -217,7 +217,7 @@
         "evidence": { "$ref": "#/$defs/CommandEvidence" },
         "message": { "type": "string", "maxLength": 500 },
         "timestampUtc": { "type": "string", "format": "date-time" },
-        "deviceReply": { "type": "string", "maxLength": 4096 }
+        "deviceReply": { "type": ["string", "null"], "maxLength": 4096 }
       }
     },
     "RobotCommandRequestSnapshot": {
@@ -372,12 +372,13 @@
     "DesktopBridgeCapabilities": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["available", "minimize", "toggleMaximize", "close"],
+      "required": ["available", "minimize", "toggleMaximize", "close", "exportDiagnostics"],
       "properties": {
         "available": { "type": "boolean" },
         "minimize": { "type": "boolean" },
         "toggleMaximize": { "type": "boolean" },
-        "close": { "type": "boolean" }
+        "close": { "type": "boolean" },
+        "exportDiagnostics": { "type": "boolean" }
       }
     },
     "DesktopBootstrapV1": {
@@ -410,7 +411,7 @@
       "properties": {
         "contractVersion": { "const": "1.0" },
         "requestId": { "type": "string", "minLength": 1, "maxLength": 128 },
-        "action": { "enum": ["minimize", "toggleMaximize", "close", "beginDrag"] }
+        "action": { "enum": ["minimize", "toggleMaximize", "close", "beginDrag", "exportDiagnostics"] }
       }
     },
     "DesktopBridgeResponseV1": {

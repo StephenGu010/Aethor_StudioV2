@@ -1,6 +1,7 @@
 import type { RobotProfileManifestV1 } from '@aethor/contracts';
 import * as THREE from 'three';
 import { resolveJointBindings } from '../../domain/jointInteraction';
+import { deviceAngleToModelDeg } from '../../domain/jointCoordinates';
 import type { SceneBounds } from './cameraFit';
 
 export interface LoadedModels {
@@ -96,7 +97,7 @@ export function applyJointPositions(
     if (value === undefined || value === previousPositionsDeg?.[joint.protocolIndex]) return;
     const targetJoint = joints.get(joint.urdfJointName);
     if (!targetJoint) return;
-    targetJoint.setJointValue(THREE.MathUtils.degToRad(value));
+    targetJoint.setJointValue(THREE.MathUtils.degToRad(deviceAngleToModelDeg(joint, value)));
     appliedCount += 1;
   });
   return appliedCount;

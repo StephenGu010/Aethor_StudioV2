@@ -62,12 +62,32 @@ describe('DesktopBridgeV1 adapter', () => {
 
     await expect(Promise.all([first, second])).resolves.toEqual([true, true]);
   });
+
+  it('uses the explicit diagnostics action and waits for the native save result', async () => {
+    let receive: ((event: MessageEvent<unknown>) => void) | undefined;
+    const postMessage = vi.fn();
+    const bridge = createDesktopBridge(environment(bootstrap(), {
+      postMessage,
+      addEventListener: (_type, listener) => { receive = listener; }
+    }));
+
+    const pending = bridge.exportDiagnostics();
+    const request = postMessage.mock.calls[0]?.[0];
+    expect(request).toMatchObject({ contractVersion: '1.0', action: 'exportDiagnostics' });
+    receive?.({ data: {
+      contractVersion: '1.0', requestId: request.requestId, ok: true
+    } satisfies DesktopBridgeResponseV1 } as MessageEvent<unknown>);
+
+    await expect(pending).resolves.toBe(true);
+  });
 });
 
 function bootstrap(): DesktopBootstrapV1 {
   return {
     contractVersion: '1.0', gateway: { baseUrl: 'http://127.0.0.1:5127', sessionToken: 'A'.repeat(43) },
-    capabilities: { available: true, minimize: true, toggleMaximize: true, close: true }
+    capabilities: {
+      available: true, minimize: true, toggleMaximize: true, close: true, exportDiagnostics: true
+    }
   };
 }
 

@@ -25,6 +25,7 @@
     <None Include="../../smoke-offline.ps1" Link="Operations/smoke-offline.ps1" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../soak-readonly.ps1" Link="Operations/soak-readonly.ps1" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../start-engineering-dev.ps1" Link="Operations/start-engineering-dev.ps1" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../dotnet-isolated.ps1" Link="Operations/dotnet-isolated.ps1" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../../../package.json" Link="Operations/package.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

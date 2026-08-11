@@ -7,8 +7,8 @@ import type {
 } from '@aethor/contracts';
 
 const captureStartMs = Date.parse('2026-08-07T06:31:40.000Z');
-const baseActual = [12.4, -36.1, 18.55, 44.85, -22.35, 89.9];
-const baseTarget = [12.4, -36.2, 18.6, 45, -22.3, 90];
+const baseActual = [12.4, -36.1, 108.55, 44.85, -22.35, 89.9];
+const baseTarget = [12.4, -36.2, 108.6, 45, -22.3, 90];
 const colors = ['#a9c7d8', '#d7ddd8', '#73a98f', '#d6b35a', '#a7a0c8', '#c99a79'];
 
 export const showcaseSession: RobotSessionSnapshot = {
@@ -33,12 +33,12 @@ export const showcaseJointFrame: JointStateFrame = {
 
 export const showcaseProtocolFrames: ProtocolFrame[] = [
   frame(0, 'tx', '#GETJPOS', 'QUERY'),
-  frame(32, 'rx', 'ok 12.400 -36.100 18.550 44.850 -22.350 89.900', 'JOINT_STATE'),
+  frame(32, 'rx', 'ok 12.400 -36.100 108.550 44.850 -22.350 89.900', 'JOINT_STATE'),
   frame(90, 'tx', '#GETMODE', 'QUERY'),
   frame(118, 'rx', 'ok 2 INT_POINT', 'MODE_STATE'),
   frame(176, 'tx', '#GETENABLE', 'QUERY'),
   frame(202, 'rx', 'ok 1', 'ENABLE_STATE'),
-  frame(740, 'tx', '>12.400,-36.200,18.600,45.000,-22.300,90.000,18.000', 'MOTION_STREAM'),
+  frame(740, 'tx', '>12.400,-36.200,108.600,45.000,-22.300,90.000,18.000', 'MOTION_STREAM'),
   frame(749, 'rx', '14', 'FIFO_REMAINING'),
   frame(1180, 'rx', 'ok', 'MOTION_COMPLETE'),
   {

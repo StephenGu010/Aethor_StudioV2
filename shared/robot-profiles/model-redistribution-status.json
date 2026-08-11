@@ -1,0 +1,36 @@
+{
+  "schemaVersion": "aethor.model-redistribution-status.v1",
+  "profiles": [
+    {
+      "profileId": "dummy-6dof",
+      "declaredLicense": "BSD-3-Clause",
+      "redistributionTermsComplete": false,
+      "unresolvedReason": "The source package declares BSD-3-Clause but does not contain the complete license text or a separate copyright notice.",
+      "evidence": [
+        {
+          "sourcePath": "BuiltIn/dummy-6dof/NOTICE.md",
+          "sourceSha256": "9910dfe0342d319691b5baaddd2e843471ebe049c3ce40427c452e9d9718cade",
+          "packagedPath": "Legal/dummy-6dof-NOTICE.md"
+        }
+      ]
+    },
+    {
+      "profileId": "aethor-robo-dual-7dof",
+      "declaredLicense": "BSD (exact terms unverified)",
+      "redistributionTermsComplete": false,
+      "unresolvedReason": "The user-supplied archive declares BSD but does not contain complete redistribution terms.",
+      "evidence": [
+        {
+          "sourcePath": "BuiltIn/aethor-robo-dual-7dof/NOTICE.md",
+          "sourceSha256": "22d70d83566bc5e67786003a25e147d5881cec97a5583dde7b74fb102bb366c2",
+          "packagedPath": "Legal/aethor-robo-dual-7dof-NOTICE.md"
+        },
+        {
+          "sourcePath": "BuiltIn/aethor-robo-dual-7dof/provenance.json",
+          "sourceSha256": "dbebc7bb563a5e28dfaab0482a8728aac1b1d7e87fd7d0edcb26993a2f1e5a2c",
+          "packagedPath": "Legal/aethor-robo-dual-7dof-provenance.json"
+        }
+      ]
+    }
+  ]
+}

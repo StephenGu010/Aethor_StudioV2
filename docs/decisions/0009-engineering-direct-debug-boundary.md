@@ -19,7 +19,7 @@ Dummy 固件与旧上位机支持人工发送 ASCII 指令，但 `RobotGatewayV1
 - FIFO 0–15 只返回 `queued + deviceQueued`；255 返回 rejected。direct 不返回“运动完成”，操作者必须观察 measured 反馈。
 - direct 与结构化命令共享命令/串口互斥和有界超时；真实 TX/RX 进入协议帧，前端不得伪造。
 - direct 也进入唯一命令所有权：结构化普通命令与 direct 互斥，停止并去使能会先取消 direct 再有界抢占。direct 超时、I/O 失败或无确认的状态改变命令会锁存联锁并把受影响状态降为 stale/unknown，不能继续普通运动。
-- 普通断开只在命令在途或 motor 明确 enabled 时拒绝；stale/unknown/faulted 错误端口允许释放。
+- 普通断开只在命令在途或 motor 明确 enabled 时拒绝；成功打开后的 stale/unknown/faulted 错误会话允许释放。从未打开成功的端口直接恢复 offline，不创建需要再次点击“释放”的伪会话。
 - 完成断开后清空当前会话协议/命令证据、连接状态、遥测历史和目标草稿，模型回到 Profile 软件启动姿态；显式保存的动作程序、布局和导出文件不受影响。该姿态不是实机 HOME 或安全回位。
 
 ## 后果

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { afterEach, describe, expect, it } from 'vitest';
 import { aethorRoboProfile } from '../../profile/aethorRoboProfile';
+import { dummyProfile } from '../../profile/dummyProfile';
 import {
   applyJointPositions,
   calculateLoadedModelBounds,
@@ -62,6 +63,20 @@ describe('joint pose updates', () => {
     expect(applyJointPositions(joints, aethorRoboProfile, changed, changed)).toBe(0);
     expect(calls.get(aethorRoboProfile.joints[3]!.urdfJointName)).toEqual([0, Math.PI / 4]);
     expect(calls.get(aethorRoboProfile.joints[0]!.urdfJointName)).toEqual([0]);
+  });
+
+  it('renders Dummy J3=90 from #GETJPOS at the URDF zero angle', () => {
+    const calls: number[] = [];
+    const j3 = dummyProfile.joints[2]!;
+    const modelJoint = new THREE.Object3D() as JointLike;
+    modelJoint.setJointValue = (value) => calls.push(value);
+
+    expect(applyJointPositions(
+      new Map([[j3.urdfJointName, modelJoint]]),
+      dummyProfile,
+      [0, 0, 90, 0, 0, 0]
+    )).toBe(1);
+    expect(calls).toEqual([0]);
   });
 });
 

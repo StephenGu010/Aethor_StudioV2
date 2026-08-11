@@ -118,6 +118,22 @@ public sealed class DummyAsciiConformanceTests
     }
 
     [Fact]
+    public void EngineeringParserUsesFirmwareDeviceAngleLimits()
+    {
+        Assert.True(DummyAsciiProtocol.TryParseEngineeringCommand(
+            ">170,90,180,180,120,720,10",
+            100,
+            out var command,
+            out _));
+        Assert.Equal([170d, 90d, 180d, 180d, 120d, 720d], command!.PositionsDeg);
+
+        Assert.False(DummyAsciiProtocol.TryParseEngineeringCommand(">171,0,90,0,0,0,10", 100, out _, out _));
+        Assert.False(DummyAsciiProtocol.TryParseEngineeringCommand(">0,91,90,0,0,0,10", 100, out _, out _));
+        Assert.False(DummyAsciiProtocol.TryParseEngineeringCommand(">0,0,-0.1,0,0,0,10", 100, out _, out _));
+        Assert.False(DummyAsciiProtocol.TryParseEngineeringCommand(">0,0,180.1,0,0,0,10", 100, out _, out _));
+    }
+
+    [Fact]
     public void EngineeringTransportPolicyRetainsTheFirmwareInputCeiling()
     {
         Assert.True(SerialPayloadPolicy.IsAllowed(

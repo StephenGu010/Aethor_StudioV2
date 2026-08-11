@@ -127,6 +127,26 @@ describe('gateway runtime store', () => {
     });
   });
 
+  it('publishes one shared serial session operation state and resets it with the session', () => {
+    useGatewayRuntimeStore.getState().beginSerialSessionOperation('connecting');
+    expect(useGatewayRuntimeStore.getState()).toMatchObject({
+      serialSessionOperationStatus: 'connecting',
+      serialSessionOperationError: null
+    });
+
+    useGatewayRuntimeStore.getState().failSerialSessionOperation('connection conflict');
+    expect(useGatewayRuntimeStore.getState()).toMatchObject({
+      serialSessionOperationStatus: 'error',
+      serialSessionOperationError: 'connection conflict'
+    });
+
+    useGatewayRuntimeStore.getState().resetRuntime();
+    expect(useGatewayRuntimeStore.getState()).toMatchObject({
+      serialSessionOperationStatus: 'idle',
+      serialSessionOperationError: null
+    });
+  });
+
   it('restores safety interlocks from history and only clears them with a confirmed later stop', () => {
     useGatewayRuntimeStore.getState().setSession({
       sessionId: 'session-1', profileId: 'dummy-6dof', connectionState: 'connected', motorState: 'enabled',

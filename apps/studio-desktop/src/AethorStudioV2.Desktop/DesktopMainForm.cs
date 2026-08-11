@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 
@@ -23,7 +24,9 @@ public sealed class DesktopMainForm : Form
     private readonly GatewayRecoveryPolicy gatewayRecovery = new();
     private readonly BoundedLogFile log;
     private readonly CancellationTokenSource lifetimeCancellation = new();
+    private readonly SemaphoreSlim diagnosticExportGate = new(1, 1);
     private readonly CancellationToken lifetimeToken;
+    private readonly System.Windows.Forms.Timer performanceSampleTimer = new() { Interval = 60_000 };
     private readonly WebView2 webView = new() { Dock = DockStyle.Fill, Visible = false, AllowExternalDrop = false };
     private readonly Panel statusPanel = new() { Dock = DockStyle.Fill, BackColor = Color.FromArgb(10, 12, 14) };
     private readonly TableLayoutPanel statusLayout = new()
@@ -91,6 +94,11 @@ public sealed class DesktopMainForm : Form
     private Image? splashImage;
     private CoreWebView2DevToolsProtocolEventReceiver? exceptionReceiver;
     private CoreWebView2DevToolsProtocolEventReceiver? logReceiver;
+    private CoreWebView2DevToolsProtocolEventReceiver? consoleReceiver;
+    private CoreWebView2? performanceProbeCore;
+    private bool performanceProtocolAvailable;
+    private bool performanceSampleRunning;
+    private int performanceSampleSequence;
 
     public bool OfflineRestartRequested =>
         gatewayRecovery.State == GatewayRecoveryState.OfflineRestartRequested;
@@ -135,6 +143,7 @@ public sealed class DesktopMainForm : Form
         failureCloseButton.FlatAppearance.BorderSize = 1;
         recoveryButton.Click += HandleOfflineRestartClick;
         failureCloseButton.Click += HandleFailureCloseClick;
+        performanceSampleTimer.Tick += HandlePerformanceSampleTick;
 
         Shown += async (_, _) =>
         {
@@ -188,6 +197,9 @@ public sealed class DesktopMainForm : Form
             splashImage?.Dispose();
             recoveryButton.Click -= HandleOfflineRestartClick;
             failureCloseButton.Click -= HandleFailureCloseClick;
+            StopPerformanceSampling();
+            performanceSampleTimer.Tick -= HandlePerformanceSampleTick;
+            performanceSampleTimer.Dispose();
             if (gatewaySupervisor is not null) gatewaySupervisor.UnexpectedExit -= HandleGatewayUnexpectedExit;
         }
         base.Dispose(disposing);
@@ -316,6 +328,7 @@ public sealed class DesktopMainForm : Form
         };
         core.ProcessFailed += (_, eventArgs) =>
         {
+            StopPerformanceSampling();
             log.Write("desktop", $"WebView2 process failed: {eventArgs.ProcessFailedKind}");
             statusLabel.Text = "AETHOR STUDIO V2\r\n\r\nWebView2 进程异常，请重新启动应用。";
             failureCloseButton.Visible = true;
@@ -327,6 +340,7 @@ public sealed class DesktopMainForm : Form
             if (eventArgs.IsSuccess)
             {
                 log.Write("desktop", $"Packaged UI navigation completed: {core.Source}");
+                StartPerformanceSampling(core);
                 return;
             }
             log.Write("desktop", $"Packaged UI navigation failed: {eventArgs.WebErrorStatus}");
@@ -359,8 +373,120 @@ public sealed class DesktopMainForm : Form
         logReceiver = core.GetDevToolsProtocolEventReceiver("Log.entryAdded");
         logReceiver.DevToolsProtocolEventReceived += (_, eventArgs) =>
             log.Write("web.console", eventArgs.ParameterObjectAsJson);
+        consoleReceiver = core.GetDevToolsProtocolEventReceiver("Runtime.consoleAPICalled");
+        consoleReceiver.DevToolsProtocolEventReceived += (_, eventArgs) =>
+        {
+            if (WebOperationProbePolicy.TryNormalizeConsoleEvent(
+                eventArgs.ParameterObjectAsJson,
+                out var normalizedProbe))
+            {
+                log.Write("web.probe", normalizedProbe!);
+            }
+        };
         await core.CallDevToolsProtocolMethodAsync("Runtime.enable", "{}").ConfigureAwait(true);
         await core.CallDevToolsProtocolMethodAsync("Log.enable", "{}").ConfigureAwait(true);
+        try
+        {
+            await core.CallDevToolsProtocolMethodAsync("Performance.enable", "{}").ConfigureAwait(true);
+            performanceProtocolAvailable = true;
+        }
+        catch (Exception exception)
+        {
+            performanceProtocolAvailable = false;
+            log.Write("desktop.performance", $"Performance probe unavailable: {exception.GetType().Name}");
+        }
+    }
+
+    private void StartPerformanceSampling(CoreWebView2 core)
+    {
+        if (!performanceProtocolAvailable || performanceProbeCore is not null) return;
+        performanceProbeCore = core;
+        performanceSampleTimer.Start();
+        _ = CapturePerformanceSampleAsync();
+    }
+
+    private async void HandlePerformanceSampleTick(object? sender, EventArgs eventArgs) =>
+        await CapturePerformanceSampleAsync().ConfigureAwait(true);
+
+    private async Task CapturePerformanceSampleAsync()
+    {
+        var core = performanceProbeCore;
+        if (core is null
+            || performanceSampleRunning
+            || lifetimeToken.IsCancellationRequested
+            || IsDisposed
+            || Disposing)
+        {
+            return;
+        }
+
+        performanceSampleRunning = true;
+        try
+        {
+            var metrics = await core.CallDevToolsProtocolMethodAsync(
+                "Performance.getMetrics",
+                "{}").ConfigureAwait(true);
+            if (!ReferenceEquals(core, performanceProbeCore) || lifetimeToken.IsCancellationRequested) return;
+            if (!WebRuntimeProcessMemorySampler.TryCapture(
+                Environment.ProcessId,
+                core.Environment.GetProcessInfos().Select(processInfo => processInfo.ProcessId),
+                gatewaySupervisor?.Session?.ProcessId,
+                TryReadWorkingSetBytes,
+                out var processMemory))
+            {
+                log.Write("desktop.performance", "Performance sampling stopped: process-memory-unavailable");
+                StopPerformanceSampling();
+                return;
+            }
+            var sequence = checked(performanceSampleSequence + 1);
+            if (!WebRuntimePerformanceProbePolicy.TryNormalize(
+                metrics,
+                processMemory!,
+                WebRuntimeWorkspaceClassifier.Classify(core.Source),
+                webView.Visible && WindowState != FormWindowState.Minimized && !statusPanel.Visible,
+                sequence,
+                out var normalizedProbe))
+            {
+                log.Write("desktop.performance", "Rejected invalid WebView performance metrics");
+                StopPerformanceSampling();
+                return;
+            }
+
+            performanceSampleSequence = sequence;
+            log.Write("desktop.performance", normalizedProbe!);
+        }
+        catch (Exception exception) when (!lifetimeToken.IsCancellationRequested)
+        {
+            log.Write("desktop.performance", $"Performance sampling stopped: {exception.GetType().Name}");
+            StopPerformanceSampling();
+        }
+        finally
+        {
+            performanceSampleRunning = false;
+        }
+    }
+
+    private static long? TryReadWorkingSetBytes(int processId)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(processId);
+            process.Refresh();
+            if (process.HasExited) return null;
+            return process.WorkingSet64;
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or Win32Exception)
+        {
+            // WebView utility processes can end after GetProcessInfos returns.
+            // A missing process is omitted from this sample without retaining a handle.
+            return null;
+        }
+    }
+
+    private void StopPerformanceSampling()
+    {
+        performanceSampleTimer.Stop();
+        performanceProbeCore = null;
     }
 
     private async Task HandleBridgeMessageAsync(CoreWebView2WebMessageReceivedEventArgs eventArgs)
@@ -402,6 +528,10 @@ public sealed class DesktopMainForm : Form
                     ok = await PrepareCloseAsync().ConfigureAwait(true);
                     if (!ok) error = DesktopBridgeErrorCode.HostFailure;
                     break;
+                case DesktopBridgeAction.ExportDiagnostics:
+                    ok = await ExportDiagnosticsAsync().ConfigureAwait(true);
+                    if (!ok) error = DesktopBridgeErrorCode.HostFailure;
+                    break;
                 default:
                     ok = false;
                     error = DesktopBridgeErrorCode.Unsupported;
@@ -422,6 +552,64 @@ public sealed class DesktopMainForm : Form
             shutdownApproved = true;
             lifetimeCancellation.Cancel();
             BeginInvoke(Close);
+        }
+    }
+
+    private async Task<bool> ExportDiagnosticsAsync()
+    {
+        if (!await diagnosticExportGate.WaitAsync(0, lifetimeToken).ConfigureAwait(true)) return false;
+        try
+        {
+            var now = DateTimeOffset.UtcNow;
+            using var dialog = new SaveFileDialog
+            {
+                AddExtension = true,
+                CheckPathExists = true,
+                DefaultExt = "zip",
+                FileName = $"Aethor-Studio-V2-Diagnostics-{now:yyyyMMdd-HHmmss}Z.zip",
+                Filter = "ZIP archive (*.zip)|*.zip",
+                OverwritePrompt = true,
+                RestoreDirectory = true,
+                Title = "导出 Aethor Studio V2 诊断包"
+            };
+            if (dialog.ShowDialog(this) != DialogResult.OK) return false;
+
+            var mode = gatewaySupervisor is null
+                ? "offline"
+                : options.GatewayMode == DesktopGatewayMode.Engineering
+                    ? "engineering"
+                    : "disabled";
+            var context = new DiagnosticBundleContext(
+                now,
+                typeof(DesktopMainForm).Assembly.GetName().Version?.ToString(3) ?? "unknown",
+                mode,
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+            var destination = dialog.FileName;
+            var result = await Task.Run(
+                () => DiagnosticBundleExporter.Export(
+                    destination,
+                    log.CaptureSnapshot(),
+                    context,
+                    overwrite: true,
+                    lifetimeToken),
+                lifetimeToken).ConfigureAwait(true);
+            log.Write(
+                "desktop.diagnostics",
+                $"Diagnostic bundle exported LogFiles={result.LogFileCount} LogBytes={result.UncompressedLogBytes} BundleBytes={result.BundleBytes}");
+            return true;
+        }
+        catch (OperationCanceledException) when (lifetimeToken.IsCancellationRequested)
+        {
+            return false;
+        }
+        catch (Exception exception)
+        {
+            log.Write("desktop.diagnostics", $"Diagnostic bundle export failed: {exception.GetType().Name}");
+            return false;
+        }
+        finally
+        {
+            diagnosticExportGate.Release();
         }
     }
 
@@ -490,6 +678,7 @@ public sealed class DesktopMainForm : Form
     private void ShowGatewayFailure()
     {
         if (IsDisposed || Disposing) return;
+        StopPerformanceSampling();
         log.Write("desktop", "Gateway exit blocked the workspace; only an explicit offline restart is available");
         statusLabel.Text = "AETHOR STUDIO V2\r\n\r\n机器人网关意外退出，设备状态未知。"
             + "\r\n系统不会自动重连或恢复控制。请先确认物理急停与机械臂状态。";
