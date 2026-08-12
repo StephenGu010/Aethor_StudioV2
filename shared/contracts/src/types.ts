@@ -20,7 +20,7 @@ export type CommandStatus =
   | 'unconfirmed';
 export type GatewayCommandPolicy = 'disabled' | 'supervised' | 'engineering';
 export type RobotCommandKind = 'enable' | 'stopAndDisable' | 'home' | 'reset' | 'setMode' | 'jointGroup';
-export type CommandEvidence = 'none' | 'gatewayAccepted' | 'deviceQueued' | 'deviceAck' | 'feedbackConfirmed';
+export type CommandEvidence = 'none' | 'gatewayAccepted' | 'transportWritten' | 'deviceQueued' | 'deviceAck' | 'feedbackConfirmed';
 export type CommandResultCode =
   | 'ok'
   | 'commandsDisabled'
@@ -125,7 +125,7 @@ export interface RobotConnectRequest {
 }
 
 export interface RobotGatewayCapabilitiesV1 {
-  contractVersion: '1.2';
+  contractVersion: '1.3';
   protocolAdapterId: 'dummy-ascii-v1';
   serialEnumeration: boolean;
   readOnlyConnection: boolean;
@@ -180,7 +180,7 @@ export interface DirectCommandRequest {
   line: string;
 }
 
-export type DirectCommandStatus = 'replied' | 'queued' | 'rejected' | 'timedOut' | 'failed';
+export type DirectCommandStatus = 'sent' | 'replied' | 'rejected' | 'timedOut' | 'failed';
 
 export interface DirectCommandResult {
   requestId: string;

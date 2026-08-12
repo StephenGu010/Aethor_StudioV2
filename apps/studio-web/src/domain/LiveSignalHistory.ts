@@ -10,7 +10,7 @@ import { BoundedSignalBuffer } from './BoundedSignalBuffer';
 
 export const TELEMETRY_DEFAULT_WINDOW_SECONDS = 60;
 export const TELEMETRY_MAX_WINDOW_SECONDS = 120;
-export const TELEMETRY_MAX_CAPTURE_RATE_HZ = 20;
+export const TELEMETRY_MAX_CAPTURE_RATE_HZ = 40;
 export const TELEMETRY_MAX_SAMPLES_PER_SIGNAL = TELEMETRY_MAX_WINDOW_SECONDS * TELEMETRY_MAX_CAPTURE_RATE_HZ;
 
 export type TelemetryIngestStatus = 'accepted' | 'inactiveSession' | 'invalidFrame' | 'duplicate' | 'outOfOrder';

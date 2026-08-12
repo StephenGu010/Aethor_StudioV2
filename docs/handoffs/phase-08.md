@@ -2,12 +2,14 @@
 
 ## 当前结论
 
+2026-08-12 的最新工程包已包含 Dummy 人工确认运动：transport 写入即返回 `SENT · MANUAL CONFIRM`，不等待 FIFO/最终 `ok`，运动期间由唯一 reader 继续尝试 GETJPOS；disabled/engineering 两种离线 smoke 均验证 session offline、零串口打开和零硬件命令。
+
 Phase 8A Windows 桌面软件门已实现并验证。Phase 8B 又完成了 Per-Monitor V2 运行时契约、代理无关的 loopback 生命周期、受控网关崩溃恢复、第三方生产依赖/SPDX 清单、精确版本许可正文闭包、双模型法律独立门，以及发布签名的失败关闭流水线。92 个生产组件已有 0 个依赖正文缺口，6 个需额外取得的权威正文已按版本与 SHA-256 锁定；两个模型再分发条款仍未完成，因此摘要继续 `releaseReady=false`。最新增量修复 packaged Web 错连开发 5127 的 bootstrap 优先级缺陷，并建立共享 single-flight 串口目录、连接/断开 owner 和跨前端/网关 operationId 探针。安装器、模型法律处置、真实 Publisher/证书签名、四档 DPI 目视、升级/卸载和监督硬件回归尚未完成，因此 Phase 8 仍为 `IN PROGRESS`，不得创建 `phase-08-final.md` 或阶段完成提交。
 
 ## 交付物
 
 - `apps/studio-desktop/src/AethorStudioV2.Desktop`：桌面壳实现。
-- `apps/studio-desktop/tests/AethorStudioV2.Desktop.Tests`：当前 74 项桌面边界测试。
+- `apps/studio-desktop/tests/AethorStudioV2.Desktop.Tests`：当前 118 项桌面边界测试。
 - `apps/studio-desktop/build-windows.ps1`：带同版本/Runtime 独占锁的自包含 Windows 包和逐文件 SHA-256 清单。
 - `apps/studio-desktop/smoke-packaged.ps1`：manifest 闭包、离线网关和安全退出 smoke。
 - `apps/studio-desktop/smoke-webview-prerequisite.ps1`：Stable-only 前置条件失败、原生面板和网关未启动 smoke。
@@ -96,6 +98,13 @@ Phase 8A Windows 桌面软件门已实现并验证。Phase 8B 又完成了 Per-M
 - 串口打开阶段新增默认 5000 ms 总超时与 `serial.open.timeout/cancelled` 诊断；候选连接在超时/取消时主动 dispose，session 回到 offline，并禁止同 Gateway 重试直至进程重启。当前整仓为 494/494，2643-module Web 与两个隔离 Release build 0 warning/0 error。697/696 文件包已再次重建并通过 disabled/engineering offline smoke；最终工程版从新包启动，只读取得 2 个端口且无串口打开、连接请求、命令或 Web 错误。真实驱动停滞仍未在 COM4 注入。
 - 设备页新增桌面诊断包导出。宿主只打包 `README.txt`、`manifest.json` 和最多五份有界桌面日志，导出时再次遮蔽令牌及用户目录，排除终端/协议历史、命令审计、关节目标和模型资源；写盘采用同目录临时文件与最终原子移动，取消或失败不留半成品。浏览器入口明确不可用。
 - 该增量后的整仓回归为 contracts 93 + frontend 201 + gateway 88 + desktop 118 + legal inventory 6，共 506/506；2643-module production Web、两个隔离 .NET Release build 和三档生产 E2E 63/63 通过。重建开发包为 697 个实际文件/696 项 manifest，disabled/engineering offline smoke 均通过；本次只枚举到 COM1，session offline、shutdown 202、进程退出，未打开串口或发送命令。原生文件对话框尚未做人工目视验收，因此 Phase 8B 仍未完成。
+
+## 增量验证（2026-08-12）
+
+- Windows 包同步包含 Dummy 固定 25 ms 位置轮询、慢状态错峰、命令优先让行、运动等待快节拍和终端 GETJPOS 显示切换。strict TypeScript、contracts 94、frontend 209、gateway 97、desktop 118、legal inventory 6 通过；2644-module Web、Gateway/Desktop Release 0 warning/0 error，三档生产 E2E 63/63。
+- `development-dirty` 包为 698 个实际文件/697 项 manifest。engineering offline smoke 校验 92 个第三方组件、6 个锁定正文、0 个依赖正文缺口和 2 个模型条款缺口，只读枚举 COM1/COM4；session 保持 offline，shutdown 202 后 Gateway 退出，`serialPortOpened=false / hardwareCommandSent=false`。桌面工程快捷方式继续指向同一包路径，无需生成第二份资源。
+- 该轮没有启动桌面 UI、连接 COM4 或发送查询/命令。40 Hz 仅为主机请求节拍；固件运动模式的 `currentJoints` 采集缺口仍需独立固件修复与监督实机验收，Phase 8 保持 `IN PROGRESS`。
+- 人工确认增量完成后复验 contracts 95 + frontend 211 + gateway 101 + desktop 118 + legal inventory 6，共 531/531；strict TypeScript、2644-module production Web、两个 .NET Release 0 warning/0 error和三档 E2E 63/63 通过。同路径 698 文件包再次通过 disabled/engineering 双 smoke，均保持 offline 并完整清理子进程。
 
 实际运行发现并修复两类跨层问题：
 

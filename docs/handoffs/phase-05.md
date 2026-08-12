@@ -9,9 +9,9 @@
 
 ## 当前结论
 
-Phase 5 已完成默认关闭的 RobotGatewayV1.2、C# 结构化命令安全链、关节组实测到位判定、前端 capability gate、控制预检和监督式 runbook。2026-08-09 在用户明确要求发送 `!START` 后，Gate A 完成一次真实 COM4 状态控制验证：使能、停止并去使能、模式 1–3 和恢复模式 2 均取得设备回读，最终在断开前确认 `disabled / mode 2`。全过程没有发送关节目标，未发生计划内运动。
+Phase 5 已完成默认关闭的 RobotGatewayV1.3、C# 结构化命令安全链、关节组实测到位判定、前端 capability gate、控制预检和监督式 runbook。2026-08-09 在用户明确要求发送 `!START` 后，Gate A 完成一次真实 COM4 状态控制验证：使能、停止并去使能、模式 1–3 和恢复模式 2 均取得设备回读，最终在断开前确认 `disabled / mode 2`。全过程没有发送关节目标，未发生计划内运动。
 
-2026-08-10 增加仅限 Development + 本机令牌的 `engineering` direct 调试路径：删除前端管理员机制，终端和 Dummy 控制台可在 C# 白名单与状态门内发命令；六轴关节 FIFO 结果只写作 `queued / deviceQueued`，不冒充到位。错误 COM 导致 stale/unknown/faulted 时允许释放，明确 enabled 或在途命令时仍拒绝普通断开。该增量不关闭 Gate B，详情见 [ADR-0009](../decisions/0009-engineering-direct-debug-boundary.md) 和 [直连手册](../runbooks/dummy-engineering-direct.md)。
+2026-08-10 增加仅限 Development + 本机令牌的 `engineering` direct 调试路径；2026-08-12 根据现场固件行为改为人工确认运动。六轴 payload 写入 transport 后立即返回 `sent + transportWritten` 并释放下一次手动下发，不再等待队列号、最终 `ok` 或实机到位；迟到回包只进入有界日志。后台继续尝试 `#GETJPOS`，运动期间查询超时保持 connected/stale 而不锁存未知结果。所有结果仍不冒充 `feedbackConfirmed` 到位。错误 COM 导致 stale/unknown/faulted 时允许释放，明确 enabled 或在途命令时仍拒绝普通断开。该增量不关闭 Gate B，详情见 [ADR-0009](../decisions/0009-engineering-direct-debug-boundary.md) 和 [直连手册](../runbooks/dummy-engineering-direct.md)。
 
 同日后续现场运行暴露出一个更底层的停滞：一次无回包 `!START` 使 Windows `SerialPort.BaseStream.ReadAsync` 即使收到取消也未完成，direct 长期持有串口门，三查询轮询随之停止，因此 J2 与其他反馈看似冻结，断开又停在 `disconnecting`。J2 协议、manifest 和前端索引均为第二字段，未发现映射错误。adapter 现改为 100 ms 同步读窗口，direct 纳入唯一命令所有权，STOP/Shutdown 可取消并等待其收束；新回归证明断开后重新连接可继续更新第二轴。本次只完成 fake-driver 软件门，旧实机会话的 Release/COM4 复验仍等待物理安全确认。
 
@@ -80,7 +80,7 @@ Phase 5 已完成默认关闭的 RobotGatewayV1.2、C# 结构化命令安全链�
 | 不提供任意 raw API | 保持 adapter 白名单、许可门和唯一串口 owner | engineering direct 也必须经过版本化端点与 C# 二次校验 |
 | HOME/RESET 排除 | 固件阻塞协议线程，STOP 及时性未证明 | UI 诚实显示不支持 |
 | joint-group 需要已验证四参数包络 | URDF 和旧默认值不是安全证据 | 缺任一项就不声明 capability |
-| ACK/FIFO 不等于完成 | 固件没有统一物理完成事件 | 只以连续实测收敛判定完成 |
+| engineering 不依赖 ACK/FIFO | 当前固件回包不能稳定关联每次人工运动 | transport 写入后只给 `sent + transportWritten`；迟到回包仅观察，supervised 仍以连续实测收敛完成 |
 | STOP 只以 disabled 回读完成 | 写入成功不是设备安全证据 | 未确认时持续提示物理急停 |
 | 命令审计独立保存实际 TX | 高频轮询会覆盖协议环 | 动作编排可恢复可靠逐点证据 |
 | 审计恢复是前端许可门 | 历史缺失时不能证明无未知结果联锁 | 只读遥测继续；普通命令锁定，停止仍可用 |
@@ -98,6 +98,7 @@ Phase 5 已完成默认关闭的 RobotGatewayV1.2、C# 结构化命令安全链�
 | 2026-08-10 串口资源压力复验 | 聚焦只读网关 14/14、gateway 71/71、整仓 414/414；strict TypeScript、Web 2639 modules 与两个 .NET Release build 通过，0 warning/0 error；32 次正常连接/断开、32 次忽略读取取消的关闭、阻塞写入关闭顺序和连续 64 个状态周期均稳定回收，协议历史保持配置上限；仅 fake transport，未打开 COM4 |
 | 2026-08-10 全局串口入口与目标基准复验 | contracts 91 + frontend 182 + gateway 72 + desktop 74 + legal inventory 1，共 420/420；strict TypeScript、完整 Release build 和三档生产 E2E 63/63 通过；顶部/设备页 active port 一致、零自动连接、Aethor_robo 零枚举、首个可信实测帧一次性对齐且用户编辑优先；只读网关以 disabled/offline 启动并枚举 COM1/COM4，未打开串口、未验证实机原点/方向/运动 |
 | 2026-08-10 engineering direct 与错误端口释放复验 | contracts 93 + frontend 182 + gateway 79 + desktop 74 + legal inventory 1，共 429/429；strict TypeScript、完整 Release build 0 warning/0 error、三档生产 E2E 63/63；覆盖错误端口 stale/unknown 释放、无管理员终端、白名单/状态门/速度界限、控制台 queued 非完成语义、统一启动入口和 E2E 本机配置隔离；真实入口以 v1.2 engineering/offline 启动，仅枚举 COM1/COM4，未打开 COM4、未发送硬件命令 |
+| 2026-08-12 engineering 人工确认复验 | contracts 95 + frontend 211 + gateway 101 + desktop 118 + legal inventory 6，共 531/531；strict TypeScript、2644-module Web、Gateway/Desktop Release 0 warning/0 error、三档生产 E2E 63/63；fake transport 覆盖无回包连续下发、迟到回包仅观察、21 次查询超时不断连且日志限频、STOP 明确回包不被观察器截取。development-dirty 包 698 个实际文件/697 项 manifest；双 smoke 只枚举 COM1/COM4，未打开串口、未发送硬件命令 |
 | 2026-08-10 无回包 I/O、STOP 抢占与 J2 重连软件门 | contracts 93/93、frontend 184/184、gateway Debug 82/82、desktop Debug/Release 79/79、三档生产 E2E 63/63；覆盖 100 ms 可取消读窗口、无回包 direct 被 STOP 取消、未知 STOP 后可释放并显式重连、断开清空临时证据、下一 session 的 J2 从 -70.85 更新到 -42.25，以及前端模型/目标/runtime 复位；gateway Release/包/COM4 仍待旧未知会话在物理安全确认后清理，不构成 Gate B |
 | 2026-08-11 串口打开停滞软件门 | contracts 93/93、frontend 197/197、gateway 88/88、desktop 110/110、legal inventory 6/6，共 494/494；2643-module Web 和两个隔离 Release build 0 warning/0 error；覆盖原生 Open 忽略取消、应用总超时、调用方取消、候选连接唯一 dispose、offline/host shutdown 与零第二 transport。697/696 文件开发包两种 offline smoke 通过；未打开 COM4、未发送硬件命令，不构成真实驱动故障注入或 Gate B |
 | `pnpm typecheck` | strict TypeScript 通过 |

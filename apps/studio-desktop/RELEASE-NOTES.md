@@ -21,6 +21,16 @@ gateway lifecycle. It is not a production installer or a signed release.
 - Explicit connect and disconnect actions are also shared across both entry
   points. Duplicate intent is coalesced, conflicting intent fails closed, and
   one operation ID correlates the UI with the gateway terminal log.
+- Dummy joint polling uses one serialized gateway owner: joint positions run on
+  a fixed 25 ms host cadence, mode and enable queries are staggered, and queued
+  commands take priority over new background polls. The terminal hides routine
+  GETJPOS traffic by default without stopping feedback or deleting raw frames.
+- Engineering joint moves use manual confirmation. A successful serial write
+  returns `SENT · MANUAL CONFIRM` immediately; FIFO/final ACK lines are bounded
+  observations only, while the single background reader keeps trying GETJPOS.
+  No ACK, queue number, or measured arrival is required before the operator may
+  submit the next target. Transport-written status never claims device receipt
+  or physical arrival.
 - Bounded frontend operation probes are captured from the WebView runtime only
   after strict field and terminal-state validation; ordinary console messages,
   expanded fields, and secret-bearing payloads are rejected.

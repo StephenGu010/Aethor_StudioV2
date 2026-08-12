@@ -2,9 +2,22 @@ import { useEffect } from 'react';
 import { useGatewayRuntimeStore } from '../stores/useGatewayRuntimeStore';
 import { useRobotSessionStore } from '../stores/useRobotSessionStore';
 import { robotGateway } from './gatewayInstance';
+import { emitOperationProbe } from './operationProbe';
 import type { RobotGatewayV1 } from './robotGateway';
 
-export function GatewaySessionCoordinator({ gateway = robotGateway }: { gateway?: RobotGatewayV1 }) {
+const DEFAULT_TELEMETRY_STALL_THRESHOLD_MS = 1_500;
+const DEFAULT_TELEMETRY_FALLBACK_INTERVAL_MS = 1_000;
+const TELEMETRY_FALLBACK_WARNING = '实时关节事件已停滞；当前以 REST 权威快照降级刷新';
+
+export function GatewaySessionCoordinator({
+  gateway = robotGateway,
+  telemetryStallThresholdMs = DEFAULT_TELEMETRY_STALL_THRESHOLD_MS,
+  telemetryFallbackIntervalMs = DEFAULT_TELEMETRY_FALLBACK_INTERVAL_MS
+}: {
+  gateway?: RobotGatewayV1;
+  telemetryStallThresholdMs?: number;
+  telemetryFallbackIntervalMs?: number;
+}) {
   const resetRuntime = useGatewayRuntimeStore((state) => state.resetRuntime);
   const setCapabilities = useGatewayRuntimeStore((state) => state.setCapabilities);
   const setSession = useGatewayRuntimeStore((state) => state.setSession);
@@ -31,8 +44,21 @@ export function GatewaySessionCoordinator({ gateway = robotGateway }: { gateway?
     let authorityRefreshSequence = 0;
     let authorityRecoveryInFlight: Promise<void> | null = null;
     let authorityRecoveryRequested = false;
+    let lastLiveJointEventAtMs = Date.now();
+    let telemetryFallbackActive = false;
+    let telemetryFallbackOperationId: string | null = null;
+    let telemetryFallbackStartedAtMs = 0;
+    let fallbackRefreshInFlight: Promise<void> | null = null;
+    let nextFallbackRefreshAtMs = 0;
+    let freshnessTimer: ReturnType<typeof window.setInterval> | undefined;
     let closeTelemetry: (() => Promise<void>) | undefined;
 
+    const clearTelemetryFallback = () => {
+      telemetryFallbackActive = false;
+      telemetryFallbackOperationId = null;
+      telemetryFallbackStartedAtMs = 0;
+      nextFallbackRefreshAtMs = 0;
+    };
     const acceptSession = (value: Parameters<typeof setSession>[0]) => {
       const accepted = !telemetryTrusted && value.source === 'measured' && value.validity === 'valid'
         ? { ...value, validity: 'stale' as const }
@@ -49,6 +75,10 @@ export function GatewaySessionCoordinator({ gateway = robotGateway }: { gateway?
         }
       }
       setSession(accepted);
+      if (accepted.connectionState === 'offline' || accepted.connectionState === 'faulted') {
+        clearTelemetryFallback();
+        setTransportWarning(null);
+      }
       return identityChanged;
     };
     const acceptJointState = (value: Parameters<typeof setJointState>[0]) => {
@@ -95,7 +125,7 @@ export function GatewaySessionCoordinator({ gateway = robotGateway }: { gateway?
         acceptSession(session);
         acceptJointState(jointState);
         replaceProtocolFrames(protocolFrames);
-        setTransportWarning(null);
+        setTransportWarning(telemetryFallbackActive ? TELEMETRY_FALLBACK_WARNING : null);
         return true;
       } catch (error) {
         if (active && refreshSequence === authorityRefreshSequence) {
@@ -119,6 +149,71 @@ export function GatewaySessionCoordinator({ gateway = robotGateway }: { gateway?
         if (active && authorityRecoveryRequested) recoverAuthority();
       });
     };
+    const refreshFallbackSnapshot = () => {
+      if (fallbackRefreshInFlight) return;
+      const refresh = (async () => {
+        try {
+          const [session, jointState] = await Promise.all([
+            gateway.getSession(),
+            gateway.getJointState()
+          ]);
+          if (!active || !telemetryFallbackActive) return;
+          telemetryTrusted = true;
+          acceptSession(session);
+          acceptJointState(jointState);
+          if (telemetryFallbackActive) setTransportWarning(TELEMETRY_FALLBACK_WARNING);
+        } catch (error) {
+          if (active && telemetryFallbackActive) {
+            degradeTelemetry(error instanceof Error ? error.message : '实时事件停滞，REST 快照恢复失败');
+          }
+        }
+      })();
+      fallbackRefreshInFlight = refresh;
+      void refresh.finally(() => {
+        if (fallbackRefreshInFlight === refresh) fallbackRefreshInFlight = null;
+      });
+    };
+    const enterTelemetryFallback = (message: string, failureCategory: string) => {
+      const nowMs = Date.now();
+      if (!telemetryFallbackActive) {
+        telemetryFallbackActive = true;
+        telemetryFallbackOperationId = crypto.randomUUID();
+        telemetryFallbackStartedAtMs = nowMs;
+        nextFallbackRefreshAtMs = 0;
+        emitOperationProbe({
+          eventId: 'telemetry.freshness.stalled',
+          operationId: telemetryFallbackOperationId,
+          outcome: 'failed',
+          durationMs: Math.max(0, nowMs - lastLiveJointEventAtMs),
+          failureCategory
+        });
+      }
+      degradeTelemetry(message);
+    };
+    const beginFreshnessWatchdog = () => {
+      if (freshnessTimer !== undefined) return;
+      const checkIntervalMs = Math.max(10, Math.min(500, telemetryStallThresholdMs / 2));
+      freshnessTimer = window.setInterval(() => {
+        if (!active) return;
+        const runtime = useGatewayRuntimeStore.getState();
+        if (runtime.session.connectionState !== 'connected'
+          || runtime.jointState.source !== 'measured') {
+          lastLiveJointEventAtMs = Date.now();
+          return;
+        }
+
+        const nowMs = Date.now();
+        if (!telemetryFallbackActive
+          && nowMs - lastLiveJointEventAtMs >= telemetryStallThresholdMs) {
+          enterTelemetryFallback('实时关节事件超过新鲜度窗口；正在切换到 REST 快照刷新', 'timeout');
+        }
+
+        if (telemetryFallbackActive && nowMs >= nextFallbackRefreshAtMs) {
+          nextFallbackRefreshAtMs = nowMs + telemetryFallbackIntervalMs;
+          refreshFallbackSnapshot();
+        }
+      }, checkIntervalMs);
+    };
     const start = async () => {
       if (!await refreshAuthority()) return;
 
@@ -131,7 +226,22 @@ export function GatewaySessionCoordinator({ gateway = robotGateway }: { gateway?
             if (acceptSession(value)) void refreshCommandHistory();
           },
           onJointState: (value) => {
-            if (active) acceptJointState(value);
+            if (!active) return;
+            lastLiveJointEventAtMs = Date.now();
+            telemetryTrusted = true;
+            if (telemetryFallbackActive) {
+              setTransportWarning(null);
+              if (telemetryFallbackOperationId) {
+                emitOperationProbe({
+                  eventId: 'telemetry.freshness.recovered',
+                  operationId: telemetryFallbackOperationId,
+                  outcome: 'completed',
+                  durationMs: Date.now() - telemetryFallbackStartedAtMs
+                });
+              }
+              clearTelemetryFallback();
+            }
+            acceptJointState(value);
           },
           onProtocolFrame: (value) => active && appendProtocolFrame(value),
           onCommandResult: (value) => {
@@ -141,26 +251,39 @@ export function GatewaySessionCoordinator({ gateway = robotGateway }: { gateway?
           },
           onTransportError: (incident) => {
             if (!active) return;
-            degradeTelemetry(incident.message);
+            enterTelemetryFallback(
+              incident.message,
+              incident.kind === 'contractViolation' ? 'validation' : 'transport');
             if (incident.kind === 'contractViolation') recoverAuthority();
           },
           onTransportRecovered: () => {
             if (active) recoverAuthority();
           }
         });
-        if (active) closeTelemetry = close;
+        if (active) {
+          closeTelemetry = close;
+          lastLiveJointEventAtMs = Date.now();
+          beginFreshnessWatchdog();
+        }
         else await close();
       } catch (error) {
-        if (active) degradeTelemetry(error instanceof Error ? error.message : '实时遥测不可用；REST 快照仍可手动刷新');
+        if (active) {
+          beginFreshnessWatchdog();
+          enterTelemetryFallback(
+            error instanceof Error ? error.message : '实时遥测不可用；正在使用 REST 快照刷新',
+            'transport');
+          refreshFallbackSnapshot();
+        }
       }
     };
 
     void start();
     return () => {
       active = false;
+      if (freshnessTimer !== undefined) window.clearInterval(freshnessTimer);
       if (closeTelemetry) void closeTelemetry();
     };
-  }, [appendProtocolFrame, beginCommandAuditRefresh, failCommandAuditRefresh, gateway, markTelemetryDegraded, replaceCommandHistory, replaceProtocolFrames, resetRuntime, setCapabilities, setJointState, setLastCommandResult, setSession, setTransportWarning]);
+  }, [appendProtocolFrame, beginCommandAuditRefresh, failCommandAuditRefresh, gateway, markTelemetryDegraded, replaceCommandHistory, replaceProtocolFrames, resetRuntime, setCapabilities, setJointState, setLastCommandResult, setSession, setTransportWarning, telemetryFallbackIntervalMs, telemetryStallThresholdMs]);
 
   return null;
 }

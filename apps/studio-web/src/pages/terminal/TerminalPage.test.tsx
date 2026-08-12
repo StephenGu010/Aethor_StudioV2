@@ -54,6 +54,33 @@ describe('TerminalPage offline behavior', () => {
     expect(screen.getByText('ok 1 2 3 4 5 6')).toBeVisible();
   });
 
+  it('hides routine GETJPOS traffic by default without deleting it and can show it on demand', () => {
+    robotGateway.capabilities.readOnlyConnection = true;
+    useGatewayRuntimeStore.getState().setSession(measuredSession('connected'));
+    useGatewayRuntimeStore.getState().appendProtocolFrame(measuredFrame(
+      'poll-tx', '#GETJPOS', 'tx', 'query', 'poll-1'
+    ));
+    useGatewayRuntimeStore.getState().appendProtocolFrame(measuredFrame(
+      'poll-rx', 'ok 1 2 3 4 5 6', 'rx', 'jointPositions', 'poll-1'
+    ));
+    useGatewayRuntimeStore.getState().appendProtocolFrame(measuredFrame(
+      'mode-rx', 'ok 2 INT_POINT', 'rx', 'mode', 'mode-1'
+    ));
+    const { container } = render(<TerminalPage />);
+
+    expect(container.querySelectorAll('.protocolRow')).toHaveLength(1);
+    expect(container.querySelector('.terminalLog')?.textContent).not.toContain('#GETJPOS');
+    expect(useGatewayRuntimeStore.getState().protocolFrames).toHaveLength(3);
+
+    fireEvent.click(screen.getByRole('button', { name: '显示 GETJPOS' }));
+    expect(container.querySelectorAll('.protocolRow')).toHaveLength(3);
+    expect(container.querySelector('.terminalLog')?.textContent).toContain('#GETJPOS');
+
+    fireEvent.click(screen.getByRole('button', { name: '隐藏 GETJPOS' }));
+    expect(container.querySelectorAll('.protocolRow')).toHaveLength(1);
+    expect(useGatewayRuntimeStore.getState().protocolFrames).toHaveLength(3);
+  });
+
   it('sends a validated command through the engineering gateway without adding fake frames', async () => {
     const sendDirectCommand = vi.fn(async (request) => ({
       requestId: request.requestId,
@@ -85,6 +112,49 @@ describe('TerminalPage offline behavior', () => {
     expect(sendDirectCommand).toHaveBeenCalledWith(expect.objectContaining({ line: '#GETJPOS', sessionId: 'session-1' }));
     expect(useGatewayRuntimeStore.getState().protocolFrames).toHaveLength(0);
   });
+
+  it('allows a second manual joint target while measured feedback is stale after a prior write', async () => {
+    const sendDirectCommand = vi.fn(async (request) => ({
+      requestId: request.requestId,
+      sessionId: request.sessionId,
+      status: 'sent' as const,
+      evidence: 'transportWritten' as const,
+      normalizedLine: request.line,
+      message: '整组关节角已写入串口；由操作者确认',
+      timestampUtc: '2026-08-12T00:00:01.000Z'
+    }));
+    const gateway = {
+      capabilities: {
+        ...robotGateway.capabilities,
+        readOnlyConnection: true,
+        hardwareCommands: true,
+        rawCommand: true,
+        commandPolicy: 'engineering' as const,
+        engineeringJointSpeedMaxDegS: 100
+      },
+      sendDirectCommand
+    } as unknown as RobotGatewayV1;
+    useGatewayRuntimeStore.getState().setSession({
+      ...measuredSession('connected'), motorState: 'enabled', controlMode: 1, validity: 'stale'
+    });
+    useGatewayRuntimeStore.getState().setJointState({
+      sequence: 7,
+      profileId: 'dummy-6dof',
+      timestampUtc: '2026-08-12T00:00:00.000Z',
+      positionsDeg: [0, 0, 0, 0, 0, 0],
+      source: 'measured',
+      validity: 'stale'
+    });
+    render(<TerminalPage gateway={gateway} />);
+
+    fireEvent.change(screen.getByLabelText('Dummy ASCII 命令'), {
+      target: { value: '>1,2,3,4,5,6,10' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: '发送' }));
+
+    expect(await screen.findByText('SENT')).toBeVisible();
+    expect(sendDirectCommand).toHaveBeenCalledWith(expect.objectContaining({ line: '>1,2,3,4,5,6,10' }));
+  });
 });
 
 function measuredSession(connectionState: 'connected' | 'offline') {
@@ -95,9 +165,16 @@ function measuredSession(connectionState: 'connected' | 'offline') {
   };
 }
 
-function measuredFrame(id: string, raw: string) {
+function measuredFrame(
+  id: string,
+  raw: string,
+  direction: 'tx' | 'rx' | 'error' = 'rx',
+  parsedKind = 'TEST',
+  correlationId?: string
+) {
   return {
-    id, timestampUtc: '2026-08-09T00:00:00.000Z', direction: 'rx' as const,
-    raw, parsedKind: 'TEST', source: 'measured' as const
+    id, timestampUtc: '2026-08-09T00:00:00.000Z', direction,
+    raw, parsedKind, source: 'measured' as const,
+    ...(correlationId ? { correlationId } : {})
   };
 }

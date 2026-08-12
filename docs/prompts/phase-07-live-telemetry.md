@@ -9,7 +9,7 @@
 1. 为每个信号维护有界环形缓冲：默认 60 秒、最大 120 秒；采集频率与图表刷新频率分离，后台/隐藏状态降频。
 2. ECharts 支持信号选择、来源标记、单位分轴、游标、缩放、窗口长度和 CSV。CSV 必须含时间、设备/profile、信号 ID、来源、单位和值。
 3. 串口终端展示后端提供的真实 TX/RX/error 帧，支持搜索、方向过滤、自动滚动、复制、清空视图和文本导出。清空视图不删除服务审计日志。
-4. 输入框始终可编辑；发送仅在 `RobotGatewayV1.2` 协商 engineering direct 后启用，并继续受 adapter 白名单、session、状态和限位校验。UI 不自行伪造 TX/RX，production 和任意 raw 保持禁用。
+4. 输入框始终可编辑；发送仅在 `RobotGatewayV1.3` 协商 engineering direct 后启用，并继续受 adapter 白名单、session、状态和限位校验。UI 不自行伪造 TX/RX，production 和任意 raw 保持禁用。
 5. 设计断线、重连、反馈陈旧、帧丢失、解析错误和命令超时的可见恢复流程；恢复前所有动作保持锁定。
 6. 做长时间资源测试，确认缓冲、ECharts、SignalR 订阅和日志 DOM 不无限增长。
 7. 真实 Dummy 干净只读基线必须从 `pnpm gateway:soak:readonly` 和 [Phase 7B 手册](../runbooks/phase-07b-readonly-soak.md) 进入；不得手工拼接 command policy、token 或连接请求。`evidenceCollectionPassed` 只证明后端采集和清理，不得替代浏览器 heap、故障注入与资源阈值签字。

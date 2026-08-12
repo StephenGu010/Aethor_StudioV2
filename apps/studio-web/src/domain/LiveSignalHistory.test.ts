@@ -45,18 +45,18 @@ describe('LiveSignalHistory', () => {
     });
   });
 
-  it('stays bounded after a synthetic ten-minute 20 Hz capture', () => {
+  it('stays bounded after a synthetic ten-minute 40 Hz capture', () => {
     const history = new LiveSignalHistory(dummyProfile);
     history.beginSession('session-long', 'dummy-6dof');
-    for (let index = 0; index < 10 * 60 * 20; index += 1) {
-      expect(history.ingest(frame(index, index * 50), zeros()).status).toBe('accepted');
+    for (let index = 0; index < 10 * 60 * 40; index += 1) {
+      expect(history.ingest(frame(index, index * 25), zeros()).status).toBe('accepted');
     }
 
     const snapshot = history.snapshot(history.catalog().map((item) => item.signalId), 120);
     expect(snapshot.retainedSamplesPerSignal).toBe(TELEMETRY_MAX_SAMPLES_PER_SIGNAL);
     expect(snapshot.retainedSampleCount).toBe(18 * TELEMETRY_MAX_SAMPLES_PER_SIGNAL);
     expect(snapshot.captureDurationSeconds).toBeLessThanOrEqual(120);
-    expect(snapshot.estimatedSampleRateHz).toBeCloseTo(20, 3);
+    expect(snapshot.estimatedSampleRateHz).toBeCloseTo(40, 3);
   });
 });
 

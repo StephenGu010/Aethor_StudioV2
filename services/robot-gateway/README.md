@@ -11,7 +11,7 @@ AethorStudioV2.Api
        <- AethorStudioV2.Infrastructure
 ```
 
-- `Domain`：v1.2 DTO、Dummy ASCII formatter/parser、固件设备角限位和命令状态枚举。Dummy 限位为 J1 `-170…170`、J2 `-75…90`、J3 `0…180`、J4 `-180…180`、J5 `-120…120`、J6 `-720…720`；网关不执行 URDF 偏置换算。
+- `Domain`：v1.3 DTO、Dummy ASCII formatter/parser、固件设备角限位和命令状态枚举。Dummy 限位为 J1 `-170…170`、J2 `-75…90`、J3 `0…180`、J4 `-180…180`、J5 `-120…120`、J6 `-720…720`；网关不执行 URDF 偏置换算。
 - `Application`：`RobotGateway` 单一所有者、轮询、许可门、幂等、单在途命令、停止抢占、安全联锁和有界历史；另含无生产接线的 Phase 6B-S `ActionProgramRunner`。
 - `Infrastructure`：Windows SerialPort adapter 和精确 payload policy；不接受任意 raw ASCII。
 - `Api`：loopback REST/SignalR、session token、精确 CORS 白名单和受控进程退出。
@@ -52,7 +52,7 @@ pnpm gateway:dev
 | `AETHOR_GATEWAY_DEV_ORIGINS` | 5173/5174 的 localhost 与 127.0.0.1 | 分号分隔、无 path 的 loopback HTTP(S) origin |
 | `AETHOR_GATEWAY_COMMAND_POLICY` | `disabled` | `disabled`、`supervised` 或 `engineering`；supervised 强制 desktop token，engineering 强制 Development + development token |
 | `AETHOR_GATEWAY_SERIAL_OPEN_TIMEOUT_MS` | `5000` | `100–30000` ms；打开超时或调用方取消后本 Gateway 禁止再次尝试，须重启进程 |
-| `AETHOR_GATEWAY_JOINT_POLL_INTERVAL_MS` | `50` | `50–1000` ms；只读取六轴 `#GETJPOS`，默认约 20 Hz 请求节拍 |
+| `AETHOR_GATEWAY_JOINT_POLL_INTERVAL_MS` | `25` | `20–1000` ms；只读取六轴 `#GETJPOS`，默认约 40 Hz 固定请求节拍 |
 | `AETHOR_GATEWAY_STATUS_POLL_INTERVAL_MS` | `500` | 不小于关节轮询且不大于 `10000` ms；读取模式与使能状态 |
 | `AETHOR_GATEWAY_JOINT_GROUP_SPEED_LIMIT_DEG_S` | 无 | 有限正数；关节组四项配置之一 |
 | `AETHOR_GATEWAY_JOINT_GROUP_POSITION_TOLERANCE_DEG` | 无 | `0.01–5` deg；关节组到位容差 |
@@ -61,7 +61,7 @@ pnpm gateway:dev
 
 四项关节组配置必须同时存在或同时缺失；不得只配置速度。不要在当前 Phase 5 未完成状态下自行组合 `supervised + desktop` 配置连接 COM4。真实控制只能从 [Phase 5 监督式控制手册](../../docs/runbooks/phase-05-supervised-control-com4.md) 进入并重新记录现场授权。
 
-`engineering` 是本地开发调试策略，不是生产能力：它不需要前端管理员解锁，但仍由 C# 独占串口、校验单行可打印 ASCII、Dummy 白名单、session、限位、使能、模式、反馈新鲜度和单在途。六轴速度 `0 < speed <= 100` 只来自固件输入范围，绝不是已验证安全速度；FIFO 返回仅记作 `queued`。使用步骤见 [Dummy engineering 直连手册](../../docs/runbooks/dummy-engineering-direct.md)。
+`engineering` 是本地开发调试策略，不是生产能力：它不需要前端管理员解锁，但仍由 C# 独占串口、校验单行可打印 ASCII、Dummy 白名单、session、限位、使能和模式。六轴速度 `0 < speed <= 100` 只来自固件输入范围，绝不是已验证安全速度。六轴运动写成功后立即返回 `sent + transportWritten`，不等待队列号、`ok` 或到位；之后由操作者结合实物与 `#GETJPOS` 决定下一步。若写入后至少 500 ms、至少 8 个位置回包均未变化且仍远离目标，网关将关节反馈标为 `stale` 并记录一次 `engineering.motion.feedback_frozen_suspected`；角度重新变化后自动恢复 `valid`。该诊断不阻止下一次人工目标，也不能判断实机是否运动。使用步骤见 [Dummy engineering 直连手册](../../docs/runbooks/dummy-engineering-direct.md)。
 
 ## 当前控制边界
 
@@ -71,7 +71,8 @@ pnpm gateway:dev
 - HOME/RESET 端点仅保留稳定契约。固件在处理这两条命令时阻塞到动作结束，生产配置不宣告、不执行。
 - 关节组只有在连接有效、反馈新鲜、设备已使能、六轴目标合法、显式速度不超过外部已验证上限、完整到位策略已配置且无在途命令时才可执行。
 - FIFO 接受只产生 `deviceQueued` 证据。网关持续读取 `#GETJPOS`，只有六轴最大误差连续处于容差内达到稳定窗口才返回 `completed + feedbackConfirmed`；总超时或查询超时返回 `timedOut` 并锁存联锁。若目标仍在容差外且至少三个有效位置样本完全不变，总超时时还会记录一次 `motion.feedback.frozen_suspected` 告警，并在结果中提示检查固件运动模式的反馈采集；该告警不把目标值当作反馈，也不推断机械臂实际是否运动。
-- 关节位置与慢状态分开调度：连接后的首轮仍完整读取位置、模式和使能，之后位置默认每 50 ms 查询，模式/使能默认每 500 ms 刷新。任一查询超时都会把反馈标为 stale，并强制下一轮重新取得完整状态；不增加第二个串口 owner 或并行读写。
+- 关节位置与慢状态分开调度：`#GETJPOS` 默认以周期起点为基准每 25 ms 查询，不把串口往返耗时再次叠加到周期；模式与使能在位置样本之间错峰，每 250 ms 只查询其中一项，因此各自约 500 ms 刷新。启动和超时恢复也按“位置→一个慢查询→位置→另一个慢查询”取得完整状态，不形成三查询突发。
+- 后台轮询、engineering direct 和结构化命令仍只使用一个 `serialIoGate`。命令先声明需求，尚未进入串口的后台查询会让行；已开始的无标签 ASCII 问答必须有界完成后再交接，不能并发读写。engineering 运动只持有写入窗口，随后 FIFO/ACK 只记协议观察；结构化关节组到位等待仍复用 25 ms 快节拍。
 - 停止链为 `!STOP -> internal fixed zero -> !DISABLE -> #GETENABLE`；只有读回 0 才能显示完成。
 - 所有硬件命令等待串口所有权均有界；普通命令超时且零写入时拒绝，STOP 超时返回未确认并锁存安全联锁。任一未知物理结果都会阻断后续普通命令，只允许再次停止，成功去使能或重建 session 才清除。
 - 任意 raw 串口写入、RGB、模式 4/5、电流/PID、标定和 reboot 没有公共端点；engineering direct 端点只是受限协议命令，不接受任意字节。

@@ -5,7 +5,7 @@ namespace AethorStudioV2.Application;
 public sealed record RobotGatewayOptions
 {
     public TimeSpan SerialOpenTimeout { get; init; } = TimeSpan.FromSeconds(5);
-    public TimeSpan JointPollInterval { get; init; } = TimeSpan.FromMilliseconds(50);
+    public TimeSpan JointPollInterval { get; init; } = TimeSpan.FromMilliseconds(25);
     public TimeSpan StatusPollInterval { get; init; } = TimeSpan.FromMilliseconds(500);
     public TimeSpan PollInterval { get; init; } = TimeSpan.FromMilliseconds(500);
     public TimeSpan QueryTimeout { get; init; } = TimeSpan.FromSeconds(2);
@@ -18,6 +18,7 @@ public sealed record RobotGatewayOptions
     public bool HardwareCommandsEnabled { get; init; }
     public bool EngineeringCommandsEnabled { get; init; }
     public double EngineeringJointSpeedMaxDegS { get; init; } = 100;
+    public TimeSpan EngineeringFeedbackFreezeWindow { get; init; } = TimeSpan.FromMilliseconds(500);
     public double? JointGroupSpeedLimitDegS { get; init; }
     public JointGroupCompletionPolicy? JointGroupCompletion { get; init; }
     public TimeSpan CommandTimeout { get; init; } = TimeSpan.FromSeconds(3);
@@ -38,11 +39,11 @@ public sealed record RobotGatewayOptions
             throw new ArgumentOutOfRangeException(nameof(PollInterval), "Poll interval must be between 50 ms and 10 s");
         }
 
-        if (JointPollInterval < TimeSpan.FromMilliseconds(50) || JointPollInterval > TimeSpan.FromSeconds(1))
+        if (JointPollInterval < TimeSpan.FromMilliseconds(20) || JointPollInterval > TimeSpan.FromSeconds(1))
         {
             throw new ArgumentOutOfRangeException(
                 nameof(JointPollInterval),
-                "Joint poll interval must be between 50 ms and 1 s");
+                "Joint poll interval must be between 20 ms and 1 s");
         }
 
         if (StatusPollInterval < JointPollInterval || StatusPollInterval > TimeSpan.FromSeconds(10))
@@ -115,6 +116,14 @@ public sealed record RobotGatewayOptions
             throw new ArgumentOutOfRangeException(
                 nameof(EngineeringJointSpeedMaxDegS),
                 "Engineering joint speed must be within the Dummy firmware input range 0-100 deg/s");
+        }
+
+        if (EngineeringFeedbackFreezeWindow < TimeSpan.FromMilliseconds(250)
+            || EngineeringFeedbackFreezeWindow > TimeSpan.FromSeconds(5))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(EngineeringFeedbackFreezeWindow),
+                "Engineering feedback freeze window must be between 250 ms and 5 s");
         }
 
         if (JointGroupSpeedLimitDegS is { } speedLimit

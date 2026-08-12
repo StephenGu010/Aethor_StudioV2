@@ -1,4 +1,4 @@
-import { Clipboard, Download, Filter, Search, Send, ShieldAlert, Trash2 } from 'lucide-react';
+import { Clipboard, Download, Eye, EyeOff, Filter, Search, Send, ShieldAlert, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { SourceTag } from '../../components/ui/SourceTag';
 import type { ConnectionState, DataSource, DirectCommandResult, ProtocolFrame, Validity } from '@aethor/contracts';
@@ -7,7 +7,7 @@ import { buildProtocolLogText } from '../../domain/protocolExport';
 import { showcaseProtocolFrames } from '../../fixtures/showcase';
 import { robotGateway } from '../../integrations/gatewayInstance';
 import type { RobotGatewayV1 } from '../../integrations/robotGateway';
-import { useGatewayRuntimeStore } from '../../stores/useGatewayRuntimeStore';
+import { isRoutineJointPositionFrame, useGatewayRuntimeStore } from '../../stores/useGatewayRuntimeStore';
 
 type DirectionFilter = 'all' | ProtocolFrame['direction'];
 const quickCommands = ['#GETJPOS', '#GETMODE', '#GETENABLE', '#CMDMODE 1', '#CMDMODE 2', '#CMDMODE 3', '!START', '!STOP', '!DISABLE'];
@@ -16,20 +16,28 @@ export function TerminalPage({ gateway = robotGateway }: { gateway?: RobotGatewa
   const [query, setQuery] = useState('');
   const [direction, setDirection] = useState<DirectionFilter>('all');
   const [autoScroll, setAutoScroll] = useState(true);
+  const [showJointPositionFrames, setShowJointPositionFrames] = useState(false);
   const [hiddenFrameIds, setHiddenFrameIds] = useState<Set<string>>(() => new Set());
   const [command, setCommand] = useState('#GETJPOS');
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [directResult, setDirectResult] = useState<DirectCommandResult | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
-  const runtimeFrames = useGatewayRuntimeStore((state) => state.protocolFrames);
+  const runtimeFrames = useGatewayRuntimeStore((state) => showJointPositionFrames
+    ? state.protocolFrames
+    : state.operatorProtocolFrames);
   const session = useGatewayRuntimeStore((state) => state.session);
+  const jointState = useGatewayRuntimeStore((state) => state.jointState);
   const gatewayConfigured = gateway.capabilities.readOnlyConnection;
-  const captureFrames = gatewayConfigured ? runtimeFrames : showcaseProtocolFrames;
+  const captureFrames = gatewayConfigured
+    ? runtimeFrames
+    : showJointPositionFrames
+      ? showcaseProtocolFrames
+      : showcaseProtocolFrames.filter((frame) => !isRoutineJointPositionFrame(frame));
   const liveCapture = gatewayConfigured;
   const captureState = getCaptureState(gatewayConfigured, session.connectionState, session.validity, runtimeFrames.length);
   const validation = validateDummyCommand(command);
-  const sendDisabledReason = getDirectSendDisabledReason({ gateway, session, command, validation, sending });
+  const sendDisabledReason = getDirectSendDisabledReason({ gateway, session, jointState, command, validation, sending });
   const visibleFrames = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return captureFrames.filter((frame) =>
@@ -85,7 +93,7 @@ export function TerminalPage({ gateway = robotGateway }: { gateway?: RobotGatewa
         status: 'failed',
         evidence: 'none',
         normalizedLine: command.trim().slice(0, 255),
-        message: cause instanceof Error ? cause.message : '直连命令请求失败',
+        message: `${cause instanceof Error ? cause.message : '直连命令请求失败'}；是否已写入不确定，请查看 TX 与实机后人工决定，系统不会自动重发`,
         timestampUtc: new Date().toISOString()
       });
     } finally {
@@ -110,7 +118,20 @@ export function TerminalPage({ gateway = robotGateway }: { gateway?: RobotGatewa
 
         <div className="terminalCaptureBanner">
           <div><span className={`statusDot ${captureState.tone}`} /><strong>{captureState.label}</strong><span>{captureState.detail}</span></div>
-          <SourceTag source={captureState.source} />
+          <span className="terminalCaptureActions">
+            <button
+              type="button"
+              className={showJointPositionFrames ? 'active' : ''}
+              aria-pressed={showJointPositionFrames}
+              aria-label={showJointPositionFrames ? '隐藏 GETJPOS' : '显示 GETJPOS'}
+              title="只切换终端显示；后台关节反馈持续采集"
+              onClick={() => setShowJointPositionFrames((current) => !current)}
+            >
+              {showJointPositionFrames ? <EyeOff size={13} /> : <Eye size={13} />}
+              {showJointPositionFrames ? '隐藏 GETJPOS' : '显示 GETJPOS'}
+            </button>
+            <SourceTag source={captureState.source} />
+          </span>
         </div>
         <div className="terminalLog" aria-live="polite" ref={logRef}>
           {visibleFrames.length ? visibleFrames.map((frame) => (
@@ -121,7 +142,11 @@ export function TerminalPage({ gateway = robotGateway }: { gateway?: RobotGatewa
               <span className="protocolKind">{frame.parsedKind}</span>
               <SourceTag source={frame.source} />
             </div>
-          )) : <div className="emptyState">{gatewayConfigured ? '当前网关会话缓冲区没有匹配的协议帧；未使用展示记录回填。' : '当前视图没有协议帧。原始展示采集未被修改。'}</div>}
+          )) : <div className="emptyState">{gatewayConfigured
+            ? showJointPositionFrames
+              ? '当前网关会话缓冲区没有匹配的协议帧；未使用展示记录回填。'
+              : '当前没有匹配的操作事件；GETJPOS 轮询仅从终端隐藏，设备反馈仍在后台更新，未使用展示记录回填。'
+            : '当前视图没有协议帧。原始展示采集未被修改。'}</div>}
         </div>
 
         <div className="commandComposer">
@@ -167,9 +192,10 @@ export function TerminalPage({ gateway = robotGateway }: { gateway?: RobotGatewa
   );
 }
 
-function getDirectSendDisabledReason({ gateway, session, command, validation, sending }: {
+function getDirectSendDisabledReason({ gateway, session, jointState, command, validation, sending }: {
   gateway: RobotGatewayV1;
   session: ReturnType<typeof useGatewayRuntimeStore.getState>['session'];
+  jointState: ReturnType<typeof useGatewayRuntimeStore.getState>['jointState'];
   command: string;
   validation: ReturnType<typeof validateDummyCommand>;
   sending: boolean;
@@ -182,12 +208,20 @@ function getDirectSendDisabledReason({ gateway, session, command, validation, se
   if (session.connectionState !== 'connected' || session.profileId !== 'dummy-6dof') return '请先连接 Dummy 串口';
   const isQuery = line.startsWith('#GET');
   const isRelease = line === '!STOP' || line === '!DISABLE';
-  if (!isQuery && !isRelease && session.validity !== 'valid') return '需要新鲜有效的设备反馈';
+  const hasMeasuredJointFrame = jointState.profileId === 'dummy-6dof'
+    && jointState.source === 'measured'
+    && jointState.positionsDeg.length === 6;
+  const isManualJointFollowUp = validation.kind === 'JOINT GROUP'
+    && session.motorState === 'enabled'
+    && session.controlMode !== null
+    && hasMeasuredJointFrame;
+  if (!isQuery && !isRelease && !isManualJointFollowUp && session.validity !== 'valid') return '需要新鲜有效的设备反馈';
   if (validation.kind === 'MODE' && session.motorState !== 'disabled') return '切换模式前必须先去使能';
   if (validation.kind === 'JOINT GROUP') {
     if (line.slice(1).split(',').length !== 7) return '整组命令必须显式提供第 7 个速度参数';
     if (session.motorState !== 'enabled') return '电机使能后才能发送关节目标';
     if (session.controlMode === null) return '取得有效控制模式后才能发送关节目标';
+    if (!hasMeasuredJointFrame) return '当前 Dummy 会话尚未取得六轴实测反馈';
   }
   return null;
 }

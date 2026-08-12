@@ -213,7 +213,7 @@ public sealed class OperationalScriptSafetyTests
         var source = ReadOperationFile("start-engineering-dev.ps1");
 
         Assert.Contains("$env:AETHOR_GATEWAY_COMMAND_POLICY = 'engineering'", source, StringComparison.Ordinal);
-        Assert.Contains("$capabilities.contractVersion -ne '1.2'", source, StringComparison.Ordinal);
+        Assert.Contains("$capabilities.contractVersion -ne '1.3'", source, StringComparison.Ordinal);
         Assert.Contains("$capabilities.commandPolicy -ne 'engineering'", source, StringComparison.Ordinal);
         Assert.Contains("-not $capabilities.directCommand", source, StringComparison.Ordinal);
         Assert.Contains("$session.connectionState -ne 'offline'", source, StringComparison.Ordinal);

@@ -2,7 +2,7 @@
 
 ## 版本、所有权与安全默认值
 
-当前 wire contract 版本为 `1.2`，只服务 `dummy-6dof`。JSON 使用 camelCase、Schema 中的小写枚举和 UTC ISO 8601 时间；[`gateway-contracts-v1.schema.json`](gateway-contracts-v1.schema.json) 是跨语言 wire contract 的权威来源。`aethor-robo-dual-7dof` 尚无硬件网关契约，不能通过该接口连接或下发。
+当前 wire contract 版本为 `1.3`，只服务 `dummy-6dof`。JSON 使用 camelCase、Schema 中的小写枚举和 UTC ISO 8601 时间；[`gateway-contracts-v1.schema.json`](gateway-contracts-v1.schema.json) 是跨语言 wire contract 的权威来源。`aethor-robo-dual-7dof` 尚无硬件网关契约，不能通过该接口连接或下发。
 
 C# `RobotGateway` 是唯一的串口、轮询、命令仲裁、最新快照和有界历史所有者。前端只依赖 `RobotGatewayV1` 端口，不直接访问串口；REST 是权威快照，SignalR 是可丢中间通知的有界通道。`StaticShowcaseSource` 永远不能产生真实连接、使能或命令成功状态。
 
@@ -26,7 +26,7 @@ C# `RobotGateway` 是唯一的串口、轮询、命令仲裁、最新快照和�
 - `CommandResult`：命令终态、稳定 code、evidence、面向操作者的信息和可选设备回包。C# JSON 边界会把无回包序列化为显式 `null`，客户端必须同时接受字段缺失、字符串和 `null`，不能因此丢弃整条命令审计。
 - `RobotCommandRequestSnapshot`：命令种类、SHA-256 请求指纹和有界参数快照；关节数组最多保留前六项，同时记录原数量和截断标志。
 - `CommandAuditRecord`：命令身份、接收时间、请求快照、实际成功写入 transport 的 payload 和当前/最终结果；默认最多保留 128 项。
-- `DirectCommandRequest/DirectCommandResult`：开发调试的一行白名单命令与明确的 `replied/queued/rejected/timedOut/failed` 结果；`queued` 只表示固件 FIFO 接受，不表示运动完成。
+- `DirectCommandRequest/DirectCommandResult`：开发调试的一行白名单命令；六轴运动使用 `sent + transportWritten`，其他命令使用 `replied/rejected/timedOut/failed`。`sent` 只表示 transport 写入完成。
 
 ## REST
 
@@ -61,13 +61,13 @@ C# `RobotGateway` 是唯一的串口、轮询、命令仲裁、最新快照和�
 - `commandId + 完整规范化 payload` 是幂等键。同 ID 同 payload 共享一次物理执行；同 ID 不同 payload 返回 `commandIdConflict`。
 - 命令审计在 transport 写成功后记录实际 payload，最多 32 条、每条最多 255 个 ASCII 字符，并以 `transmissionLogTruncated` 表示截断。校验失败或写入失败的 payload 不得伪装成已发送。
 - 终态为 `unsupported/rejected/completed/failed/timedOut/cancelled/unconfirmed`。`accepted` 只表示网关接管命令，不是物理完成。
-- evidence 从 `none`、`gatewayAccepted`、`deviceQueued`、`deviceAck` 到 `feedbackConfirmed` 逐步增强；FIFO 数字或通用 `ok` 不能单独证明到位。
+- evidence 从 `none`、`gatewayAccepted`、`transportWritten`、`deviceQueued`、`deviceAck` 到 `feedbackConfirmed` 分层；`transportWritten` 只适用于 engineering 六轴运动，FIFO 数字或通用 `ok` 也不能单独证明到位。
 - 每个命令都校验 session/profile、连接有效性和适用状态；整组关节还校验新鲜实测反馈、已使能、恰好六个有限角、manifest 限位、显式正速度和完整四参数运动包络。
 - FIFO 接受后，网关以有界频率读取 `#GETJPOS` 并计算六轴最大绝对误差。只有误差连续处于容差内达到稳定窗口才返回 `completed + feedbackConfirmed`；离开容差会重置窗口，总超时或查询超时返回 `timedOut + deviceQueued` 并锁存安全联锁。
-- 常规遥测按一个串口 owner 串行调度：连接首轮读取 `#GETJPOS/#GETMODE/#GETENABLE`，之后关节位置默认 50 ms、模式与使能默认 500 ms。位置帧仍按 Profile `protocolIndex` 原序发布并保留设备角；网关不应用 URDF 偏置，Dummy J3 的 -90° 只在前端模型边界处理。任何超时都会标记 stale，并要求下一次成功周期重新取得完整状态。
-- 任一命令进入 `unconfirmed/failed/timedOut` 后，网关锁存安全联锁并拒绝后续普通命令；只允许停止并去使能。停止读回 disabled 成功或操作者现场复核后重新建立新 session 才能清除联锁。
+- 常规遥测按一个串口 owner 串行调度：连接首轮读取 `#GETJPOS/#GETMODE/#GETENABLE`，之后关节位置使用 25 ms 主机目标节拍，模式与使能每 250 ms 交替插入一项，使每项约 500 ms 更新。位置帧仍按 Profile `protocolIndex` 原序发布并保留设备角；网关不应用 URDF 偏置，Dummy J3 的 -90° 只在前端模型边界处理。任何超时都会标记 stale，并要求下一次成功周期重新取得完整状态；engineering 人工运动期间不会因连续查询超时自动断开。
+- 任一结构化命令进入 `unconfirmed/failed/timedOut` 后，网关锁存安全联锁并拒绝后续普通结构化命令；只允许停止并去使能。停止读回 disabled 成功或操作者现场复核后重新建立新 session 才能清除联锁。engineering 六轴直发不创建该联锁。
 - UI 必须先完成 capability negotiation；页面禁用不是安全边界，C# 会重复全部许可校验。
-- 客户端还必须先恢复当前 session 的 REST 命令历史；恢复状态不是 `ready` 时，普通硬件命令和关节组下发失败关闭，停止并去使能仍可用。客户端的最近展示结果与安全联锁状态必须分离；空白、陈旧或因容量截断的历史不能清除已知联锁，只有时间不早于联锁的成功停止证据或新 session 才能清除。命令 POST 的 HTTP 响应丢失属于物理结果未知，客户端以本地 `unconfirmed/transportError/none` 锁定控制，不能把网络异常当作“未发送”后重试。
+- 客户端还必须先恢复当前 session 的 REST 命令历史；恢复状态不是 `ready` 时，普通结构化命令和 supervised 关节组失败关闭，停止并去使能仍可用。客户端的最近展示结果与安全联锁状态必须分离；空白、陈旧或因容量截断的历史不能清除已知联锁，只有时间不早于联锁的成功停止证据或新 session 才能清除。结构化命令 POST 的 HTTP 响应丢失属于物理结果未知，客户端以本地 `unconfirmed/transportError/none` 锁定控制，不能把网络异常当作“未发送”后重试。engineering 六轴请求失败只显示人工复核提示，不自动重发或创建结构化联锁。
 - Dummy 设备页与固定顶栏软件停止必须进入同一客户端命令生命周期：统一记录终态、刷新 REST session/joint/audit，并对响应丢失执行同一联锁。Aethor_robo 控制台固定禁用软件停止和所有硬件动作，不进入该生命周期。客户端保存当前 Dummy session 最近一次成功停止的终态时间水位；迟到或乱序且不晚于该水位的旧未知结果不能重新锁存，也不能覆盖更新的最近结果。水位在 session identity 改变时清除，在空白或截断历史恢复时保留。
 
 `jointGroupSpeedLimitDegS` 和 `jointGroupCompletion` 必须同时为非空或同时为空。后者包含 `positionToleranceDeg`（0.01–5）、`settledDurationMs`（100–5000）和 `timeoutMs`（500–120000，且运行时强制大于稳定窗口）。JSON Schema负责字段、类型和范围，跨字段大小关系由 C# 与 Zod 运行时重复校验。
@@ -77,10 +77,10 @@ Dummy 当前没有可信的完整运动包络，因此 `jointGroup` 默认不在
 ## Engineering 直连调试
 
 - 允许：`#GETJPOS/#GETMODE/#GETENABLE`、`!START/!STOP/!DISABLE`、`#CMDMODE 1–3`、`>j1,j2,j3,j4,j5,j6,speed`。
-- 六轴命令必须显式携带第七个速度参数，六个角度满足 Profile 限位；网关还要求当前 session connected、反馈 valid、模式有效、电机 enabled 和实测六轴帧 fresh。
+- 六轴命令必须显式携带第七个速度参数，六个角度满足 Profile 限位；网关还要求当前 session connected、模式有效、电机 enabled，并已至少取得一帧实测六轴数据。保留最后实测值的 stale 会话可继续人工下发；断开或新 session 后必须重新取得实测帧。
 - 查询可用于 stale 会话诊断；`!STOP/!DISABLE` 可在 stale 状态发送。其他状态改变命令失败关闭。
 - 直连命令与结构化命令共享唯一命令所有权、串口互斥和有界超时；任一时刻只能有一个在途硬件命令。停止并去使能先取消在途 direct，再在同一有界所有权链中执行；协议 TX/RX 带 correlation ID 进入有界证据。前端不得自行补写成功帧。
-- 六轴 FIFO 返回 0–15 时结果为 `queued + deviceQueued`；255 为 rejected。UI 必须继续观察 measured 反馈和误差，不得将队列接收显示成到位。
+- 六轴 payload 写入 transport 后立即返回 `sent + transportWritten`，不等待或解释 FIFO、`ok`、队列满或到位。迟到回包只进入协议和诊断日志，不改变结果；操作者可继续发送下一目标。
 - 该策略不关闭 Phase 5 Gate B。桌面无参数启动继续固定 `commandPolicy=disabled`；本机开发包只有显式 `--engineering` 才以 Development/development token 启用 direct，且不会自动连接串口。该入口不能作为正式发布或受监督运动证据，后者仍依赖四参数运动包络和 `feedbackConfirmed`。
 
 ## 停止、HOME 与 RESET

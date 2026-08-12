@@ -32,7 +32,7 @@ README 与代码冲突时，以固定提交代码和后续监督台架证据为�
 | 查询模式 | `#GETMODE` | `ok <num> <name>` | 仅 1–3 且编号/名称一致时有效 |
 | 查询使能 | `#GETENABLE` | `ok 0/1` | 合法读回即完成 |
 | 设模式 | `#CMDMODE <1..3>` | `ok Set command mode to [m] (<name>)` | ACK 后仍以 `#GETMODE` 匹配为完成 |
-| 关节组 | `>j1,...,j6[,speed]` | 先返回 FIFO 余量，随后可能 `ok` | 只在新鲜反馈收敛到目标后完成 |
+| 关节组 | `>j1,...,j6[,speed]` | 先返回 FIFO 余量，随后 `ok` | supervised 只以新鲜反馈收敛完成；engineering 按下述模式语义形成调试结果 |
 
 当前生产配置只可能宣告使能、停止并去使能和模式 1–3。HOME/RESET 因固件阻塞风险默认排除；关节组因没有已验证的速度、到位容差、连续稳定窗口和总超时默认排除。端点存在只代表稳定契约，不代表 capability 已开放。
 
@@ -79,7 +79,11 @@ README 与代码冲突时，以固定提交代码和后续监督台架证据为�
 - `0..15`：成功入队后的剩余 FIFO 空间，属于 accepted 证据；`0` 表示本次已入队但队列已满。
 - `255`：固件内部失败哨兵；当前入口通常转换为 `error CMD FIFO FULL`，解析器仍显式识别该值。
 - `error ...`：设备错误，保留首 token 作为 code、完整行作为诊断证据。
-- `ok`：通用设备 ACK，只推进 evidence，不直接进入 `completed`。
+- `ok`：通用设备 ACK。模式 1/3 中，当前参考固件在 `IsMoving()` 结束后发送，因此 engineering 可写作“固件报告本条运动结束”，证据仍是 `deviceAck`，不是独立实测到位；模式 2 中固件立即发送，只表示可中断目标已受理，不能写作到位。
+
+engineering 关节组采用人工确认：payload 写入 transport 后立即返回 `sent + transportWritten` 并释放串口/命令所有权，不等待队列号、`ok` 或到位。迟到的 `0..15`、`ok` 与 `error CMD FIFO FULL` 只进入协议/诊断日志，不反向改变结果，也不阻止下一次人工下发。`transportWritten` 不能解释为设备接收、入队、运动开始或到位；正式 supervised 关节组仍必须使用反馈收敛完成策略。
+
+engineering 网关还会区分“持续收到位置回包”和“位置值确实在变化”。每次人工关节组写入都会以写入前最新实测角为基准重新开始观察；当观察时间至少 500 ms、样本不少于 8 帧、六轴最大变化不超过 0.02°，且当前位置与目标的最大误差仍不少于 0.5°时，关节反馈标为 `stale`，并仅记录一次 `feedbackFrozen` 协议错误帧和 `engineering.motion.feedback_frozen_suspected` 诊断。后续任一关节变化超过 0.02°即恢复 `valid` 并记录 `engineering.motion.feedback_progress_resumed`。此机制不锁定命令、不停止 25 ms 查询、不自动重发，也不把“冻结”解释为实机静止。
 - 未知/非 ASCII/数值错误/超长/不完整行：保留为可诊断分类，不更新可信状态。
 
 命令状态只允许从 `created` 进入 `accepted/rejected/unsupported`，再进入 `completed/failed/timedOut/cancelled/unconfirmed`。终态不可被迟到 ACK 覆盖。
@@ -96,7 +100,9 @@ README 与代码冲突时，以固定提交代码和后续监督台架证据为�
 4. `UpdateJointPose6D()` 只消费已提交的完整关节帧；不得用 `targetJoints` 或上位机插值替代 `currentJoints`。
 5. 回归至少覆盖 disabled、模式 1/2/3 运动、停止、去使能和 CAN 单轴丢包；验收证据是运动期间连续变化的 `#GETJPOS`，而不是命令队列 ACK。
 
-当前网关在关节组到位等待期间保留首个有效 `#GETJPOS` 样本。若目标仍在容差外、至少三个有效样本完全不变且最终到达总超时，网关记录一次 `motion.feedback.frozen_suspected`，命令仍以 `timedOut + deviceQueued` 结束并锁存联锁。这只是区分“查询有回包但反馈冻结”和“查询本身超时”的诊断证据，不能证明实机没有运动。
+当前 supervised 网关在关节组到位等待期间保留首个有效 `#GETJPOS` 样本。若目标仍在容差外、至少三个有效样本完全不变且最终到达总超时，网关记录一次 `motion.feedback.frozen_suspected`，命令仍以 `timedOut + deviceQueued` 结束并锁存联锁。engineering 人工运动使用上文的在线冻结观察，只降级反馈、不锁定后续命令。两者都只是区分“查询有回包但反馈冻结”和“查询本身超时”的诊断证据，不能证明实机没有运动。
+
+主机只保留一个串口问答 owner。默认 `#GETJPOS` 请求周期为 25 ms，并从周期起点扣除 I/O 耗时；`#GETMODE` 与 `#GETENABLE` 每 250 ms 交替插入一项，不形成慢查询突发。结构化运动由同一命令循环按 25 ms 查询位置；engineering 运动只在写入时短暂取得串口，随后由后台轮询继续读取。人工运动期间查询超时不自动断开，探针按首条和每 20 次汇总，反馈恢复单独记录。两条路径都不允许并发读取。该 40 Hz 是主机请求节拍，不是固件 CAN 采样率或实机已验证反馈率。
 
 - `!` 和 `#` 分支大量使用 substring 匹配；V2 必须发送精确白名单，禁止 `!NOTSTOP` 一类文本触发意外命令。
 - 固件 `#CMDMODE` 会回显请求数字，范围外输入不一定返回错误；V2 在 formatter 和 Schema 层先拒绝 4/5 及其他值，并通过 `#GETMODE` 复核。

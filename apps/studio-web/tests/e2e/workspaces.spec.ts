@@ -408,6 +408,17 @@ test.describe('Aethor Studio V2 workspaces', () => {
   test('terminal allows direct editing but keeps offline sending disabled', async ({ page }) => {
     await useProfileOnLoad(page, 'dummy-6dof');
     await page.goto('/terminal');
+    const terminalRows = page.locator('.terminalLog .protocolRow');
+    const hiddenPollRowCount = await terminalRows.count();
+    const showJointPolling = page.getByRole('button', { name: '显示 GETJPOS' });
+    await expect(showJointPolling).toBeVisible();
+    await expect(page.locator('.terminalLog')).not.toContainText('#GETJPOS');
+    await showJointPolling.click();
+    await expect(page.getByRole('button', { name: '隐藏 GETJPOS' })).toBeVisible();
+    await expect(page.locator('.terminalLog')).toContainText('#GETJPOS');
+    expect(await terminalRows.count()).toBeGreaterThan(hiddenPollRowCount);
+    await page.getByRole('button', { name: '隐藏 GETJPOS' }).click();
+    await expect(page.locator('.terminalLog')).not.toContainText('#GETJPOS');
     await expect(page.getByLabel('Dummy ASCII 命令')).toBeEditable();
     await page.getByRole('button', { name: /#CMDMODE 3/ }).click();
     await expect(page.getByText('MODE · FORMAT VALID')).toBeVisible();

@@ -659,6 +659,8 @@
 .jointCommandResult strong { color: #d1b866; font: var(--font-size-micro) var(--font-mono); }
 .jointCommandResult span { color: #a69b7b; font-size: var(--font-size-micro); line-height: 1.45; }
 .jointCommandResult.completed { border-color: #36523d; background: #111a14; }
+.jointCommandResult.sent { border-color: #3f5260; background: #10171c; }
+.jointCommandResult.sent strong { color: #83b8d8; }
 .jointCommandResult.completed strong { color: var(--green); }
 .jointCommandResult.error,
 .jointCommandResult.failed,
@@ -771,6 +773,9 @@
 .terminalCaptureBanner strong { color: #cbb166; font: var(--font-size-micro) var(--font-mono); }
 .terminalCaptureBanner div > span:last-child { color: #858c91; font-size: var(--font-size-micro); }
 .terminalCaptureBanner div > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.terminalCaptureActions { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 8px; }
+.terminalCaptureActions button { display: inline-flex; height: 27px; align-items: center; gap: 6px; padding: 0 9px; color: #8d959b; font: var(--font-size-micro) var(--font-mono); }
+.terminalCaptureActions button.active { border-color: #596269; background: #30363b; color: #f0f2f3; }
 .terminalLog { min-height: 0; overflow: auto; background: #090b0d; }
 .protocolRow { display: grid; min-height: 34px; align-items: center; grid-template-columns: 173px 43px minmax(150px, 1fr) 130px 68px; gap: 8px; padding: 0 12px; border-bottom: 1px solid #171b1e; }
 .protocolRow:hover { background: #111518; }
@@ -802,10 +807,10 @@
 .validationLine small { color: #555d64; }
 .directCommandResult { display: grid; min-width: 0; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 34px; padding: 5px 13px 8px; color: #a1a8ad; font-size: var(--font-size-micro); }
 .directCommandResult strong { color: var(--green); font: var(--font-size-micro) var(--font-mono); }
+.directCommandResult.status-sent strong { color: #83b8d8; }
 .directCommandResult span,
 .directCommandResult code { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .directCommandResult code { max-width: 220px; color: #899198; }
-.directCommandResult.status-queued strong { color: var(--yellow); }
 .directCommandResult.status-rejected strong,
 .directCommandResult.status-timedOut strong,
 .directCommandResult.status-failed strong { color: var(--red); }

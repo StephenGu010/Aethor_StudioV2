@@ -47,7 +47,7 @@ export function DummyConsole() {
   const latchedSafetyResult = useGatewayRuntimeStore((state) => state.latchedSafetyResult);
   const transportWarning = useGatewayRuntimeStore((state) => state.transportWarning);
   const lastCommandResult = useGatewayRuntimeStore((state) => state.lastCommandResult);
-  const protocolFrames = useGatewayRuntimeStore((state) => state.protocolFrames);
+  const protocolFrames = useGatewayRuntimeStore((state) => state.operatorProtocolFrames);
   const setSession = useGatewayRuntimeStore((state) => state.setSession);
   const setJointState = useGatewayRuntimeStore((state) => state.setJointState);
   const markTelemetryDegraded = useGatewayRuntimeStore((state) => state.markTelemetryDegraded);
@@ -117,6 +117,14 @@ export function DummyConsole() {
     setCameraResetSignal((value) => value + 1);
   }, [session.connectionState]);
 
+  useEffect(() => {
+    if (lastCommandResult?.commandKind === 'stopAndDisable'
+      && lastCommandResult.status === 'completed'
+      && lastCommandResult.evidence === 'feedbackConfirmed') {
+      setDirectResult(null);
+    }
+  }, [lastCommandResult]);
+
   const readCurrent = async () => {
     if (!robotGateway.capabilities.readOnlyConnection || session.connectionState !== 'connected' || reading) return;
     setReading(true);
@@ -136,7 +144,8 @@ export function DummyConsole() {
 
   const sendJointGroup = async () => {
     if (sendDisabledReason || sending) return;
-    if (!window.confirm(`确认工作区无人、物理急停可用，并以 ${speedDegS.toFixed(2)} deg/s 下发六轴目标。Engineering 模式的队列应答不代表机械臂已经到位，是否继续？`)) return;
+    const completionDescription = `模式 ${session.controlMode ?? '—'} 使用人工控制：上位机只确认串口写入，不等待队列号、ok 或到位。`;
+    if (!window.confirm(`确认工作区无人、物理急停可用，并以 ${speedDegS.toFixed(2)} deg/s 下发六轴目标。${completionDescription}请观察实机后再决定下一步。是否继续？`)) return;
     setSending(true);
     setDirectResult(null);
     const commandId = crypto.randomUUID();
@@ -170,7 +179,7 @@ export function DummyConsole() {
           status: 'failed',
           evidence: 'none',
           normalizedLine: '',
-          message: cause instanceof Error ? cause.message : '整组关节请求失败',
+          message: `${cause instanceof Error ? cause.message : '整组关节请求失败'}；是否已写入不确定，请查看 TX 与实机后人工决定，系统不会自动重发`,
           timestampUtc: new Date().toISOString()
         });
       }
@@ -274,14 +283,14 @@ export function DummyConsole() {
         <div className="jointCommandEnvelope">
           <label><span>Command speed</span><input aria-label="Dummy 整组速度" type="number" min={0.01} max={negotiatedSpeedLimit ?? undefined} step={0.1} value={speedDegS} disabled={negotiatedSpeedLimit === null} onChange={(event) => setSpeedDegS(Number(event.currentTarget.value))} /><small>deg/s</small></label>
           <span>{engineeringDirect && negotiatedSpeedLimit !== null
-            ? `Firmware input ceiling ≤ ${negotiatedSpeedLimit.toFixed(2)} deg/s · not safety-qualified`
+            ? `Mode ${session.controlMode ?? '—'} · manual confirmation · ≤ ${negotiatedSpeedLimit.toFixed(2)} deg/s`
             : negotiatedSpeedLimit === null
               ? 'Engineering direct gateway unavailable'
               : `Verified limit ≤ ${negotiatedSpeedLimit.toFixed(2)} deg/s`}</span>
         </div>
-        {directResult && <div className={`jointCommandResult ${directResult.status}`} role="status"><strong>{directResult.status.toUpperCase()}</strong><span>{directResult.message}</span></div>}
+        {directResult && <div className={`jointCommandResult ${directResult.status}`} role="status"><strong>{getDirectResultLabel(directResult)}</strong><span>{directResult.message}</span></div>}
         {lastCommandResult?.commandKind === 'jointGroup' && <div className={`jointCommandResult ${lastCommandResult.status}`} role="status"><strong>{lastCommandResult.status.toUpperCase()}</strong><span>{lastCommandResult.message}</span></div>}
-        <Hint content={sendDisabledReason ?? (engineeringDirect ? '设备队列应答不等于实机到位；下发后观察实测模型与误差。' : '执行前再次确认现场安全；完成只以实测反馈稳定收敛为准。')}><button className="sendGroupButton" type="button" disabled={Boolean(sendDisabledReason)} onClick={() => void sendJointGroup()}>{sending ? '发送中…' : '下发整组关节角'}</button></Hint>
+        <Hint content={sendDisabledReason ?? (engineeringDirect ? '写入完成即释放操作；设备是否接收和到位由操作者结合实机与 #GETJPOS 判断。' : '执行前再次确认现场安全；完成只以实测反馈稳定收敛为准。')}><button className="sendGroupButton" type="button" disabled={Boolean(sendDisabledReason)} onClick={() => void sendJointGroup()}>{sending ? '正在写入串口…' : '下发整组关节角'}</button></Hint>
       </aside>
 
       <section className="twinBottom">
@@ -312,14 +321,23 @@ function getJointGroupDisabledReason({ capabilities, session, jointState, comman
     && capabilities.jointGroupCompletion !== null;
   if (!engineering && !supervised) return '请启动 engineering 调试网关，或配置完整的受监督运动包络';
   if (session.connectionState !== 'connected' || session.profileId !== dummyProfile.profileId) return 'Dummy 尚未连接';
-  if (session.validity !== 'valid' || session.motorState !== 'enabled' || session.controlMode === null) return '需要新鲜会话、已使能电机和有效模式';
-  if (jointState.profileId !== dummyProfile.profileId || jointState.source !== 'measured' || jointState.validity !== 'valid') return '需要当前 Dummy 会话的新鲜六轴实测反馈';
-  if (transportWarning) return '实时遥测处于降级状态';
+  if (session.validity !== 'valid' && !engineering) return session.motorState === 'disabled'
+    ? '停止已确认，正在恢复模式与关节反馈；恢复 VALID 后可重新使能'
+    : '正在恢复新鲜会话反馈';
+  if (session.motorState !== 'enabled' || session.controlMode === null) return '需要已使能电机和有效模式';
+  if (jointState.profileId !== dummyProfile.profileId || jointState.source !== 'measured' || jointState.positionsDeg.length !== dummyProfile.model.dof) return '当前 Dummy 会话尚未取得六轴实测反馈';
+  if (!engineering && transportWarning) return '实时遥测处于降级状态';
   if (!engineering && commandAuditStatus !== 'ready') return '权威命令审计尚未恢复';
   if (!engineering && latchedSafetyResult) return '存在未解除的命令安全联锁';
   const speedLimit = engineering ? capabilities.engineeringJointSpeedMaxDegS : capabilities.jointGroupSpeedLimitDegS;
   if (speedLimit === null || !Number.isFinite(speedDegS) || speedDegS <= 0 || speedDegS > speedLimit) return `速度必须在 0–${speedLimit?.toFixed(2) ?? 'N/A'} deg/s 内`;
   return null;
+}
+
+function getDirectResultLabel(result: DirectCommandResult) {
+  if (result.status === 'sent') return 'SENT · MANUAL CONFIRM';
+  if (result.status === 'replied') return 'DEVICE REPLIED';
+  return result.status.toUpperCase();
 }
 
 function SceneButton({ label, active, onClick, children }: { label: string; active?: boolean; onClick: () => void; children: React.ReactNode }) {

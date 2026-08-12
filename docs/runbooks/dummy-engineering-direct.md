@@ -2,7 +2,7 @@
 
 ## 用途与限制
 
-本手册用于当前开发机上的 Dummy 六轴实机联调。它不会自动连接、使能或运动，也不代表 Phase 5 Gate B 完成。`QUEUED` 仅表示固件 FIFO 接受命令；软件停止不能替代物理急停。
+本手册用于当前开发机上的 Dummy 六轴实机联调。它不会自动连接、使能或运动，也不代表 Phase 5 Gate B 完成。engineering 六轴运动只显示 `SENT · MANUAL CONFIRM`：上位机确认串口写入后立即放行，不等待 FIFO、`ok` 或到位；软件停止不能替代物理急停。
 
 禁止发送 HOME、RESET、RGB、模式 4/5、电流/PID、标定、reboot 或未列出的命令。Aethor_robo 不适用本手册。
 
@@ -14,7 +14,7 @@
 pnpm dev:engineering
 ```
 
-它会启动隐藏的本机 gateway/frontend 进程并验证 `RobotGatewayV1.2 + engineering + directCommand + session offline`，日志和 PID 只写入被忽略的 `artifacts/dev/`。它不会枚举、连接或打开串口。若端口 5127 已有 owner，入口失败关闭，不复用未知进程。
+它会启动隐藏的本机 gateway/frontend 进程并验证 `RobotGatewayV1.3 + engineering + directCommand + session offline`，日志和 PID 只写入被忽略的 `artifacts/dev/`。它不会枚举、连接或打开串口。若端口 5127 已有 owner，入口失败关闭，不复用未知进程。
 
 需要使用与 Web 同一构建的桌面壳时，先生成本机开发包，再创建工程快捷方式：
 
@@ -61,6 +61,7 @@ pnpm dev
 3. 等待 `CONNECTED + VALID`，核对六个实测角、模式和 motor 状态。没有 valid measured feedback 时不得使能或运动。
 4. 新 session 的第一帧只会把幽灵目标对齐到实测姿态一次。核对实体模型是否随手动扭动实机同方向变化；这一步才是关节索引/方向证据。
 5. 在 motor disabled 时选择模式 1–3。当前建议继续使用已实测状态中的模式，不为调试随意切换。
+6. 模式 1–3 在上位机侧都采用人工确认。每次写入后按钮立即恢复；是否等待实机停止、继续发送或用新目标替换，由操作者观察实物、反馈和工作区后决定。
 
 ## 最小运动调试
 
@@ -68,7 +69,7 @@ pnpm dev
 2. 回到“控制台”，确认六个目标仍等于当前实测值。
 3. 将 Command speed 保持在低值（默认 `1 deg/s`）。界面的 100 deg/s 上界只是固件输入上界，不是安全建议。
 4. 只对现场确认有净空的一轴设置小增量，其他五轴保持当前实测值；检查幽灵模型姿态、数值限位和预期方向。
-5. 点击“下发整组关节角”并再次确认。结果应为 `QUEUED`；随后观察实体模型、实测数值和误差是否向目标收敛。
+5. 点击“下发整组关节角”并再次确认。结果应为 `SENT · MANUAL CONFIRM`；它只表示串口写入成功。随后观察实体模型、实测数值和误差，再人为决定下一步。
 6. 若方向、索引、起始姿态、声音、线缆或反馈任何一项异常，立即使用物理急停；不要重发、HOME 或 RESET。
 7. 调试结束点击“停止并去使能”，只有读回 disabled 后才断开串口。
 
@@ -97,11 +98,15 @@ pnpm dev
 
 Dummy 回包 `#GETJPOS` 的第二个数值直接映射 `protocolIndex=1 → joint_2 → UI J2`，没有额外符号或索引转换。若 J2 与其他状态一起停止更新，先检查协议帧中是否在某条无回包命令后不再出现三查询轮询；这表示 I/O 所有权停滞，不应修改关节映射或伪造 J2。当前 adapter 已改为有界读窗口，direct 也进入可取消命令所有权；回归覆盖断开后重新连接并让 J2 从 `-70.85` 更新到 `-42.25`。
 
-J3 是 `#GETJPOS` 第三个数值，链路固定为 `protocolIndex=2 → UI J3 设备角 → modelTransform(-90°) → URDF joint_3`。滑条和表格保持设备角，只有 3D 渲染把 J3=90° 转为 URDF 0°。控制台反馈框会同时显示 J3 和递增的帧序号；手动转动 J3 时，先确认页面处于 `DEVICE FEEDBACK / VALID`，再观察 J3 数值、帧序号和实体模型。页面仍显示 `SHOWCASE FEEDBACK` 时，任何静止值都不是实机反馈证据。网关把关节位置查询从模式/使能慢查询中拆出，默认 50 ms 请求一次位置、500 ms 刷新一次慢状态；三类查询仍由同一串口 owner 串行执行。
+J3 是 `#GETJPOS` 第三个数值，链路固定为 `protocolIndex=2 → UI J3 设备角 → modelTransform(-90°) → URDF joint_3`。滑条和表格保持设备角，只有 3D 渲染把 J3=90° 转为 URDF 0°。控制台反馈框会同时显示 J3 和递增的帧序号；手动转动 J3 时，先确认页面处于 `DEVICE FEEDBACK / VALID`，再观察 J3 数值、帧序号和实体模型。页面仍显示 `SHOWCASE FEEDBACK` 时，任何静止值都不是实机反馈证据。网关把关节位置查询从模式/使能慢查询中拆出，默认按 25 ms 固定周期请求位置；模式和使能每 250 ms 交替插入一项，因此各自约 500 ms 刷新。三类查询与命令仍由同一串口 owner 串行执行；终端隐藏 `GETJPOS` 只减少页面显示，不停止后台反馈。
 
 整组目标按 `J1,J2,J3,J4,J5,J6`、单位 `deg` 原序格式化为 `>j1,j2,j3,j4,j5,j6,speed`。这里发送的是滑条显示的设备角；J3 的 -90° 只服务模型渲染，不会进入 payload。新 hardware session 的首个可信实测帧只会把幽灵目标对齐一次；之后手动编辑目标不会被反馈覆盖。
 
 若运动期间帧序号递增但六轴数值保持不变，先检查固件位置模式是否周期调用 `UpdateJointAngles()`。当前参考提交在模式 1–3 中没有该调用，`#GETJPOS` 会返回静止的 `currentJoints`；不要增加第二个上位机串口连接，也不要用目标角模拟反馈。固件补齐有界 CAN 角度采集并重新烧录后，才进行逐轴正方向与到位一致性验收。
+
+网关会主动标记这一差异：人工整组目标写入后，至少 500 ms、至少 8 个 `#GETJPOS` 样本完全不动且仍远离目标时，关节反馈变为 `STALE`，终端可见一条 `feedbackFrozen` 错误帧，Gateway 日志记录 `engineering.motion.feedback_frozen_suspected`。角度重新变化后反馈自动恢复 `VALID`。该提示不阻止下一次人工下发，也不能证明机械臂真的停止；它只证明固件公布的设备角没有进展。
+
+engineering 运动发送后，网关以 `engineering.motion.transport_written` 记录写入并立即释放串口/命令所有权。迟到的 FIFO、`ok` 或队列满错误使用 `engineering.motion.device_response_observed`，只作观察，不改变 `SENT`。后台继续尝试 `#GETJPOS`；运动期间无回包时以 `engineering.motion.query_timeout` 有界汇总但保持连接，恢复时记录 `engineering.motion.feedback_resumed`。没有 ACK 不再要求停止或重启；是否继续运动由操作者判断。
 
 在 supervised 关节组命令中，若到位等待期间至少三个有效 `#GETJPOS` 样本完全不变且目标仍超出容差，命令总超时消息会明确提示反馈冻结候选，Gateway 日志同时出现一次 `motion.feedback.frozen_suspected`。若日志是 `serial.query.timeout`，表示查询没有取得有效回包，排查方向不同。两种情况的物理结果都未知，均不得自动重发运动。
 
@@ -110,7 +115,7 @@ J3 是 `#GETJPOS` 第三个数值，链路固定为 `protocolIndex=2 → UI J3 �
 成功断开后应像新的软件会话：session 为 offline/unavailable，active port、协议帧、命令历史、遥测、目标草稿和相机临时态清空，模型回到 Profile 软件启动姿态。已显式保存的动作程序、布局、偏好与导出文件保留。软件启动姿态不是实机 HOME，不得据此发送回位动作。
 
 - 端口打开失败：确认错误提示与 session offline 后重新枚举，不需要再点击“释放”。成功打开后无回包或进入 stale/faulted：点击断开，确认 session offline 后重新枚举；无需等待 validity 恢复。
-- 请求超时或 transport error：物理结果未知，先物理急停，再检查串口和设备；不得自动重试运动。
+- 运动请求出现 HTTP 超时或 transport error：无法仅凭页面判断 payload 是否已经写入。系统不自动重试，也不强制锁住下一次人工操作；先查看真实 TX、实机姿态和现场状态，再由操作者决定继续、软件停止或物理急停。
 - motor 明确 enabled 时普通断开会被拒绝：先执行停止并去使能，读回 disabled。
 - 结束后确认页面 offline、网关无 active session；再用 `Ctrl+C` 结束网关。不要用进程强杀替代正常释放。
 

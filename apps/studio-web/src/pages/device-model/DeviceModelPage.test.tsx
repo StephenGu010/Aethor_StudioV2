@@ -303,7 +303,7 @@ describe('DeviceModelPage supervised safety states', () => {
 });
 
 const readOnlyCapabilities: RobotGatewayCapabilitiesV1 = {
-  contractVersion: '1.2',
+  contractVersion: '1.3',
   protocolAdapterId: 'dummy-ascii-v1',
   serialEnumeration: true,
   readOnlyConnection: true,

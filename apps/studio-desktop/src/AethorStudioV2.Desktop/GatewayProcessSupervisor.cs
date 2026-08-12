@@ -226,6 +226,9 @@ public sealed class GatewayProcessSupervisor : IAsyncDisposable
         startInfo.Environment["AETHOR_GATEWAY_TOKEN_SOURCE"] = engineering ? "development" : "desktop";
         startInfo.Environment["AETHOR_GATEWAY_COMMAND_POLICY"] = engineering ? "engineering" : "disabled";
         startInfo.Environment["AETHOR_GATEWAY_DEV_ORIGINS"] = "http://localhost";
+        if (engineering)
+        {
+        }
         return startInfo;
     }
 

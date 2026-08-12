@@ -45,10 +45,10 @@
 
 - `GatewaySessionCoordinator` 仍是唯一 SignalR owner；REST、SignalR 和手动权威刷新统一经 runtime store 进入遥测历史，页面不得新建订阅。
 - 只收集当前 `dummy-6dof` session 的 `measured + valid` 六轴帧；同序号、倒序、错误 profile、陈旧或非法帧拒绝。序号缺口单独计数。
-- 每个信号最多保存 120 秒 × 20 Hz = 2400 点；六轴 actual/target/error 共 18 路，理论上限 43200 点。默认窗口 60 秒，图表前台最多 10 Hz、隐藏时最多 1 Hz。
+- 每个信号最多保存 120 秒 × 40 Hz = 4800 点；六轴 actual/target/error 共 18 路，理论上限 86400 点。默认窗口 60 秒，图表前台最多 10 Hz、隐藏时最多 1 Hz。
 - 目标序列标记 `COMMANDED` 只表示当前前端目标意图，不代表设备 ACK；误差为 `COMPUTED`。会话断开或 identity 改变清空历史，同 session 重连/陈旧时保留最后可信历史并明确标记 `STALE`。
 - 协议日志最多 256 帧并按稳定 ID 去重；“清空视图”只隐藏当时已有帧，不删除网关审计或阻止新帧。网关已配置但无帧时显示空缓冲，不回退 SHOWCASE。
-- `RobotGatewayV1.2` 的默认与生产策略仍无直发能力。Development-only `engineering` 提供受限 direct 端点：只接受 Dummy 查询、启停/去使能、模式 1–3 和带显式速度的六轴目标；不接受任意 raw 字节。FIFO 接受只显示 `QUEUED`，不显示到位。
+- `RobotGatewayV1.3` 的默认与生产策略仍无直发能力。Development-only `engineering` 提供受限 direct 端点：只接受 Dummy 查询、启停/去使能、模式 1–3 和带显式速度的六轴目标；不接受任意 raw 字节。六轴写入只显示 `SENT · MANUAL CONFIRM`，不显示设备确认或到位。
 - 错误 COM 口造成 `connected + stale/unknown` 时允许释放串口；只有命令在途或电机已确认 enabled 才拒绝普通断开。释放端口不等于机械臂安全状态确认。
 
 ## Phase 8A 当前边界
@@ -64,8 +64,8 @@
 - 启动前端或网关不得自动打开任何串口；枚举到 COM4 只说明 Windows 当前可见该端口。
 - 默认 command policy 为 `disabled`。Development token 不能开启控制；只有未来桌面壳来源令牌与 `supervised` 配置同时成立时才可能宣告硬件能力。
 - API 只提供结构化命令，没有 raw 串口端点。前端必须先协商 capabilities，后端仍重复校验 session、反馈、使能、限位、速度和单在途条件。
-- 命令物理结果一旦未确认、失败或超时，普通控制被锁存；只允许停止并去使能。成功读回 disabled 或重新建立人工确认的新 session 才恢复。
-- 当前 session 的 REST 命令历史也是前端许可门；未恢复、正在恢复或恢复失败时，普通命令与关节组下发保持禁用，停止并去使能不被该门阻断。命令 HTTP 响应丢失按物理结果未知处理，不得直接重试。
+- 结构化命令的物理结果一旦未确认、失败或超时，普通控制被锁存；只允许停止并去使能。成功读回 disabled 或重新建立人工确认的新 session 才恢复。Development-only engineering 六轴直发采用人工确认，不进入该结构化联锁。
+- 当前 session 的 REST 命令历史也是结构化控制的前端许可门；未恢复、正在恢复或恢复失败时，普通结构化命令与 supervised 关节组保持禁用，停止并去使能不被该门阻断。结构化命令 HTTP 响应丢失按物理结果未知处理，不得直接重试。engineering 六轴请求失败时页面不自动重发、不推断是否写入，由操作者查看真实 TX 和实机后决定。
 - SignalR 重连、关闭或契约错误会保留 Dummy 最后实测关节值但立即标记 `STALE`，并在所有工作区显示全局告警；重连通知不等于恢复，必须重新取得 REST 权威快照。Aethor_robo 控制台不消费该 Dummy 状态，也不得显示为真实反馈。
 - 当前没有可信 Dummy 四参数运动包络，`jointGroup` 默认不在 supported capabilities；速度上限、到位容差、连续稳定窗口和总超时必须同时由可追溯证据提供，不得从 URDF、旧上位机或展示数据推断。
 - FIFO 接受不等于动作完成；只有六轴实测误差连续处于批准容差内达到稳定窗口才可显示 `completed + feedbackConfirmed`。超时或查询失败锁存联锁并要求停止去使能。

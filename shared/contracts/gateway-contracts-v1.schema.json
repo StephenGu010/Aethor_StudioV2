@@ -7,8 +7,8 @@
     "Validity": { "enum": ["valid", "stale", "invalid", "unavailable"] },
     "RobotCommandKind": { "enum": ["enable", "stopAndDisable", "home", "reset", "setMode", "jointGroup"] },
     "CommandStatus": { "enum": ["unsupported", "rejected", "accepted", "completed", "failed", "timedOut", "cancelled", "unconfirmed"] },
-    "CommandEvidence": { "enum": ["none", "gatewayAccepted", "deviceQueued", "deviceAck", "feedbackConfirmed"] },
-    "DirectCommandStatus": { "enum": ["replied", "queued", "rejected", "timedOut", "failed"] },
+    "CommandEvidence": { "enum": ["none", "gatewayAccepted", "transportWritten", "deviceQueued", "deviceAck", "feedbackConfirmed"] },
+    "DirectCommandStatus": { "enum": ["sent", "replied", "rejected", "timedOut", "failed"] },
     "CommandResultCode": { "enum": ["ok", "commandsDisabled", "invalidRequest", "sessionMismatch", "notConnected", "feedbackStale", "motorNotEnabled", "invalidTarget", "speedUnverified", "speedOutOfRange", "safetyInterlockLatched", "commandInFlight", "commandIdConflict", "deviceRejected", "deviceUnconfirmed", "transportError", "timeout", "cancelled"] },
     "RobotSessionSnapshot": {
       "type": "object",
@@ -100,7 +100,7 @@
       ],
       "required": ["contractVersion", "protocolAdapterId", "serialEnumeration", "readOnlyConnection", "liveTelemetry", "hardwareCommands", "directCommand", "commandPolicy", "allowedQueries", "supportedCommands", "jointGroupSpeedLimitDegS", "jointGroupCompletion", "engineeringJointSpeedMaxDegS"],
       "properties": {
-        "contractVersion": { "const": "1.2" },
+        "contractVersion": { "const": "1.3" },
         "protocolAdapterId": { "const": "dummy-ascii-v1" },
         "serialEnumeration": { "type": "boolean" },
         "readOnlyConnection": { "type": "boolean" },
@@ -181,7 +181,19 @@
         "message": { "type": "string", "maxLength": 500 },
         "timestampUtc": { "type": "string", "format": "date-time" },
         "deviceReply": { "type": ["string", "null"], "maxLength": 4096 }
-      }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "sent" } }, "required": ["status"] },
+          "then": {
+            "properties": {
+              "evidence": { "const": "transportWritten" },
+              "deviceReply": { "type": "null" }
+            }
+          },
+          "else": { "properties": { "evidence": { "not": { "const": "transportWritten" } } } }
+        }
+      ]
     },
     "SimpleRobotCommand": {
       "type": "object",

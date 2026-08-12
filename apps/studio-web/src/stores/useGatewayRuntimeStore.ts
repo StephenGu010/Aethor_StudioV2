@@ -22,6 +22,7 @@ interface GatewayRuntimeState {
   session: RobotSessionSnapshot;
   jointState: JointStateFrame;
   protocolFrames: ProtocolFrame[];
+  operatorProtocolFrames: ProtocolFrame[];
   commandHistory: CommandAuditRecord[];
   commandAuditStatus: CommandAuditStatus;
   commandAuditError: string | null;
@@ -65,6 +66,7 @@ const initialRuntime = () => ({
   session: showcaseSession,
   jointState: showcaseJointFrame,
   protocolFrames: [] as ProtocolFrame[],
+  operatorProtocolFrames: [] as ProtocolFrame[],
   commandHistory: [] as CommandAuditRecord[],
   commandAuditStatus: 'unavailable' as CommandAuditStatus,
   commandAuditError: null,
@@ -99,6 +101,7 @@ export const useGatewayRuntimeStore = create<GatewayRuntimeState>((set) => ({
           latchedSafetyResult: null,
           confirmedStopTimestampUtc: null,
           protocolFrames: [],
+          operatorProtocolFrames: [],
           commandHistory: [],
           commandAuditStatus: 'unavailable',
           commandAuditError: null,
@@ -113,12 +116,27 @@ export const useGatewayRuntimeStore = create<GatewayRuntimeState>((set) => ({
     );
     set({ jointState });
   },
-  replaceProtocolFrames: (protocolFrames) => set({ protocolFrames: uniqueProtocolFrames(protocolFrames) }),
-  appendProtocolFrame: (frame) => set((state) => ({
-    protocolFrames: state.protocolFrames.some((candidate) => candidate.id === frame.id)
-      ? state.protocolFrames
-      : [...state.protocolFrames.slice(-255), frame]
-  })),
+  replaceProtocolFrames: (frames) => set(() => {
+    const protocolFrames = uniqueProtocolFrames(frames);
+    return {
+      protocolFrames,
+      operatorProtocolFrames: protocolFrames.filter((frame) => !isRoutineJointPositionFrame(frame))
+    };
+  }),
+  appendProtocolFrame: (frame) => set((state) => {
+    if (state.protocolFrames.some((candidate) => candidate.id === frame.id)) return {};
+    const protocolFrames = [...state.protocolFrames.slice(-255), frame];
+    const retainedFrameIds = new Set(protocolFrames.map((candidate) => candidate.id));
+    const retainedOperatorFrames = state.operatorProtocolFrames.every((candidate) => retainedFrameIds.has(candidate.id))
+      ? state.operatorProtocolFrames
+      : state.operatorProtocolFrames.filter((candidate) => retainedFrameIds.has(candidate.id));
+    return {
+      protocolFrames,
+      operatorProtocolFrames: isRoutineJointPositionFrame(frame)
+        ? retainedOperatorFrames
+        : [...retainedOperatorFrames, frame]
+    };
+  }),
   beginCommandAuditRefresh: () => set({ commandAuditStatus: 'loading', commandAuditError: null }),
   failCommandAuditRefresh: (commandAuditError) => set({ commandAuditStatus: 'error', commandAuditError }),
   replaceCommandHistory: (commandHistory) => set((state) => {
@@ -210,6 +228,11 @@ function uniqueProtocolFrames(frames: ProtocolFrame[]) {
     uniqueNewestFirst.push(frame);
   }
   return uniqueNewestFirst.reverse();
+}
+
+export function isRoutineJointPositionFrame(frame: ProtocolFrame) {
+  return frame.direction === 'tx' && frame.raw.trim() === '#GETJPOS'
+    || frame.direction === 'rx' && frame.parsedKind === 'jointPositions';
 }
 
 function commandResultUpdate(state: GatewayRuntimeState, result: CommandResult) {

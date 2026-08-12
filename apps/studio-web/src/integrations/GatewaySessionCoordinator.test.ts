@@ -86,7 +86,7 @@ describe('GatewaySessionCoordinator safety recovery', () => {
 
     await waitFor(() => expect(useGatewayRuntimeStore.getState().commandAuditStatus).toBe('error'));
     expect(useGatewayRuntimeStore.getState()).toMatchObject({
-      capabilities: { contractVersion: '1.2' },
+      capabilities: { contractVersion: '1.3' },
       session: { sessionId: 'session-1', connectionState: 'connected' },
       commandAuditError: 'audit endpoint unavailable'
     });
@@ -117,7 +117,7 @@ describe('GatewaySessionCoordinator safety recovery', () => {
     rendered.unmount();
   });
 
-  it('marks measured telemetry stale on transport loss and restores it only after REST recovery', async () => {
+  it('marks measured telemetry stale on transport loss and clears degradation only after a live joint event', async () => {
     let session = coordinatorSession();
     let jointState = {
       ...showcaseJointFrame,
@@ -159,7 +159,7 @@ describe('GatewaySessionCoordinator safety recovery', () => {
     act(() => telemetryListener?.onTransportRecovered?.());
 
     await waitFor(() => expect(useGatewayRuntimeStore.getState()).toMatchObject({
-      transportWarning: null,
+      transportWarning: '实时关节事件已停滞；当前以 REST 权威快照降级刷新',
       session: { validity: 'valid', timestampUtc: '2026-08-09T00:00:02.000Z' },
       jointState: { validity: 'valid', sequence: 8, positionsDeg: [13, 24, 35, 46, 57, 68] }
     }));
@@ -174,6 +174,129 @@ describe('GatewaySessionCoordinator safety recovery', () => {
     await waitFor(() => expect(useGatewayRuntimeStore.getState().jointState.validity).toBe('valid'));
     expect(getSession).toHaveBeenCalledTimes(3);
     expect(getJointState).toHaveBeenCalledTimes(3);
+
+    act(() => telemetryListener?.onJointState?.({ ...jointState, sequence: 9 }));
+    expect(useGatewayRuntimeStore.getState()).toMatchObject({
+      transportWarning: null,
+      jointState: { sequence: 9, validity: 'valid' }
+    });
+    rendered.unmount();
+  });
+
+  it('starts bounded REST fallback when the live channel cannot open', async () => {
+    const session = coordinatorSession();
+    const getSession = vi.fn(async () => session);
+    const getJointState = vi.fn(async () => ({
+      ...showcaseJointFrame,
+      sequence: 4,
+      timestampUtc: new Date(Date.now()).toISOString(),
+      source: 'measured' as const,
+      validity: 'valid' as const
+    }));
+    const gateway = coordinatorGateway(session, {
+      getSession,
+      getJointState,
+      openTelemetry: async () => { throw new Error('SignalR unavailable'); }
+    });
+
+    const rendered = render(createElement(GatewaySessionCoordinator, {
+      gateway,
+      telemetryStallThresholdMs: 30,
+      telemetryFallbackIntervalMs: 30
+    }));
+    await waitFor(() => expect(getJointState.mock.calls.length).toBeGreaterThanOrEqual(2));
+
+    expect(useGatewayRuntimeStore.getState()).toMatchObject({
+      transportWarning: '实时关节事件已停滞；当前以 REST 权威快照降级刷新',
+      jointState: { sequence: 4, source: 'measured', validity: 'valid' }
+    });
+    rendered.unmount();
+  });
+
+  it('stops fallback and clears its warning when the hardware session goes offline', async () => {
+    const session = coordinatorSession();
+    let telemetryListener: RobotGatewayTelemetryListener | undefined;
+    const gateway = coordinatorGateway(session, {
+      openTelemetry: async (listener) => {
+        telemetryListener = listener;
+        return async () => {};
+      }
+    });
+    const rendered = render(createElement(GatewaySessionCoordinator, {
+      gateway,
+      telemetryStallThresholdMs: 30,
+      telemetryFallbackIntervalMs: 30
+    }));
+    await waitFor(() => expect(useGatewayRuntimeStore.getState().transportWarning).not.toBeNull());
+
+    act(() => telemetryListener?.onSession?.({
+      ...session,
+      sessionId: 'offline',
+      connectionState: 'offline',
+      motorState: 'unknown',
+      controlMode: null,
+      source: 'unavailable',
+      validity: 'unavailable'
+    }));
+
+    expect(useGatewayRuntimeStore.getState()).toMatchObject({
+      transportWarning: null,
+      session: { connectionState: 'offline', validity: 'unavailable' }
+    });
+    rendered.unmount();
+  });
+
+  it('falls back to bounded REST snapshots when live joint events silently stall and recovers on the next event', async () => {
+    const session = coordinatorSession();
+    let jointSequence = 10;
+    let telemetryListener: RobotGatewayTelemetryListener | undefined;
+    const getSession = vi.fn(async () => ({
+      ...session,
+      timestampUtc: new Date(Date.now()).toISOString()
+    }));
+    const getJointState = vi.fn(async () => ({
+      ...showcaseJointFrame,
+      sequence: jointSequence++,
+      timestampUtc: new Date(Date.now()).toISOString(),
+      positionsDeg: [jointSequence, 20, 30, 40, 50, 60],
+      source: 'measured' as const,
+      validity: 'valid' as const
+    }));
+    const gateway = coordinatorGateway(session, {
+      getSession,
+      getJointState,
+      openTelemetry: async (listener) => {
+        telemetryListener = listener;
+        return async () => {};
+      }
+    });
+
+    const rendered = render(createElement(GatewaySessionCoordinator, {
+      gateway,
+      telemetryStallThresholdMs: 30,
+      telemetryFallbackIntervalMs: 30
+    }));
+    await waitFor(() => expect(telemetryListener).toBeDefined());
+    await waitFor(() => expect(getJointState.mock.calls.length).toBeGreaterThanOrEqual(2));
+
+    expect(useGatewayRuntimeStore.getState()).toMatchObject({
+      transportWarning: '实时关节事件已停滞；当前以 REST 权威快照降级刷新',
+      jointState: { source: 'measured', validity: 'valid' }
+    });
+
+    act(() => telemetryListener?.onJointState?.({
+      ...showcaseJointFrame,
+      sequence: 99,
+      timestampUtc: new Date(Date.now()).toISOString(),
+      positionsDeg: [1, 2, 3, 4, 5, 6],
+      source: 'measured',
+      validity: 'valid'
+    }));
+
+    expect(useGatewayRuntimeStore.getState()).toMatchObject({
+      transportWarning: null,
+      jointState: { sequence: 99, positionsDeg: [1, 2, 3, 4, 5, 6], validity: 'valid' }
+    });
     rendered.unmount();
   });
 });
@@ -189,7 +312,7 @@ function coordinatorGateway(
       jointGroupSpeedLimitDegS: null, jointGroupCompletion: null, engineeringJointSpeedMaxDegS: null
     },
     getCapabilities: async () => ({
-      contractVersion: '1.2', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
+      contractVersion: '1.3', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
       readOnlyConnection: true, liveTelemetry: true, hardwareCommands: false, directCommand: false, commandPolicy: 'disabled',
       allowedQueries: ['#GETJPOS', '#GETMODE', '#GETENABLE'], supportedCommands: [],
       jointGroupSpeedLimitDegS: null, jointGroupCompletion: null, engineeringJointSpeedMaxDegS: null

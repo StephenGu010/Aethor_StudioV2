@@ -1,5 +1,29 @@
 # 变更记录
 
+## 2026-08-12 - Engineering 运动反馈冻结识别（Phase 7 IN PROGRESS）
+
+- 复核固定 Dummy 固件后确认：模式 1–3 的 200 Hz 使能分支只执行 `MoveJoints()` 与 `UpdateJointPose6D()`，没有调用触发 CAN `0x23` 角度采集的 `UpdateJointAngles()`；`#GETJPOS` 又直接输出 `currentJoints`。因此串口回包频繁、sequence 递增并不保证六轴设备角在运动期间更新。
+- engineering 人工关节组写入后以最新实测角重新建立观察基准。至少 500 ms、至少 8 个位置样本的六轴最大变化不超过 0.02°，且最大目标误差仍不小于 0.5°时，关节反馈标为 stale，并只记录一次带 request/correlation 的 `feedbackFrozen` 帧及 `engineering.motion.feedback_frozen_suspected`；任一关节重新变化后恢复 valid 并记录恢复事件。
+- 该机制不等待固件 ACK、不锁定下一次人工目标、不停止后台查询、不自动重发，也不声称实机静止或到位。参考固件仍保持只读；根治运动中数字孪生不同步仍需在固件现有 CAN 所有权内周期采集并原子提交完整六轴快照。
+- 完整软件证据为 contracts 95 + frontend 211 + gateway 103 + desktop 118 + legal inventory 6，共 533/533；strict TypeScript、2644-module Web、Gateway/Desktop Release 0 warning/0 error、三档生产 E2E 63/63 均通过。隔离入口明确 `serialPortOpened=false / hardwareCommandSent=false`。
+
+## 2026-08-12 - Engineering 运动人工确认与连续下发（Phase 5 IN PROGRESS）
+
+- 根因是旧 direct 关节命令把无标签 FIFO 数字或最终 `ok` 当作当前运动的完成条件。固件没有稳定返回或上位机错过该帧时，网关把结果锁存为未知，后续目标只能先停止并去使能；这与现场“实机已经到位、由操作者继续调试”的工作流冲突。
+- `RobotGatewayV1.3` 为工程六轴运动新增 `sent + transportWritten`。payload 写入 transport 后立即释放串口和命令所有权，不等待、不解释 FIFO、通用 `ok` 或到位；迟到的队列号、`ok` 和队列满错误只写入有界协议/诊断日志，不改变 direct 状态，也不阻止下一次人工目标。
+- 唯一后台 reader 继续按 25 ms 主机节拍尝试 `#GETJPOS`。人工运动期间连续查询超时只把反馈标为 stale，不在常规三次门限自动断开；探针只记录首条和每 20 次，恢复时记录一次 `engineering.motion.feedback_resumed`。显式停止/去使能、断开或新 session 会清理人工运动状态。
+- 控制台与终端统一显示 `SENT · MANUAL CONFIRM`。当前会话只要曾取得六轴实测值、motor 仍已知 enabled、mode 有效，即使反馈暂时 stale 也可继续下发；结果只说明写入完成，不声称设备接收、固件入队、运动开始或实机到位。HTTP/transport 失败不会自动重发，界面提示操作者结合真实 TX 和实机人工决定。
+- 删除 125 秒最终 ACK 请求窗口和 `AETHOR_GATEWAY_ENGINEERING_JOINT_FINAL_ACK_TIMEOUT_MS`。fake serial 回归证明无任何运动回包时可连续写入、迟到 ACK 只观察、21 次查询超时不误断开且日志限频、停止去使能后可确认重启。本轮软件验证全程未打开 COM4、未发送硬件命令。
+- 最终软件证据为 contracts 95 + frontend 211 + gateway 101 + desktop 118 + legal inventory 6，共 531/531；strict TypeScript、2644-module Web、Gateway/Desktop Release 0 warning/0 error、三档 Playwright 63/63 均通过。Windows `development-dirty` 包为 698 个实际文件/697 项 manifest；disabled/engineering 双 smoke 只枚举 COM1/COM4，session offline、进程正常退出，`serialPortOpened=false / hardwareCommandSent=false`。
+
+## 2026-08-12 - Dummy 实时轮询仲裁与 GETJPOS 低噪声显示
+
+- 将 `#GETJPOS` 默认请求周期从 50 ms 调整为 25 ms，并改为从周期起点扣除串口往返耗时，主机目标节拍由约 20 Hz 提升为 40 Hz。模式与使能不再连续查询，而是在位置样本之间每 250 ms 交替一项；每项仍约 500 ms 更新，启动与超时恢复通过两个相邻周期补齐完整状态。
+- 后台轮询、engineering direct 和结构化命令继续使用唯一 `serialIoGate`。命令先声明需求，尚未取得串口的轮询会二次检查并让行；结构化关节组到位等待复用 25 ms 快节拍，不再退回旧的 500 ms `PollInterval`。这解决主机侧运动期间约 2 Hz 的模型更新路径，但不能修复参考固件在位置模式 1–3 不更新 `currentJoints` 的问题。
+- 终端新增“显示/隐藏 GETJPOS”按钮，默认折叠位置轮询 TX/RX；切换只影响显示，不删除 256 帧原始缓冲，也不停止关节反馈。runtime store 同时维护有界的操作事件视图，控制台最近事件和默认终端视图不再因每条位置轮询帧重渲染。示波历史上限同步为 120 秒 × 40 Hz × 18 路。
+- 本段只运行 fake transport、组件和静态构建验证，不连接 COM4、不发送硬件命令。40 Hz 是主机请求节拍，不代表固件 CAN 采样率或实机反馈率；实物运动同步仍需固件修复并在监督条件下复验。
+- 验证结果：strict TypeScript、contracts 94、frontend 209、gateway 97、desktop 118、legal inventory 6 均通过；production Web 2644 modules、Gateway/Desktop Release 0 warning/0 error，三档视口 Playwright 63/63。Windows `development-dirty` 包重建为 698 个实际文件/697 项 manifest，engineering offline smoke 只读枚举到 COM1/COM4，保持 session offline、进程退出、`serialPortOpened=false / hardwareCommandSent=false`。桌面 `Aethor Studio V2.lnk` 仍指向该同路径新包并携带 `--engineering`。
+
 ## 2026-08-11 - Desktop 串口目录、会话 single-flight 与低噪声诊断链（Phase 8 IN PROGRESS）
 
 - 排查 J3 不动时确认当前浏览器仍是 `SHOWCASE DATA / SERIAL OFFLINE`，且 HMR 前端向旧 5127 网关发送新增的 `X-Aethor-Operation`，旧二进制 CORS 未放行该请求头，目录扫描在预检阶段失败；旧网关的命令审计还会把无设备回包序列化为 `deviceReply:null`，而前端只接受字符串。wire contract 现兼容缺失/字符串/null，避免一条旧审计让命令 authority 恢复失败。J3 索引经固件、manifest、C# parser、前端和 URDF 核对均为第三字段/`protocolIndex=2`；进一步对照固件回零与 `initPose` 后确认还需要独立的设备角到模型角换算。
@@ -42,7 +66,7 @@
 ## 2026-08-10 - Dummy engineering 直连调试与错误端口释放（Phase 5 / 7 IN PROGRESS）
 
 - RobotGatewayV1 升级为 1.2，新增仅限 Development + 本机令牌的 `engineering` policy 与受限 direct endpoint。C# 仍是唯一串口所有者，只接受 Dummy 查询、`!START/!STOP/!DISABLE`、模式 1–3 和带显式速度的六轴整组目标；HOME/RESET、RGB、电流/PID、reboot、多行、非 ASCII 与任意 raw 在写入前拒绝。
-- 删除前端管理员/专家解锁。终端始终可编辑，只有 gateway 协商 direct capability 且 session/状态门成立时才能发送；控制台在 fresh measured、enabled、有效 mode 与合法六轴目标时可下发。固件 FIFO 结果只显示 `queued / deviceQueued`，不冒充实机到位或完成。
+- 删除前端管理员/专家解锁。终端始终可编辑，只有 gateway 协商 direct capability 且 session/状态门成立时才能发送；控制台在 measured、enabled、有效 mode 与合法六轴目标时可下发。该日最初只显示 FIFO `queued / deviceQueued`；2026-08-12 最终改为 transport 写入即 `SENT · MANUAL CONFIRM`，不依赖 FIFO/ACK，也不冒充独立实测到位。
 - 修复错误 COM 会话无法退出：stale/unknown/faulted 允许人工释放，明确 `motor=enabled` 或存在在途命令时仍拒绝普通断开；后端与顶栏/设备页使用同一规则。没有加入自动重连或第二串口 owner。
 - 新增 `pnpm dev:engineering` 统一入口：只从被忽略的 `.env.local` 读取本机令牌，拒绝复用未知 5127 owner，启动后必须自证 `v1.2 / engineering / directCommand / offline`。首次实跑发现自检 Header 名错误并修正；失败进程经官方 shutdown 在 offline 状态释放，随后入口成功，页面保持 Dummy offline。1280×720 实页检查还修复了速度单位与说明挤压。
 - E2E 构建新增固定无网关 mode，本机 `.env.local` 的开发 URL/令牌不再污染零硬件请求验收。整仓 contracts 93 + frontend 182 + gateway 79 + desktop 74 + legal inventory 1，共 429/429；strict TypeScript、Web/.NET Release build 通过，0 warning/0 error；最终 Edge 三档生产 E2E 63/63 通过。验证期间只枚举到 COM1/COM4，未打开 COM4、未发送硬件命令。

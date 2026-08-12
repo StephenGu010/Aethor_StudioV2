@@ -73,7 +73,7 @@ describe('HttpRobotGateway boundary', () => {
 
   it('keeps commands disabled until capability negotiation explicitly enables them', async () => {
     const fetcher = vi.fn(async () => new Response(JSON.stringify({
-      contractVersion: '1.2', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
+      contractVersion: '1.3', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
       readOnlyConnection: true, liveTelemetry: true, hardwareCommands: true, directCommand: false,
       commandPolicy: 'supervised', allowedQueries: ['#GETJPOS', '#GETMODE', '#GETENABLE'],
       supportedCommands: ['enable', 'stopAndDisable', 'home', 'reset', 'setMode'],
@@ -91,7 +91,7 @@ describe('HttpRobotGateway boundary', () => {
 
   it('rejects internally inconsistent capability negotiation without enabling commands', async () => {
     const fetcher = vi.fn(async () => new Response(JSON.stringify({
-      contractVersion: '1.2', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
+      contractVersion: '1.3', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
       readOnlyConnection: true, liveTelemetry: true, hardwareCommands: true, directCommand: false,
       commandPolicy: 'supervised', allowedQueries: ['#GETJPOS', '#GETMODE', '#GETENABLE'],
       supportedCommands: ['jointGroup'], jointGroupSpeedLimitDegS: null, jointGroupCompletion: null,
@@ -106,7 +106,7 @@ describe('HttpRobotGateway boundary', () => {
   it('negotiates engineering direct capability and posts a single validated line', async () => {
     const responses = [
       {
-        contractVersion: '1.2', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
+        contractVersion: '1.3', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
         readOnlyConnection: true, liveTelemetry: true, hardwareCommands: true, directCommand: true,
         commandPolicy: 'engineering', allowedQueries: ['#GETJPOS', '#GETMODE', '#GETENABLE'],
         supportedCommands: ['enable', 'stopAndDisable', 'setMode'], jointGroupSpeedLimitDegS: null,
@@ -131,6 +131,45 @@ describe('HttpRobotGateway boundary', () => {
 
     expect(gateway.capabilities).toMatchObject({ commandPolicy: 'engineering', rawCommand: true, engineeringJointSpeedMaxDegS: 100 });
     expect(vi.mocked(fetcher).mock.calls[1]?.[0]).toBe('http://127.0.0.1:5127/api/v1/engineering/direct-command');
+  });
+
+  it('uses the normal bounded HTTP window for a write-only engineering joint request', async () => {
+    const responses = [
+      {
+        contractVersion: '1.3', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
+        readOnlyConnection: true, liveTelemetry: true, hardwareCommands: true, directCommand: true,
+        commandPolicy: 'engineering', allowedQueries: ['#GETJPOS', '#GETMODE', '#GETENABLE'],
+        supportedCommands: ['enable', 'stopAndDisable', 'setMode'], jointGroupSpeedLimitDegS: null,
+        jointGroupCompletion: null,
+        engineeringJointSpeedMaxDegS: 100
+      },
+      {
+        requestId: 'move-1', sessionId: 'session-1', status: 'sent', evidence: 'transportWritten',
+        normalizedLine: '>1,2,3,4,5,6,10', message: 'written without confirmation', timestampUtc: '2026-08-12T00:00:00.000Z'
+      }
+    ];
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const next = responses.shift();
+      if (responses.length === 0) {
+        await new Promise<void>((resolve, reject) => {
+          const timeout = window.setTimeout(resolve, 20);
+          init?.signal?.addEventListener('abort', () => {
+            window.clearTimeout(timeout);
+            reject(new DOMException('aborted', 'AbortError'));
+          }, { once: true });
+        });
+      }
+      return new Response(JSON.stringify(next), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }) as unknown as typeof fetch;
+    const gateway = new HttpRobotGateway({
+      baseUrl: 'http://127.0.0.1:5127', sessionToken: token, requestTimeoutMs: 250
+    }, fetcher);
+
+    await gateway.getCapabilities();
+    await expect(gateway.sendDirectCommand({
+      requestId: 'move-1', sessionId: 'session-1', profileId: 'dummy-6dof',
+      line: '>1,2,3,4,5,6,10'
+    })).resolves.toMatchObject({ status: 'sent', evidence: 'transportWritten' });
   });
 
   it('accepts bounded command request evidence and rejects inconsistent audit identities', async () => {

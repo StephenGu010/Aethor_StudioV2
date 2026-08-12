@@ -46,6 +46,7 @@ public sealed class GatewayProcessSupervisorTests : IDisposable
         Assert.Equal("Development", startInfo.Environment["ASPNETCORE_ENVIRONMENT"]);
         Assert.Equal("development", startInfo.Environment["AETHOR_GATEWAY_TOKEN_SOURCE"]);
         Assert.Equal("engineering", startInfo.Environment["AETHOR_GATEWAY_COMMAND_POLICY"]);
+        Assert.False(startInfo.Environment.ContainsKey("AETHOR_GATEWAY_ENGINEERING_JOINT_FINAL_ACK_TIMEOUT_MS"));
         Assert.DoesNotContain(token, startInfo.Arguments, StringComparison.Ordinal);
         Assert.False(startInfo.Environment.ContainsKey("HTTP_PROXY"));
     }

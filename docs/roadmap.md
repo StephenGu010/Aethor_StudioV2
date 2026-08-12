@@ -17,7 +17,7 @@
 | 2 UI 字体、比例与信息架构 | DONE | 修复字号、密度和空间比例，形成展示级工业控制台 | token、响应式布局、状态组件、五工作区信息架构、视觉基线 | 113 项单元测试与三档视口 21 项 E2E 通过；无关键裁切、重叠和跳动 |
 | 3 Dummy 六轴三维预览基础 | DONE | 实现类似 Robot Viewer 的关节直接操作，仅 FK 预览 | 关节拾取、约束拖动、轴/限位反馈、实体/幽灵隔离 | 六关节 URDF 原点/轴/限位、拖动零发送、故障降级与重复挂载资源证据通过 |
 | 4 C# 基础与只读 COM4 | DONE | 建立 .NET 10 网关，只枚举/连接/读取真实状态 | 分层服务、串口生命周期、REST/SignalR、会话令牌 | fake serial 集成测试通过；监督下手动连接 COM4；无运动命令 |
-| 5 安全硬件控制 | IN PROGRESS | 接入使能、停止、受约束模式 1–3 和整组关节下发；HOME/RESET 按固件证据降级 | v1.2 契约、命令仲裁、受限 engineering direct、目标校验、实测到位、前端能力门、监督 runbook | 软件门与 Gate A 已通过；engineering 仅供 Development 人工调试，关节 FIFO 只表示 queued；Gate B 未执行，任何失败不显示成功 |
+| 5 安全硬件控制 | IN PROGRESS | 接入使能、停止、受约束模式 1–3 和整组关节下发；HOME/RESET 按固件证据降级 | v1.3 契约、命令仲裁、受限 engineering direct、目标校验、实测到位、前端能力门、监督 runbook | 软件门与 Gate A 已通过；engineering 六轴运动只确认 transport 写入并由操作者控制，supervised Gate B 未执行，任何失败不显示成功 |
 | 6 动作编排与单点示教 | IN PROGRESS | 版本化动作 JSON、点位编辑/采集和逐点执行 | 6A editor 已验证；6B-S 无生产接线执行内核已验证；6B-H 硬件接线未开始 | 6A/6B-S 零硬件路径；6B-H 不用固定 sleep 冒充完成，暂停/停止语义与固件能力一致 |
 | 7 实时示波、终端与故障恢复 | IN PROGRESS | 将静态工具升级为有界实时观测工作台 | 7A 软件门已验证；7B 真实网关长测未开始 | 来源/单位准确；内存有界；断线和陈旧反馈可见且不可下发 |
 | 8 WebView2、发布与最终交接 | IN PROGRESS | 完成 Windows 桌面壳、打包、DPI 和最终验收 | 8A 桌面壳/便携包已验证；8B 安装签名/DPI/恢复/最终 handoff 未完成 | 三档分辨率与 Windows DPI 通过；安装/升级/卸载演练；最终页面打开 |
@@ -46,7 +46,7 @@
 
 ## Phase 5 当前结果
 
-- RobotGatewayV1 升级到 1.2：保留结构化命令、稳定结果/证据码、有界命令审计和 SignalR 终态，并新增仅 Development + 本机令牌可声明的受限 `engineering` direct capability。
+- RobotGatewayV1 当前为 1.3：保留结构化命令、稳定结果/证据码、有界命令审计和 SignalR 终态，并为 Development engineering 六轴运动增加 `sent + transportWritten` 人工确认语义。
 - C# 已实现单在途、幂等、超时、停止抢占、目标/限位/速度/状态双重校验；关节组只有在配置速度、到位容差、连续稳定窗口和总超时后才声明能力，并以实测六轴误差持续收敛返回完成。前端同步显示并校验该完整包络。
 - Gate A 已在 COM4 上验证使能、停止去使能、模式 1–3 和恢复模式 2，6 条命令结果均为 `completed + feedbackConfirmed`；未发送关节目标，断开前为 measured/valid、disabled、mode 2，清理后 gateway 进程和 5127 listener 均为 0。
 - 实机运行暴露协议环会被高频轮询覆盖早期命令 TX；命令审计已增加有界请求快照、请求指纹和实际成功写入 transport 的 payload。旧 Gate A 证据不追写，后续按命令即时采证。
@@ -73,13 +73,13 @@
 ## Phase 7 当前结果
 
 - 按 [ADR-0006](decisions/0006-live-observability-boundary.md) 拆为 7A 软件门和 7B 实机长测；只读观测不依赖 Gate B 运动包络，但真实串口仍需新鲜现场授权。
-- 7A 已实现 18 路、每路 2400 点/120 秒的有界历史，默认 60 秒窗口；采集与 10 Hz/1 Hz 可见性刷新分离，ECharts 实例跨数据更新复用。
+- 7A 已实现 18 路、每路 4800 点/120 秒的有界历史，默认 60 秒窗口；采集与 10 Hz/1 Hz 可见性刷新分离，ECharts 实例跨数据更新复用。
 - 网关模式不再因缓冲为空而回退 SHOWCASE；示波/终端显示 measured/waiting/stale/idle 的真实状态。终端日志限 256 帧、去重，清空只影响当前视图。
 - 终端不再使用管理员/专家解锁。`engineering` 网关下可直接发送 Dummy 单行白名单；C# 仍独占串口并二次校验 session、状态、模式、六轴限位和显式速度。HOME/RESET、RGB、电流/PID、reboot、多行及任意 raw 均拒绝。
-- engineering 关节组只有固件 FIFO 入队证据，结果必须显示 `queued / deviceQueued`，不能写成到位、完成或安全；正式 `supervised` Gate B 仍依赖可追溯四参数运动包络和独立实机验收。
+- engineering 关节组按人工模式呈现：所有模式写入成功即显示 `SENT · MANUAL CONFIRM / transportWritten`，不等待或解释 FIFO/`ok`，也不写成设备接收或实测到位。后台继续使用唯一 reader 尝试轮询，查询超时不自动断开；正式 `supervised` Gate B 仍依赖四参数运动包络和独立实机验收。
 - 错误 COM 口造成 `stale/unknown/faulted` 时允许人工释放会话；只有明确 `motor=enabled` 或存在在途命令时拒绝普通断开。
-- 当前软件回归为 contracts 93 + frontend 182 + gateway 79 + desktop 74 + legal inventory 1，共 429/429；strict TypeScript、Web/.NET Release build 0 warning/0 error，三档生产 E2E 63/63。E2E 使用固定无网关 mode，不继承本机 `.env.local`；`pnpm dev:engineering` 已实跑验证 v1.2 engineering/offline，页面仅枚举 COM1/COM4。本次未打开 COM4、未发送任何硬件命令。
-- 10 分钟 × 20 Hz 合成长测达到单路 2400、总 43200 点上限；全量 shared 87 + frontend 135 + C# 46 共 268 项、build 与三档 E2E 39/39 通过。
+- 当前软件回归为 contracts 95 + frontend 211 + gateway 103 + desktop 118 + legal inventory 6，共 533/533；strict TypeScript、2644-module Web、Gateway/Desktop Release build 0 warning/0 error，三档生产 E2E 63/63。engineering 人工运动现能识别“`#GETJPOS` 持续回包但角度冻结”，只把关节反馈降为 stale，连续人工目标不被锁定，角度重新变化后恢复 valid。本次自动验证未打开 COM4、未发送任何硬件命令；既有 disabled/engineering 包 smoke 记录不冒充本次新代码的打包复验。
+- 当前 10 分钟 × 40 Hz 合成长测达到单路 4800、总 86400 点上限；早期 20 Hz 验证数据仍保留在 Phase 7 历史记录中。全量回归数量以最新 handoff 和变更记录为准。
 - 7B 干净只读基线工具已就绪：显式授权与五项现场确认缺一即在进程/证据目录创建前失败；`-ValidateOnly` 已证明零网络、零进程、零串口、零文件变更。真实路径固定 command policy disabled、Dummy 与三个查询白名单，并有界记录 sequence、协议、working set/private memory/handle/CPU 和最终释放。该工具尚未连接 COM4，且固定声明资源阈值、浏览器 heap、故障注入和 Phase 7B 完成均未评估。
 - 7B 未授权、未执行；真实采样/资源曲线、拔线和恢复证据缺失，Phase 7 不能标记 DONE，也不创建阶段完成提交。
 

@@ -3,7 +3,7 @@
 - 状态：`IN PROGRESS`
 - 子阶段：`7A SOFTWARE GATE VERIFIED / 7B HARDWARE SOAK NOT STARTED`
 - 日期：2026-08-09
-- 最近更新：2026-08-10
+- 最近更新：2026-08-12
 - 实施者：Codex
 - 仓库/分支：`Aethor_StudioV2 / main`
 - 开始基线提交：`f423e460f9f36f4067785782a4af59b0a98353f2`
@@ -11,15 +11,16 @@
 
 ## 已完成
 
-- 实现 `LiveSignalHistory`：当前 measured session 的六轴 actual/target/error 共 18 路，每路同时受 120 秒和 2400 点限制；拒绝错误 profile/DOF/source/validity、重复和倒序帧，统计序号缺口。
+- 实现 `LiveSignalHistory`：当前 measured session 的六轴 actual/target/error 共 18 路，每路同时受 120 秒和 4800 点限制；拒绝错误 profile/DOF/source/validity、重复和倒序帧，统计序号缺口。
 - runtime store 是唯一采集入口，REST 初始快照、SignalR 和人工权威刷新不再各自维护历史；session identity/offline 改变清空，同 session 重连保留历史。
 - 示波默认实时窗口 60 秒、最大 120 秒；采集逐帧，React/ECharts 可见最多 10 Hz、隐藏最多 1 Hz。ECharts 跨刷新复用同一实例，单位独立 y 轴，卸载唯一释放。
 - CSV 使用长表格式，包含 UTC、session、profile、signal ID、显示名、来源、单位、值和 validity。
 - 终端在网关模式只显示当前真实有界协议帧；无帧时显示 `WAITING/IDLE`，不回退静态样例。支持搜索、方向、自动滚动、复制反馈、仅清空视图和带来源文本导出。
-- 协议帧按稳定 ID 去重并限制 256 条；清空只隐藏当时已有 ID，新到帧继续显示。终端不再维护前端管理员/专家会话。
+- 协议帧按稳定 ID 去重并限制 256 条；清空只隐藏当时已有 ID，新到帧继续显示。终端默认隐藏 `#GETJPOS` TX 与 `jointPositions` RX，可用按钮展示或再次隐藏；该操作只改变终端订阅和显示，不停止采集或删除原始证据。控制台最近事件只订阅非位置轮询帧，避免每个轮询 TX/RX 触发无关重渲染。终端不再维护前端管理员/专家会话。
 - 顶栏提供 Dummy 端口刷新、人工选择、显式连接和安全断开入口；不自动连接，且只复用既有 `RobotGatewayV1`/runtime owner。Aethor_robo 不枚举串口。
 - Dummy 控制台“最近事件”只显示当前实测 session 的协议标题，不追加重复中文翻译；无实测 session 时才显示明确的静态样例。
-- RobotGatewayV1.2 按 ADR-0009 增加 Development-only engineering direct：终端输入始终可编辑，但只有协商能力、有效 Dummy session 和 C# 白名单/状态门全部通过才发送；任意 raw 仍不存在，前端不伪造 TX/RX。生产 `disabled/supervised` 边界不变。
+- RobotGatewayV1.3 按 ADR-0009 提供 Development-only engineering direct：终端输入始终可编辑，但只有协商能力、已连接 Dummy session、已知 enabled/mode、至少一帧六轴实测值和 C# 白名单/限位门全部通过才发送。六轴运动写入后立即显示 `SENT · MANUAL CONFIRM`；反馈 stale 不阻止下一次人工目标。任意 raw 仍不存在，前端不伪造 TX/RX，生产 `disabled/supervised` 边界不变。
+- engineering 人工运动新增在线反馈冻结识别：写入后至少 500 ms、至少 8 个 `#GETJPOS` 样本无变化且仍远离目标时，关节反馈降为 stale，并产生一次有 request/correlation 的 `feedbackFrozen` 帧和结构化诊断；真实角度重新变化后恢复 valid。该状态不阻断连续人工下发，也不宣称实机停止或到位。
 - 修复 1366×768 下终端主区局部 87 px 溢出；实测 DOM 的 main/toolbar/log `scrollWidth === clientWidth`。
 - 新增 `gateway:soak:readonly` 与 [Phase 7B 只读长测手册](../runbooks/phase-07b-readonly-soak.md)：显式授权、五项现场确认、Release 入口、command policy disabled、Dummy/三个查询白名单、有限时长资源/协议采样和 finally 清理全部固化；尚未执行真实 COM4 路径。
 
@@ -27,9 +28,9 @@
 
 | 项目 | 设计/测试值 | 结果 |
 |---|---:|---|
-| 输入长测 | 10 分钟 × 20 Hz = 12000 帧 | 合成测试通过 |
-| 单信号上限 | 120 秒 × 20 Hz = 2400 点 | 通过 |
-| 18 路总上限 | 43200 点 | 通过 |
+| 输入长测 | 10 分钟 × 40 Hz = 24000 帧 | 合成测试通过 |
+| 单信号上限 | 120 秒 × 40 Hz = 4800 点 | 通过 |
+| 18 路总上限 | 86400 点 | 通过 |
 | 图表刷新 | 前台 100 ms / 隐藏 1000 ms | fake timer 通过 |
 | ECharts 生命周期 | 数据更新不重建；卸载 dispose 一次 | 组件测试通过 |
 | 协议日志 | 256 帧，稳定 ID 去重 | store 测试通过 |
@@ -56,6 +57,9 @@
 | 2026-08-10 7B 工具离线门 | PowerShell AST 解析通过；validation-only 零副作用；缺授权负向门失败关闭；OperationalScriptSafetyTests 5/5；整仓 contracts 91 + frontend 177 + gateway 72 + desktop 74 + legal inventory 1，共 415/415；strict TypeScript、Web 2639 modules 与两个 .NET Release build 通过，0 warning/0 error |
 | 2026-08-10 全局串口与控制台观测增量 | contracts 91 + frontend 182 + gateway 72 + desktop 74 + legal inventory 1，共 420/420；strict TypeScript、完整 Release build 与三档生产 E2E 63/63 通过；顶部串口零自动连接，最近事件标题不再重复翻译，管理员模式仍无 raw 发送；只读网关 disabled/offline，COM1/COM4 仅枚举未打开 |
 | 2026-08-10 engineering 终端增量 | contracts 93 + frontend 182 + gateway 79 + desktop 74 + legal inventory 1，共 429/429；strict TypeScript、完整 Release build 0 warning/0 error、三档生产 E2E 63/63；输入无需管理员解锁，只有 v1.2 direct capability 可发送白名单且前端不伪造帧；E2E 固定无网关 mode，不继承 `.env.local`；真实入口以 engineering/offline 启动，仅枚举 COM1/COM4，未打开 COM4、未发送硬件命令 |
+| 2026-08-12 实时调度与终端降噪增量 | contracts 94 + frontend 209 + gateway 97 + desktop 118 + legal inventory 6；strict TypeScript、2644-module Web、Gateway/Desktop Release 0 warning/0 error、三档生产 E2E 63/63。fake transport 证明慢状态错峰和运动等待复用 25 ms 快节拍；engineering package smoke 只读枚举 COM1/COM4，`serialPortOpened=false / hardwareCommandSent=false` |
+| 2026-08-12 engineering 人工确认增量 | contracts 95 + frontend 211 + gateway 101 + desktop 118 + legal inventory 6，共 531/531；六轴写入后立即 `SENT · MANUAL CONFIRM`，stale 反馈不阻止下一次人工目标，明确 STOP 回包保持自身 correlation；三档生产 E2E 63/63，双包 smoke 只枚举 COM1/COM4，未打开串口或发送硬件命令 |
+| 2026-08-12 engineering 冻结识别增量 | contracts 95 + frontend 211 + gateway 103 + desktop 118 + legal inventory 6，共 533/533；strict TypeScript、2644-module Web、Gateway/Desktop Release 0 warning/0 error、三档生产 E2E 63/63。fake transport 证明持续位置回包但角度不变时只降级 joint feedback，连续人工目标保持 stale，角度变化后自动恢复；隔离脚本确认未打开串口、未发送硬件命令 |
 
 ## 未完成与下一步
 

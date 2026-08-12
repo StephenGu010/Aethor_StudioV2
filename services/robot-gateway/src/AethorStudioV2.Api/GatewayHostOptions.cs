@@ -16,7 +16,7 @@ public sealed record GatewayHostOptions(
     int? JointGroupSettledDurationMs = null,
     int? JointGroupCompletionTimeoutMs = null,
     int SerialOpenTimeoutMs = 5_000,
-    int JointPollIntervalMs = 50,
+    int JointPollIntervalMs = 25,
     int StatusPollIntervalMs = 500)
 {
     public const int DefaultPort = 5127;
@@ -64,7 +64,7 @@ public sealed record GatewayHostOptions(
         var jointPollInterval = ParseOptionalInt(
                 configuration["JOINT_POLL_INTERVAL_MS"],
                 "AETHOR_GATEWAY_JOINT_POLL_INTERVAL_MS")
-            ?? 50;
+            ?? 25;
         var statusPollInterval = ParseOptionalInt(
                 configuration["STATUS_POLL_INTERVAL_MS"],
                 "AETHOR_GATEWAY_STATUS_POLL_INTERVAL_MS")
@@ -99,10 +99,10 @@ public sealed record GatewayHostOptions(
                 "AETHOR_GATEWAY_SERIAL_OPEN_TIMEOUT_MS must be between 100 and 30000");
         }
 
-        if (JointPollIntervalMs is < 50 or > 1_000)
+        if (JointPollIntervalMs is < 20 or > 1_000)
         {
             throw new InvalidOperationException(
-                "AETHOR_GATEWAY_JOINT_POLL_INTERVAL_MS must be between 50 and 1000");
+                "AETHOR_GATEWAY_JOINT_POLL_INTERVAL_MS must be between 20 and 1000");
         }
 
         if (StatusPollIntervalMs < JointPollIntervalMs || StatusPollIntervalMs > 10_000)

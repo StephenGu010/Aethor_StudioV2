@@ -7,6 +7,9 @@ namespace AethorStudioV2.Application;
 
 public sealed class RobotGateway : IAsyncDisposable
 {
+    private const int EngineeringFeedbackMinimumSamples = 8;
+    private const double EngineeringFeedbackMovementEpsilonDeg = 0.02;
+    private const double EngineeringFeedbackTargetErrorThresholdDeg = 0.5;
     private readonly IAsciiTransportFactory transportFactory;
     private readonly ISerialPortCatalog portCatalog;
     private readonly IRobotGatewayEventSink eventSink;
@@ -33,9 +36,18 @@ public sealed class RobotGateway : IAsyncDisposable
     private TaskCompletionSource? disconnectCompletion;
     private CancellationTokenSource? activeDirectCommandCancellation;
     private TaskCompletionSource? activeDirectCommandCompletion;
+    private string? engineeringMotionResponseCorrelationId;
+    private string? engineeringMotionRequestId;
+    private double[]? engineeringMotionTargetPositionsDeg;
+    private double[]? engineeringMotionBaselinePositionsDeg;
+    private long engineeringMotionStartedTimestamp;
+    private int engineeringMotionFeedbackSamples;
+    private double engineeringMotionMaximumObservedMovementDeg;
+    private bool engineeringMotionFeedbackFrozenSuspected;
     private string? exclusiveCommandId;
     private int commandDemand;
     private int commandInterlockLatched;
+    private int engineeringManualMotionActive;
     private int serialOpenRecoveryRequired;
     private bool disposed;
 
@@ -246,8 +258,8 @@ public sealed class RobotGateway : IAsyncDisposable
             return DirectResult(request, DirectCommandStatus.Rejected, CommandEvidence.None, parsedCommand.NormalizedLine, commandValidation);
         }
 
-        using var executionCancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(
-            Math.Max(500, options.CommandTimeout.TotalMilliseconds * 3)));
+        var directExecutionTimeout = TimeSpan.FromMilliseconds(Math.Max(500, options.CommandTimeout.TotalMilliseconds * 3));
+        using var executionCancellation = new CancellationTokenSource(directExecutionTimeout);
         var directCompletion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         lock (commandStateGate)
         {
@@ -261,6 +273,7 @@ public sealed class RobotGateway : IAsyncDisposable
         }
 
         Interlocked.Increment(ref commandDemand);
+        var ownsCommandDemand = true;
         var ownsCommandGate = false;
         var ownsSerialIo = false;
         try
@@ -290,6 +303,35 @@ public sealed class RobotGateway : IAsyncDisposable
 
             var decoder = new DummyAsciiLineDecoder();
             var readBuffer = new byte[options.ReadBufferBytes];
+            if (parsedCommand.Kind == DummyDirectCommandKind.JointGroup)
+            {
+                var correlationId = Guid.NewGuid().ToString("N");
+                await WriteLineAsync(
+                    transport,
+                    parsedCommand.NormalizedLine,
+                    DirectParsedKind(parsedCommand.Kind),
+                    request.SessionId,
+                    executionCancellation.Token,
+                    correlationId,
+                    request.RequestId).ConfigureAwait(false);
+                BeginEngineeringManualMotion(
+                    request.SessionId,
+                    request.RequestId,
+                    parsedCommand.PositionsDeg!);
+                diagnostics.Record(new(
+                    "engineering.motion.transport_written",
+                    GatewayDiagnosticSeverity.Information,
+                    request.SessionId,
+                    transport.PortName,
+                    $"RequestId={request.RequestId} Mode={current.ControlMode ?? 0} Result=sent-unconfirmed; command ownership released immediately"));
+                return DirectResult(
+                    request,
+                    DirectCommandStatus.Sent,
+                    CommandEvidence.TransportWritten,
+                    parsedCommand.NormalizedLine,
+                    "整组关节角已写入串口；未等待设备队列号、ok 或到位确认。请由操作者观察实机和 #GETJPOS 后决定下一步");
+            }
+
             var response = await SendAndWaitAsync(
                 transport,
                 parsedCommand.NormalizedLine,
@@ -301,38 +343,46 @@ public sealed class RobotGateway : IAsyncDisposable
                 request.RequestId,
                 executionCancellation.Token).ConfigureAwait(false);
 
-            if (parsedCommand.Kind == DummyDirectCommandKind.JointGroup)
-            {
-                if (response.QueueAccepted != true)
-                {
-                    return DirectResult(request, DirectCommandStatus.Rejected, CommandEvidence.GatewayAccepted, parsedCommand.NormalizedLine, "设备命令队列已满，目标未被接受", response.Raw);
-                }
-
-                return DirectResult(request, DirectCommandStatus.Queued, CommandEvidence.DeviceQueued, parsedCommand.NormalizedLine, "设备已接受六轴目标；仅表示进入固件队列，尚未验证机械臂到位", response.Raw);
-            }
-
             var evidence = parsedCommand.Kind is DummyDirectCommandKind.QueryJointPositions
                 or DummyDirectCommandKind.QueryMode
                 or DummyDirectCommandKind.QueryEnable
                 ? CommandEvidence.FeedbackConfirmed
                 : CommandEvidence.DeviceAck;
+            if (parsedCommand.Kind is DummyDirectCommandKind.Stop or DummyDirectCommandKind.Disable)
+            {
+                EndEngineeringManualMotion();
+            }
             return DirectResult(request, DirectCommandStatus.Replied, evidence, parsedCommand.NormalizedLine, "设备已返回匹配应答", response.Raw);
         }
         catch (GatewayQueryTimeoutException exception)
         {
-            MarkDirectCommandUnconfirmed(parsedCommand.Kind);
+            if (parsedCommand.Kind != DummyDirectCommandKind.JointGroup)
+            {
+                MarkDirectCommandUnconfirmed(parsedCommand.Kind);
+            }
             return DirectResult(request, DirectCommandStatus.TimedOut, CommandEvidence.GatewayAccepted, parsedCommand.NormalizedLine, "设备应答超时；物理结果未知", exception.Message);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException or TimeoutException or OperationCanceledException)
         {
-            MarkDirectCommandUnconfirmed(parsedCommand.Kind);
-            return DirectResult(request, DirectCommandStatus.Failed, CommandEvidence.GatewayAccepted, parsedCommand.NormalizedLine, "直连命令失败；物理结果未知", SafeExceptionMessage(exception));
+            if (parsedCommand.Kind != DummyDirectCommandKind.JointGroup)
+            {
+                MarkDirectCommandUnconfirmed(parsedCommand.Kind);
+            }
+            return DirectResult(
+                request,
+                DirectCommandStatus.Failed,
+                CommandEvidence.None,
+                parsedCommand.NormalizedLine,
+                parsedCommand.Kind == DummyDirectCommandKind.JointGroup
+                    ? "整组关节角未确认写入串口；未锁定后续人工操作"
+                    : "直连命令失败；物理结果未知",
+                SafeExceptionMessage(exception));
         }
         finally
         {
             if (ownsSerialIo) serialIoGate.Release();
             if (ownsCommandGate) commandGate.Release();
-            Interlocked.Decrement(ref commandDemand);
+            if (ownsCommandDemand) Interlocked.Decrement(ref commandDemand);
             lock (commandStateGate)
             {
                 if (ReferenceEquals(activeDirectCommandCancellation, executionCancellation))
@@ -342,6 +392,79 @@ public sealed class RobotGateway : IAsyncDisposable
                 }
             }
             directCompletion.TrySetResult();
+        }
+    }
+
+    private void BeginEngineeringManualMotion(
+        string sessionId,
+        string requestId,
+        IReadOnlyList<double> targetPositionsDeg)
+    {
+        var measured = GetJointState();
+        lock (commandStateGate)
+        {
+            engineeringMotionResponseCorrelationId ??= $"engineering-manual-{sessionId}";
+            engineeringMotionRequestId = requestId;
+            engineeringMotionTargetPositionsDeg = [.. targetPositionsDeg];
+            engineeringMotionBaselinePositionsDeg = measured.Source == DataSource.Measured
+                && measured.PositionsDeg.Count == DummyAsciiProtocol.JointCount
+                ? [.. measured.PositionsDeg]
+                : null;
+            engineeringMotionStartedTimestamp = timeProvider.GetTimestamp();
+            engineeringMotionFeedbackSamples = 0;
+            engineeringMotionMaximumObservedMovementDeg = 0;
+        }
+        Interlocked.Exchange(ref engineeringManualMotionActive, 1);
+    }
+
+    private string? ObserveEngineeringMotionResponse(DummyResponse response)
+    {
+        if (Volatile.Read(ref engineeringManualMotionActive) == 0) return null;
+        if (response.Kind is not (DummyResponseKind.Queue or DummyResponseKind.GenericAck or DummyResponseKind.Error))
+        {
+            return null;
+        }
+        if (response.Kind == DummyResponseKind.GenericAck
+            && !string.Equals(response.Raw, "ok", StringComparison.Ordinal))
+        {
+            return null;
+        }
+        if (response.Kind == DummyResponseKind.Error
+            && !string.Equals(response.Detail, "CMD FIFO FULL", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        string? correlationId;
+        lock (commandStateGate)
+        {
+            correlationId = engineeringMotionResponseCorrelationId;
+        }
+
+        diagnostics.Record(new(
+            "engineering.motion.device_response_observed",
+            response.Kind == DummyResponseKind.Error
+                ? GatewayDiagnosticSeverity.Warning
+                : GatewayDiagnosticSeverity.Information,
+            GetSession().SessionId,
+            activeTransport?.PortName,
+            $"ResponseKind={response.Kind}; unowned observation only, no command state transition"));
+        return correlationId;
+    }
+
+    private void EndEngineeringManualMotion()
+    {
+        Interlocked.Exchange(ref engineeringManualMotionActive, 0);
+        lock (commandStateGate)
+        {
+            engineeringMotionResponseCorrelationId = null;
+            engineeringMotionRequestId = null;
+            engineeringMotionTargetPositionsDeg = null;
+            engineeringMotionBaselinePositionsDeg = null;
+            engineeringMotionStartedTimestamp = 0;
+            engineeringMotionFeedbackSamples = 0;
+            engineeringMotionMaximumObservedMovementDeg = 0;
+            engineeringMotionFeedbackFrozenSuspected = false;
         }
     }
 
@@ -1078,6 +1201,7 @@ public sealed class RobotGateway : IAsyncDisposable
         {
             while (true)
             {
+                var cycleStartedTimestamp = timeProvider.GetTimestamp();
                 var positions = await QueryCoreAsync(
                     transport,
                     DummyReadQuery.JointPositions,
@@ -1124,7 +1248,10 @@ public sealed class RobotGateway : IAsyncDisposable
                     withinToleranceSince = null;
                 }
 
-                await Task.Delay(options.PollInterval, timeProvider, completionCancellation.Token).ConfigureAwait(false);
+                await DelayForRemainingIntervalAsync(
+                    cycleStartedTimestamp,
+                    options.JointPollInterval,
+                    completionCancellation.Token).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -1216,6 +1343,7 @@ public sealed class RobotGateway : IAsyncDisposable
             evidence.Add(enable.Raw);
             if (enable.Enabled == false)
             {
+                EndEngineeringManualMotion();
                 return Result(
                     spec,
                     CommandStatus.Completed,
@@ -1274,9 +1402,10 @@ public sealed class RobotGateway : IAsyncDisposable
                     }
 
                     var response = DummyAsciiProtocol.ParseResponseLine(record.Value);
-                    RecordProtocolFrame(ProtocolDirection.Rx, response.Raw, response.ContractKind, sessionId, correlationId);
+                    var engineeringCorrelationId = ObserveEngineeringMotionResponse(response);
+                    RecordProtocolFrame(ProtocolDirection.Rx, response.Raw, response.ContractKind, sessionId, engineeringCorrelationId ?? correlationId);
                     ApplyObservedResponse(response);
-                    if (response.Kind == DummyResponseKind.Error)
+                    if (response.Kind == DummyResponseKind.Error && engineeringCorrelationId is null)
                     {
                         throw new GatewayProtocolException($"Device returned error: {response.ErrorCode}");
                     }
@@ -1335,12 +1464,13 @@ public sealed class RobotGateway : IAsyncDisposable
             or DummyDirectCommandKind.QueryMode
             or DummyDirectCommandKind.QueryEnable;
         var isReleaseCommand = command.Kind is DummyDirectCommandKind.Stop or DummyDirectCommandKind.Disable;
+        var isManualJointCommand = command.Kind == DummyDirectCommandKind.JointGroup;
         if (!isQuery && !isReleaseCommand && Volatile.Read(ref commandInterlockLatched) != 0)
         {
             return "上一运动命令结果未知；仅允许查询、!STOP 或 !DISABLE";
         }
 
-        if (!isQuery && !isReleaseCommand && current.Validity != Validity.Valid)
+        if (!isQuery && !isReleaseCommand && !isManualJointCommand && current.Validity != Validity.Valid)
         {
             return "反馈不是新鲜有效状态，拒绝直接硬件命令";
         }
@@ -1368,10 +1498,9 @@ public sealed class RobotGateway : IAsyncDisposable
         var measured = GetJointState();
         if (measured.ProfileId != GatewayContractV1.DummyProfileId
             || measured.Source != DataSource.Measured
-            || measured.Validity != Validity.Valid
             || measured.PositionsDeg.Count != DummyAsciiProtocol.JointCount)
         {
-            return "缺少当前 Dummy 会话的新鲜六轴实测反馈";
+            return "当前 Dummy 会话尚未取得六轴实测反馈";
         }
 
         return null;
@@ -1387,7 +1516,6 @@ public sealed class RobotGateway : IAsyncDisposable
             DummyDirectCommandKind.Stop => response.Raw == "Stopped ok",
             DummyDirectCommandKind.Disable => response.Raw == "Disabled ok",
             DummyDirectCommandKind.SetMode => response.Kind == DummyResponseKind.ModeAck && response.Mode == command.Mode,
-            DummyDirectCommandKind.JointGroup => response.Kind == DummyResponseKind.Queue,
             _ => false
         };
 
@@ -1649,8 +1777,17 @@ public sealed class RobotGateway : IAsyncDisposable
             commandEntries.Clear();
             commandOrder.Clear();
             exclusiveCommandId = null;
+            engineeringMotionResponseCorrelationId = null;
+            engineeringMotionRequestId = null;
+            engineeringMotionTargetPositionsDeg = null;
+            engineeringMotionBaselinePositionsDeg = null;
+            engineeringMotionStartedTimestamp = 0;
+            engineeringMotionFeedbackSamples = 0;
+            engineeringMotionMaximumObservedMovementDeg = 0;
+            engineeringMotionFeedbackFrozenSuspected = false;
         }
         Interlocked.Exchange(ref commandInterlockLatched, 0);
+        Interlocked.Exchange(ref engineeringManualMotionActive, 0);
     }
 
     private void TrimCommandHistoryLocked()
@@ -1779,11 +1916,18 @@ public sealed class RobotGateway : IAsyncDisposable
         var readBuffer = new byte[options.ReadBufferBytes];
         var consecutiveTimeouts = 0;
         var statusRefreshRequired = true;
-        var lastStatusRefreshTimestamp = timeProvider.GetTimestamp();
+        var nextStatusQuery = DummyReadQuery.Mode;
+        int? pendingMode = null;
+        bool? pendingEnable = null;
+        var lastStatusQueryTimestamp = timeProvider.GetTimestamp();
+        var statusQueryInterval = TimeSpan.FromTicks(Math.Max(
+            options.JointPollInterval.Ticks,
+            options.StatusPollInterval.Ticks / 2));
         try
         {
             while (!cancellationToken.IsCancellationRequested)
             {
+                var cycleStartedTimestamp = timeProvider.GetTimestamp();
                 try
                 {
                     var positions = await QueryAsync(transport, DummyReadQuery.JointPositions, decoder, readBuffer, sessionId, cancellationToken).ConfigureAwait(false);
@@ -1793,43 +1937,91 @@ public sealed class RobotGateway : IAsyncDisposable
                     }
 
                     if (statusRefreshRequired
-                        || timeProvider.GetElapsedTime(lastStatusRefreshTimestamp) >= options.StatusPollInterval)
+                        || timeProvider.GetElapsedTime(lastStatusQueryTimestamp) >= statusQueryInterval)
                     {
-                        var mode = await QueryAsync(transport, DummyReadQuery.Mode, decoder, readBuffer, sessionId, cancellationToken).ConfigureAwait(false);
-                        var enable = await QueryAsync(transport, DummyReadQuery.Enable, decoder, readBuffer, sessionId, cancellationToken).ConfigureAwait(false);
-
-                        if (mode.Kind != DummyResponseKind.Mode || enable.Kind != DummyResponseKind.Enable)
+                        var status = await QueryAsync(
+                            transport,
+                            nextStatusQuery,
+                            decoder,
+                            readBuffer,
+                            sessionId,
+                            cancellationToken).ConfigureAwait(false);
+                        if (nextStatusQuery == DummyReadQuery.Mode)
                         {
-                            throw new GatewayProtocolException("Status polling returned incompatible response types");
+                            if (status.Kind != DummyResponseKind.Mode)
+                            {
+                                throw new GatewayProtocolException("Mode polling returned an incompatible response type");
+                            }
+
+                            pendingMode = status.Mode!.Value;
+                            nextStatusQuery = DummyReadQuery.Enable;
+                        }
+                        else
+                        {
+                            if (status.Kind != DummyResponseKind.Enable)
+                            {
+                                throw new GatewayProtocolException("Enable polling returned an incompatible response type");
+                            }
+
+                            pendingEnable = status.Enabled!.Value;
+                            nextStatusQuery = DummyReadQuery.Mode;
                         }
 
-                        MarkStatusCycleValid(mode.Mode!.Value, enable.Enabled!.Value);
-                        lastStatusRefreshTimestamp = timeProvider.GetTimestamp();
-                        statusRefreshRequired = false;
+                        lastStatusQueryTimestamp = timeProvider.GetTimestamp();
+                        if (pendingMode is { } mode && pendingEnable is { } enabled)
+                        {
+                            MarkStatusCycleValid(mode, enabled);
+                            pendingMode = null;
+                            pendingEnable = null;
+                            statusRefreshRequired = false;
+                        }
                     }
 
+                    if (consecutiveTimeouts > 0 && Volatile.Read(ref engineeringManualMotionActive) != 0)
+                    {
+                        diagnostics.Record(new(
+                            "engineering.motion.feedback_resumed",
+                            GatewayDiagnosticSeverity.Information,
+                            sessionId,
+                            transport.PortName,
+                            $"Joint polling resumed after {consecutiveTimeouts} consecutive timeout(s)"));
+                    }
                     consecutiveTimeouts = 0;
                 }
                 catch (GatewayQueryTimeoutException exception)
                 {
                     consecutiveTimeouts++;
                     statusRefreshRequired = true;
+                    pendingMode = null;
+                    pendingEnable = null;
+                    nextStatusQuery = DummyReadQuery.Mode;
                     MarkFeedbackStale();
-                    RecordProtocolError("queryTimeout", exception.Message, sessionId);
-                    diagnostics.Record(new(
-                        "serial.query.timeout",
-                        GatewayDiagnosticSeverity.Warning,
-                        sessionId,
-                        transport.PortName,
-                        $"Status query timeout {consecutiveTimeouts}/{options.ConsecutiveTimeoutLimit}",
-                        exception));
-                    if (consecutiveTimeouts >= options.ConsecutiveTimeoutLimit)
+                    var manualMotionActive = Volatile.Read(ref engineeringManualMotionActive) != 0;
+                    if (!manualMotionActive || consecutiveTimeouts == 1 || consecutiveTimeouts % 20 == 0)
+                    {
+                        RecordProtocolError("queryTimeout", exception.Message, sessionId);
+                        diagnostics.Record(new(
+                            manualMotionActive
+                                ? "engineering.motion.query_timeout"
+                                : "serial.query.timeout",
+                            GatewayDiagnosticSeverity.Warning,
+                            sessionId,
+                            transport.PortName,
+                            manualMotionActive
+                                ? $"Query timeout while manual motion is active; retrying without disconnect, Consecutive={consecutiveTimeouts}"
+                                : $"Status query timeout {consecutiveTimeouts}/{options.ConsecutiveTimeoutLimit}",
+                            exception));
+                    }
+                    if (!manualMotionActive && consecutiveTimeouts >= options.ConsecutiveTimeoutLimit)
                     {
                         throw;
                     }
                 }
 
-                await Task.Delay(options.JointPollInterval, timeProvider, cancellationToken).ConfigureAwait(false);
+                await DelayForRemainingIntervalAsync(
+                    cycleStartedTimestamp,
+                    options.JointPollInterval,
+                    cancellationToken).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -1858,20 +2050,45 @@ public sealed class RobotGateway : IAsyncDisposable
         CancellationToken cancellationToken,
         string? commandId = null)
     {
-        while (Volatile.Read(ref commandDemand) > 0)
+        while (true)
         {
-            await Task.Delay(TimeSpan.FromMilliseconds(10), timeProvider, cancellationToken).ConfigureAwait(false);
+            while (Volatile.Read(ref commandDemand) > 0)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(5), timeProvider, cancellationToken).ConfigureAwait(false);
+            }
+
+            await serialIoGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            if (Volatile.Read(ref commandDemand) == 0)
+            {
+                try
+                {
+                    return await QueryCoreAsync(transport, query, decoder, readBuffer, sessionId, commandId, cancellationToken).ConfigureAwait(false);
+                }
+                finally
+                {
+                    serialIoGate.Release();
+                }
+            }
+
+            serialIoGate.Release();
+            await Task.Yield();
+        }
+    }
+
+    private async Task DelayForRemainingIntervalAsync(
+        long cycleStartedTimestamp,
+        TimeSpan interval,
+        CancellationToken cancellationToken)
+    {
+        var remaining = interval - timeProvider.GetElapsedTime(cycleStartedTimestamp);
+        if (remaining > TimeSpan.Zero)
+        {
+            await Task.Delay(remaining, timeProvider, cancellationToken).ConfigureAwait(false);
+            return;
         }
 
-        await serialIoGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            return await QueryCoreAsync(transport, query, decoder, readBuffer, sessionId, commandId, cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            serialIoGate.Release();
-        }
+        cancellationToken.ThrowIfCancellationRequested();
+        await Task.Yield();
     }
 
     private async Task<DummyResponse> QueryCoreAsync(
@@ -1915,9 +2132,10 @@ public sealed class RobotGateway : IAsyncDisposable
                     }
 
                     var response = DummyAsciiProtocol.ParseResponseLine(record.Value);
-                    RecordProtocolFrame(ProtocolDirection.Rx, response.Raw, response.ContractKind, sessionId, correlationId);
+                    var engineeringCorrelationId = ObserveEngineeringMotionResponse(response);
+                    RecordProtocolFrame(ProtocolDirection.Rx, response.Raw, response.ContractKind, sessionId, engineeringCorrelationId ?? correlationId);
                     ApplyObservedResponse(response);
-                    if (response.Kind == DummyResponseKind.Error)
+                    if (response.Kind == DummyResponseKind.Error && engineeringCorrelationId is null)
                     {
                         throw new GatewayProtocolException($"Device returned error: {response.ErrorCode}");
                     }
@@ -1983,6 +2201,7 @@ public sealed class RobotGateway : IAsyncDisposable
     {
         if (response.Kind == DummyResponseKind.JointPositions && response.PositionsDeg is not null)
         {
+            var feedbackValidity = ObserveEngineeringMotionFeedback(response.PositionsDeg);
             JointStateFrame next;
             lock (stateGate)
             {
@@ -1992,7 +2211,7 @@ public sealed class RobotGateway : IAsyncDisposable
                     timeProvider.GetUtcNow(),
                     [.. response.PositionsDeg],
                     DataSource.Measured,
-                    Validity.Valid);
+                    feedbackValidity);
                 jointState = next;
             }
 
@@ -2030,6 +2249,91 @@ public sealed class RobotGateway : IAsyncDisposable
                 Validity = Validity.Invalid
             });
         }
+    }
+
+    private Validity ObserveEngineeringMotionFeedback(IReadOnlyList<double> positionsDeg)
+    {
+        if (Volatile.Read(ref engineeringManualMotionActive) == 0)
+        {
+            return Validity.Valid;
+        }
+
+        var frozenBecameSuspected = false;
+        var feedbackResumed = false;
+        string? requestId;
+        string? correlationId;
+        int sampleCount;
+        double maximumObservedMovementDeg;
+        double maximumTargetErrorDeg;
+        TimeSpan elapsed;
+        bool feedbackFrozenSuspected;
+        lock (commandStateGate)
+        {
+            if (engineeringMotionTargetPositionsDeg is null
+                || engineeringMotionTargetPositionsDeg.Length != positionsDeg.Count)
+            {
+                return engineeringMotionFeedbackFrozenSuspected ? Validity.Stale : Validity.Valid;
+            }
+
+            engineeringMotionBaselinePositionsDeg ??= [.. positionsDeg];
+            engineeringMotionFeedbackSamples++;
+            engineeringMotionMaximumObservedMovementDeg = Math.Max(
+                engineeringMotionMaximumObservedMovementDeg,
+                positionsDeg.Zip(
+                    engineeringMotionBaselinePositionsDeg,
+                    (current, baseline) => Math.Abs(current - baseline)).Max());
+            maximumTargetErrorDeg = positionsDeg.Zip(
+                engineeringMotionTargetPositionsDeg,
+                (current, target) => Math.Abs(target - current)).Max();
+            elapsed = timeProvider.GetElapsedTime(engineeringMotionStartedTimestamp);
+
+            if (engineeringMotionFeedbackFrozenSuspected
+                && engineeringMotionMaximumObservedMovementDeg > EngineeringFeedbackMovementEpsilonDeg)
+            {
+                engineeringMotionFeedbackFrozenSuspected = false;
+                feedbackResumed = true;
+            }
+            else if (!engineeringMotionFeedbackFrozenSuspected
+                && engineeringMotionFeedbackSamples >= EngineeringFeedbackMinimumSamples
+                && elapsed >= options.EngineeringFeedbackFreezeWindow
+                && engineeringMotionMaximumObservedMovementDeg <= EngineeringFeedbackMovementEpsilonDeg
+                && maximumTargetErrorDeg >= EngineeringFeedbackTargetErrorThresholdDeg)
+            {
+                engineeringMotionFeedbackFrozenSuspected = true;
+                frozenBecameSuspected = true;
+            }
+
+            requestId = engineeringMotionRequestId;
+            correlationId = engineeringMotionResponseCorrelationId;
+            sampleCount = engineeringMotionFeedbackSamples;
+            maximumObservedMovementDeg = engineeringMotionMaximumObservedMovementDeg;
+            feedbackFrozenSuspected = engineeringMotionFeedbackFrozenSuspected;
+        }
+
+        if (frozenBecameSuspected)
+        {
+            var detail = $"RequestId={requestId ?? "unknown"} Samples={sampleCount} WindowMs={elapsed.TotalMilliseconds:F0} MaxObservedMovementDeg={maximumObservedMovementDeg:F3} MaxTargetErrorDeg={maximumTargetErrorDeg:F3}; #GETJPOS replies continued but the measured angles did not change; firmware feedback acquisition may be frozen while enabled";
+            RecordProtocolError("feedbackFrozen", detail, GetSession().SessionId, correlationId);
+            diagnostics.Record(new(
+                "engineering.motion.feedback_frozen_suspected",
+                GatewayDiagnosticSeverity.Warning,
+                GetSession().SessionId,
+                activeTransport?.PortName,
+                detail));
+        }
+        else if (feedbackResumed)
+        {
+            diagnostics.Record(new(
+                "engineering.motion.feedback_progress_resumed",
+                GatewayDiagnosticSeverity.Information,
+                GetSession().SessionId,
+                activeTransport?.PortName,
+                $"RequestId={requestId ?? "unknown"} Samples={sampleCount} MaxObservedMovementDeg={maximumObservedMovementDeg:F3}; measured joint motion is visible again"));
+        }
+
+        return Volatile.Read(ref engineeringManualMotionActive) != 0 && feedbackFrozenSuspected
+            ? Validity.Stale
+            : Validity.Valid;
     }
 
     private void MarkStatusCycleValid(int mode, bool enabled)

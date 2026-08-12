@@ -143,35 +143,35 @@ describe('JSON Schema and TypeScript contract conformance', () => {
   it('rejects contradictory capability claims and malformed six-axis targets', () => {
     const validateCapabilities = gatewayValidator('RobotGatewayCapabilitiesV1');
     expect(validateCapabilities({
-      contractVersion: '1.2', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
+      contractVersion: '1.3', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
       readOnlyConnection: true, liveTelemetry: true, hardwareCommands: true, directCommand: false,
       commandPolicy: 'disabled', allowedQueries: ['#GETJPOS', '#GETMODE', '#GETENABLE'],
       supportedCommands: ['enable'], jointGroupSpeedLimitDegS: null, jointGroupCompletion: null,
       engineeringJointSpeedMaxDegS: null
     })).toBe(false);
     expect(validateCapabilities({
-      contractVersion: '1.2', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
+      contractVersion: '1.3', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
       readOnlyConnection: true, liveTelemetry: true, hardwareCommands: true, directCommand: true,
       commandPolicy: 'engineering', allowedQueries: ['#GETJPOS', '#GETMODE', '#GETENABLE'],
       supportedCommands: ['enable', 'stopAndDisable', 'setMode'], jointGroupSpeedLimitDegS: null,
       jointGroupCompletion: null, engineeringJointSpeedMaxDegS: 100
     })).toBe(true);
     expect(validateCapabilities({
-      contractVersion: '1.2', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
+      contractVersion: '1.3', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
       readOnlyConnection: true, liveTelemetry: true, hardwareCommands: true, directCommand: false,
       commandPolicy: 'supervised', allowedQueries: ['#GETJPOS', '#GETMODE', '#GETENABLE'],
       supportedCommands: ['jointGroup'], jointGroupSpeedLimitDegS: null, jointGroupCompletion: null,
       engineeringJointSpeedMaxDegS: null
     })).toBe(false);
     expect(validateCapabilities({
-      contractVersion: '1.2', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
+      contractVersion: '1.3', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
       readOnlyConnection: true, liveTelemetry: true, hardwareCommands: true, directCommand: false,
       commandPolicy: 'supervised', allowedQueries: ['#GETJPOS', '#GETMODE', '#GETENABLE'],
       supportedCommands: ['jointGroup'], jointGroupSpeedLimitDegS: 10, jointGroupCompletion: null,
       engineeringJointSpeedMaxDegS: null
     })).toBe(false);
     expect(validateCapabilities({
-      contractVersion: '1.2', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
+      contractVersion: '1.3', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
       readOnlyConnection: true, liveTelemetry: true, hardwareCommands: true, directCommand: false,
       commandPolicy: 'supervised', allowedQueries: ['#GETJPOS', '#GETMODE', '#GETENABLE'],
       supportedCommands: ['jointGroup'], jointGroupSpeedLimitDegS: 10,
@@ -215,6 +215,19 @@ describe('JSON Schema and TypeScript contract conformance', () => {
     })).toBe(false);
   });
 
+  it('keeps write-only direct results distinct from device acknowledgements', () => {
+    const validate = gatewayValidator('DirectCommandResult');
+    const sent = {
+      requestId: 'move-1', sessionId: 'session-1', status: 'sent', evidence: 'transportWritten',
+      normalizedLine: '>1,2,3,4,5,6,10', message: 'written only', timestampUtc: '2026-08-12T00:00:00.000Z'
+    };
+
+    expect(validate(sent), JSON.stringify(validate.errors)).toBe(true);
+    expect(validate({ ...sent, evidence: 'deviceAck' })).toBe(false);
+    expect(validate({ ...sent, deviceReply: 'ok' })).toBe(false);
+    expect(validate({ ...sent, status: 'replied' })).toBe(false);
+  });
+
   it.each([
     ['JointStateFrame', {
       sequence: 1, profileId: 'dummy-6dof', timestampUtc: '2026-08-08T00:00:00.000Z',
@@ -227,7 +240,7 @@ describe('JSON Schema and TypeScript contract conformance', () => {
       portName: 'COM4', profileId: 'dummy-6dof'
     }],
     ['RobotGatewayCapabilitiesV1', {
-      contractVersion: '1.2', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
+      contractVersion: '1.3', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
       readOnlyConnection: true, liveTelemetry: true, hardwareCommands: false, directCommand: false,
       commandPolicy: 'disabled', allowedQueries: ['#GETJPOS', '#GETMODE', '#GETENABLE'],
       supportedCommands: [], jointGroupSpeedLimitDegS: null, jointGroupCompletion: null,
@@ -247,8 +260,8 @@ describe('JSON Schema and TypeScript contract conformance', () => {
       requestId: 'direct-1', sessionId: 'session-1', profileId: 'dummy-6dof', line: '#GETJPOS'
     }],
     ['DirectCommandResult', {
-      requestId: 'direct-1', sessionId: 'session-1', status: 'queued', evidence: 'deviceQueued',
-      normalizedLine: '>0,1,2,3,4,5,10', message: 'queued, not completed', timestampUtc: '2026-08-08T00:00:00.000Z'
+      requestId: 'direct-1', sessionId: 'session-1', status: 'sent', evidence: 'transportWritten',
+      normalizedLine: '>0,1,2,3,4,5,10', message: 'written, manually confirmed', timestampUtc: '2026-08-08T00:00:00.000Z'
     }],
     ['RobotCommandRequestSnapshot', {
       commandKind: 'jointGroup', requestFingerprintSha256: 'C'.repeat(64), mode: null,

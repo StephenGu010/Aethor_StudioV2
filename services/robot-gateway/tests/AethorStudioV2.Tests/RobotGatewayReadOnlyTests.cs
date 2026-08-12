@@ -266,6 +266,31 @@ public sealed class RobotGatewayReadOnlyTests
     }
 
     [Fact]
+    public async Task SlowStatusQueriesAreInterleavedWithJointPositionSamples()
+    {
+        var transport = FakeAsciiTransport.WithDefaultStatus();
+        await using var gateway = CreateGateway(
+            new FakeAsciiTransportFactory(_ => transport),
+            options: FastOptions() with
+            {
+                JointPollInterval = TimeSpan.FromMilliseconds(50),
+                StatusPollInterval = TimeSpan.FromMilliseconds(500)
+            });
+
+        await gateway.ConnectAsync(new("COM4", GatewayContractV1.DummyProfileId), CancellationToken.None);
+        await TestWait.UntilAsync(() => gateway.GetSession().Validity == Validity.Valid);
+
+        var startupWrites = transport.Writes.ToArray();
+        var modeIndex = Array.IndexOf(startupWrites, "#GETMODE");
+        var enableIndex = Array.IndexOf(startupWrites, "#GETENABLE");
+        Assert.True(modeIndex >= 0 && enableIndex > modeIndex);
+        Assert.Contains("#GETJPOS", startupWrites[(modeIndex + 1)..enableIndex]);
+        Assert.DoesNotContain(startupWrites.Zip(startupWrites.Skip(1)), pair =>
+            pair.First is "#GETMODE" or "#GETENABLE"
+            && pair.Second is "#GETMODE" or "#GETENABLE");
+    }
+
+    [Fact]
     public async Task RepeatedShutdownBreaksUncancellableReadsWithoutRetainingSerialOwnership()
     {
         const int iterations = 32;

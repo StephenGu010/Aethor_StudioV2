@@ -356,30 +356,322 @@ public sealed class RobotGatewayCommandTests
     }
 
     [Fact]
-    public async Task EngineeringDirectJointGroupCanQueueWithoutClaimingPhysicalCompletion()
+    public async Task JointGroupCompletionUsesTheFastTelemetryCadence()
     {
+        var moved = false;
+        var transport = new FakeAsciiTransport((line, _) => line switch
+        {
+            "#GETJPOS" => [FakeAsciiTransport.Ascii(moved ? "ok 1 2 3 4 5 6\n" : "ok 0 0 0 0 0 0\n")],
+            "#GETMODE" => [FakeAsciiTransport.Ascii("ok 2 INT_POINT\n")],
+            "#GETENABLE" => [FakeAsciiTransport.Ascii("ok 1\n")],
+            var commandLine when commandLine.StartsWith('>') => AcceptMove(),
+            _ => []
+        });
+        IReadOnlyList<byte[]> AcceptMove()
+        {
+            moved = true;
+            return [FakeAsciiTransport.Ascii("15\n")];
+        }
+
+        var completion = new JointGroupCompletionPolicy(0.1, 100, 500);
+        var options = SupervisedOptions(20, completion) with
+        {
+            JointPollInterval = TimeSpan.FromMilliseconds(25),
+            PollInterval = TimeSpan.FromMilliseconds(500)
+        };
+        await using var gateway = CreateGateway(transport, options);
+        var session = await ConnectAndWaitAsync(gateway);
+
+        var result = await gateway.SendJointGroupAsync(
+            new("move-fast-feedback", session.SessionId, GatewayContractV1.DummyProfileId, [1, 2, 3, 4, 5, 6], 10),
+            CancellationToken.None);
+
+        Assert.Equal(CommandStatus.Completed, result.Status);
+        Assert.Equal(CommandEvidence.FeedbackConfirmed, result.Evidence);
+        var audit = Assert.IsType<CommandAuditRecord>(gateway.GetCommand("move-fast-feedback"));
+        Assert.True(audit.TransmittedPayloads.Count(line => line == "#GETJPOS") >= 5);
+    }
+
+    [Fact]
+    public async Task EngineeringJointGroupWritesAndAllowsReplacementWithoutAnyDeviceResponse()
+    {
+        var diagnostics = new RecordingGatewayDiagnostics();
         var transport = new FakeAsciiTransport((line, _) => line switch
         {
             "#GETJPOS" => [FakeAsciiTransport.Ascii("ok 0 0 0 0 0 0\n")],
             "#GETMODE" => [FakeAsciiTransport.Ascii("ok 2 INT_POINT\n")],
             "#GETENABLE" => [FakeAsciiTransport.Ascii("ok 1\n")],
-            var direct when direct.StartsWith('>') => [FakeAsciiTransport.Ascii("15\n")],
+            var direct when direct.StartsWith('>') => [],
             _ => []
         });
-        await using var gateway = CreateGateway(transport, EngineeringOptions());
+        await using var gateway = CreateGateway(transport, EngineeringOptions(), diagnostics: diagnostics);
         var session = await ConnectAndWaitAsync(gateway);
 
         var result = await gateway.SendDirectAsync(
             new("direct-joint-1", session.SessionId, GatewayContractV1.DummyProfileId, ">1,2,3,4,5,6,10"),
             CancellationToken.None);
+        var replacement = await gateway.SendDirectAsync(
+            new("direct-joint-2", session.SessionId, GatewayContractV1.DummyProfileId, ">2,3,4,5,6,7,10"),
+            CancellationToken.None);
 
         Assert.Equal(GatewayCommandPolicy.Engineering, gateway.Capabilities.CommandPolicy);
         Assert.True(gateway.Capabilities.DirectCommand);
         Assert.DoesNotContain(RobotCommandKind.JointGroup, gateway.Capabilities.SupportedCommands);
-        Assert.Equal(DirectCommandStatus.Queued, result.Status);
-        Assert.Equal(CommandEvidence.DeviceQueued, result.Evidence);
-        Assert.Contains("尚未验证机械臂到位", result.Message);
+        Assert.Equal(DirectCommandStatus.Sent, result.Status);
+        Assert.Equal(CommandEvidence.TransportWritten, result.Evidence);
+        Assert.Contains("未等待设备队列号、ok 或到位确认", result.Message);
+        Assert.Equal(DirectCommandStatus.Sent, replacement.Status);
+        Assert.Equal(CommandEvidence.TransportWritten, replacement.Evidence);
+        Assert.Equal(2, transport.Writes.Count(line => line.StartsWith('>')));
         Assert.Contains(">1,2,3,4,5,6,10", transport.Writes);
+        Assert.Equal(2, diagnostics.Events.Count(item => item.EventName == "engineering.motion.transport_written"));
+    }
+
+    [Fact]
+    public async Task EngineeringJointGroupTreatsLateQueueAndAckAsObservationsOnly()
+    {
+        var diagnostics = new RecordingGatewayDiagnostics();
+        var moveSent = false;
+        var transport = new FakeAsciiTransport((line, _) => line switch
+        {
+            "#GETJPOS" when moveSent => ObserveLateResponses(),
+            "#GETJPOS" => [FakeAsciiTransport.Ascii("ok 0 0 0 0 0 0\n")],
+            "#GETMODE" => [FakeAsciiTransport.Ascii("ok 1 SEQ_POINT\n")],
+            "#GETENABLE" => [FakeAsciiTransport.Ascii("ok 1\n")],
+            var commandLine when commandLine.StartsWith('>') => BeginMove(),
+            _ => []
+        });
+        IReadOnlyList<byte[]> BeginMove()
+        {
+            moveSent = true;
+            return [];
+        }
+        IReadOnlyList<byte[]> ObserveLateResponses()
+        {
+            moveSent = false;
+            return [
+                FakeAsciiTransport.Ascii("15\n"),
+                FakeAsciiTransport.Ascii("ok\n"),
+                FakeAsciiTransport.Ascii("ok 1 2 3 4 5 6\n")
+            ];
+        }
+        await using var gateway = CreateGateway(transport, EngineeringOptions(), diagnostics: diagnostics);
+        var session = await ConnectAndWaitAsync(gateway);
+
+        var first = await gateway.SendDirectAsync(
+            new("sequential-move-1", session.SessionId, GatewayContractV1.DummyProfileId, ">1,2,3,4,5,6,10"),
+            CancellationToken.None);
+        var second = await gateway.SendDirectAsync(
+            new("sequential-move-2", session.SessionId, GatewayContractV1.DummyProfileId, ">2,3,4,5,6,7,10"),
+            CancellationToken.None);
+
+        Assert.Equal(DirectCommandStatus.Sent, first.Status);
+        await TestWait.UntilAsync(() => diagnostics.Events.Count(item => item.EventName == "engineering.motion.device_response_observed") >= 2);
+        Assert.Equal(DirectCommandStatus.Sent, second.Status);
+        Assert.Equal(2, transport.Writes.Count(line => line.StartsWith('>')));
+        Assert.DoesNotContain(diagnostics.Events, item => item.EventName == "engineering.motion.unconfirmed");
+    }
+
+    [Fact]
+    public async Task EngineeringMotionObserverDoesNotStealExplicitStopResponse()
+    {
+        var transport = new FakeAsciiTransport((line, _) => line switch
+        {
+            "#GETJPOS" => [FakeAsciiTransport.Ascii("ok 0 0 0 0 0 0\n")],
+            "#GETMODE" => [FakeAsciiTransport.Ascii("ok 1 SEQ_POINT\n")],
+            "#GETENABLE" => [FakeAsciiTransport.Ascii("ok 1\n")],
+            "!STOP" => [FakeAsciiTransport.Ascii("Stopped ok\n")],
+            var commandLine when commandLine.StartsWith('>') => [],
+            _ => []
+        });
+        var diagnostics = new RecordingGatewayDiagnostics();
+        await using var gateway = CreateGateway(transport, EngineeringOptions(), diagnostics: diagnostics);
+        var session = await ConnectAndWaitAsync(gateway);
+
+        var move = await gateway.SendDirectAsync(
+            new("move-before-stop", session.SessionId, GatewayContractV1.DummyProfileId, ">1,2,3,4,5,6,10"),
+            CancellationToken.None);
+        var stop = await gateway.SendDirectAsync(
+            new("explicit-stop", session.SessionId, GatewayContractV1.DummyProfileId, "!STOP"),
+            CancellationToken.None);
+
+        Assert.Equal(DirectCommandStatus.Sent, move.Status);
+        Assert.Equal(DirectCommandStatus.Replied, stop.Status);
+        Assert.Equal("Stopped ok", stop.DeviceReply);
+        Assert.Contains(
+            gateway.GetProtocolFrames(),
+            frame => frame.Raw == "Stopped ok"
+                && frame.CorrelationId is not null
+                && !frame.CorrelationId.StartsWith("engineering-manual-", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task EngineeringManualMotionQueryTimeoutsDoNotDisconnectOrBlockTheNextTarget()
+    {
+        var moveCount = 0;
+        var transport = new FakeAsciiTransport((line, _) => line switch
+        {
+            "#GETJPOS" when moveCount > 0 => [],
+            "#GETJPOS" => [FakeAsciiTransport.Ascii("ok 0 0 0 0 0 0\n")],
+            "#GETMODE" => [FakeAsciiTransport.Ascii("ok 3 CONT_TRAJ\n")],
+            "#GETENABLE" => [FakeAsciiTransport.Ascii("ok 1\n")],
+            var commandLine when commandLine.StartsWith('>') => IncrementMoveCount(),
+            _ => []
+        });
+        IReadOnlyList<byte[]> IncrementMoveCount()
+        {
+            moveCount++;
+            return [];
+        }
+        var diagnostics = new RecordingGatewayDiagnostics();
+        await using var gateway = CreateGateway(transport, EngineeringOptions(), diagnostics: diagnostics);
+        var session = await ConnectAndWaitAsync(gateway);
+        var jointQueriesBeforeMotion = transport.Writes.Count(line => line == "#GETJPOS");
+
+        var first = await gateway.SendDirectAsync(
+            new("missing-queue-1", session.SessionId, GatewayContractV1.DummyProfileId, ">1,2,3,4,5,6,10"),
+            CancellationToken.None);
+        await TestWait.UntilAsync(
+            () => transport.Writes.Count(line => line == "#GETJPOS") >= jointQueriesBeforeMotion + 21,
+            TimeSpan.FromSeconds(3));
+        var second = await gateway.SendDirectAsync(
+            new("missing-queue-2", session.SessionId, GatewayContractV1.DummyProfileId, ">2,3,4,5,6,7,10"),
+            CancellationToken.None);
+
+        Assert.Equal(DirectCommandStatus.Sent, first.Status);
+        Assert.Equal(ConnectionState.Connected, gateway.GetSession().ConnectionState);
+        Assert.Equal(Validity.Stale, gateway.GetSession().Validity);
+        Assert.Equal(DirectCommandStatus.Sent, second.Status);
+        Assert.Equal(2, transport.Writes.Count(line => line.StartsWith('>')));
+        Assert.Equal(2, diagnostics.Events.Count(item => item.EventName == "engineering.motion.query_timeout"));
+    }
+
+    [Fact]
+    public async Task EngineeringManualMotionMarksContinuingButFrozenFeedbackStaleAndRecoversOnMovement()
+    {
+        var reportedJointOne = 0d;
+        var transport = new FakeAsciiTransport((line, _) => line switch
+        {
+            "#GETJPOS" => [FakeAsciiTransport.Ascii($"ok {reportedJointOne} 0 0 0 0 0\n")],
+            "#GETMODE" => [FakeAsciiTransport.Ascii("ok 2 INT_POINT\n")],
+            "#GETENABLE" => [FakeAsciiTransport.Ascii("ok 1\n")],
+            var commandLine when commandLine.StartsWith('>') => [],
+            _ => []
+        });
+        var diagnostics = new RecordingGatewayDiagnostics();
+        await using var gateway = CreateGateway(
+            transport,
+            EngineeringOptions() with
+            {
+                JointPollInterval = TimeSpan.FromMilliseconds(25),
+                StatusPollInterval = TimeSpan.FromMilliseconds(500),
+                EngineeringFeedbackFreezeWindow = TimeSpan.FromMilliseconds(250)
+            },
+            diagnostics: diagnostics);
+        var session = await ConnectAndWaitAsync(gateway);
+
+        var sent = await gateway.SendDirectAsync(
+            new("frozen-feedback-move", session.SessionId, GatewayContractV1.DummyProfileId, ">10,0,0,0,0,0,10"),
+            CancellationToken.None);
+        await TestWait.UntilAsync(() => diagnostics.Events.Any(
+            item => item.EventName == "engineering.motion.feedback_frozen_suspected"));
+
+        Assert.Equal(DirectCommandStatus.Sent, sent.Status);
+        Assert.Equal(Validity.Stale, gateway.GetJointState().Validity);
+        var frozenFrame = Assert.Single(gateway.GetProtocolFrames(100), frame => frame.ParsedKind == "feedbackFrozen");
+        Assert.Equal(ProtocolDirection.Error, frozenFrame.Direction);
+        Assert.StartsWith($"engineering-manual-{session.SessionId}", frozenFrame.CorrelationId);
+        Assert.Contains("RequestId=frozen-feedback-move", frozenFrame.Raw);
+
+        var replacement = await gateway.SendDirectAsync(
+            new("replacement-while-frozen", session.SessionId, GatewayContractV1.DummyProfileId, ">20,0,0,0,0,0,10"),
+            CancellationToken.None);
+        await TestWait.UntilAsync(() => transport.Writes.Count(line => line == "#GETJPOS") >= 2);
+
+        Assert.Equal(DirectCommandStatus.Sent, replacement.Status);
+        Assert.Equal(Validity.Stale, gateway.GetJointState().Validity);
+        Assert.Equal(2, transport.Writes.Count(line => line.StartsWith('>')));
+
+        reportedJointOne = 1;
+        await TestWait.UntilAsync(() => gateway.GetJointState().Validity == Validity.Valid);
+
+        Assert.Contains(
+            diagnostics.Events,
+            item => item.EventName == "engineering.motion.feedback_progress_resumed");
+        Assert.Equal(1, gateway.GetJointState().PositionsDeg[0]);
+        Assert.Equal(ConnectionState.Connected, gateway.GetSession().ConnectionState);
+    }
+
+    [Fact]
+    public void EngineeringFeedbackFreezeWindowRejectsUnboundedConfiguration()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => (EngineeringOptions() with
+        {
+            EngineeringFeedbackFreezeWindow = TimeSpan.FromMilliseconds(249)
+        }).Validate());
+        Assert.Throws<ArgumentOutOfRangeException>(() => (EngineeringOptions() with
+        {
+            EngineeringFeedbackFreezeWindow = TimeSpan.FromMilliseconds(5_001)
+        }).Validate());
+    }
+
+    [Fact]
+    public async Task StopAndDisableEndsEngineeringManualMotionAndAllowsAConfirmedRestart()
+    {
+        var enabled = true;
+        var moveCount = 0;
+        var diagnostics = new RecordingGatewayDiagnostics();
+        var transport = new FakeAsciiTransport((line, _) => line switch
+        {
+            "#GETJPOS" => [FakeAsciiTransport.Ascii("ok 0 0 0 0 0 0\n")],
+            "#GETMODE" => [FakeAsciiTransport.Ascii("ok 1 SEQ_POINT\n")],
+            "#GETENABLE" => [FakeAsciiTransport.Ascii(enabled ? "ok 1\n" : "ok 0\n")],
+            "!START" => Enable(),
+            "!STOP" => [FakeAsciiTransport.Ascii("Stopped ok\n")],
+            DummyAsciiProtocol.SafetyZeroCurrentLine => [],
+            "!DISABLE" => Disable(),
+            var commandLine when commandLine.StartsWith('>') => IncrementMoveCount(),
+            _ => []
+        });
+        IReadOnlyList<byte[]> Enable()
+        {
+            enabled = true;
+            return [FakeAsciiTransport.Ascii("Started ok\n")];
+        }
+        IReadOnlyList<byte[]> Disable()
+        {
+            enabled = false;
+            return [FakeAsciiTransport.Ascii("Disabled ok\n")];
+        }
+        IReadOnlyList<byte[]> IncrementMoveCount()
+        {
+            moveCount++;
+            return [];
+        }
+
+        await using var gateway = CreateGateway(transport, EngineeringOptions(), diagnostics: diagnostics);
+        var session = await ConnectAndWaitAsync(gateway);
+        var firstMove = await gateway.SendDirectAsync(
+            new("queued-without-final-ack", session.SessionId, GatewayContractV1.DummyProfileId, ">1,2,3,4,5,6,10"),
+            CancellationToken.None);
+        var stop = await gateway.StopAndDisableAsync(
+            Command("recover-motion", session.SessionId),
+            CancellationToken.None);
+        await TestWait.UntilAsync(() => gateway.GetSession().Validity == Validity.Valid);
+        var enable = await gateway.EnableAsync(
+            Command("enable-after-recovery", session.SessionId),
+            CancellationToken.None);
+        var secondMove = await gateway.SendDirectAsync(
+            new("move-after-recovery", session.SessionId, GatewayContractV1.DummyProfileId, ">2,3,4,5,6,7,10"),
+            CancellationToken.None);
+
+        Assert.Equal(CommandStatus.Completed, stop.Status);
+        Assert.Equal(CommandEvidence.FeedbackConfirmed, stop.Evidence);
+        Assert.Equal(DirectCommandStatus.Sent, firstMove.Status);
+        Assert.Equal(CommandStatus.Completed, enable.Status);
+        Assert.Equal(DirectCommandStatus.Sent, secondMove.Status);
+        Assert.Equal(CommandEvidence.TransportWritten, secondMove.Evidence);
+        Assert.Equal(2, transport.Writes.Count(line => line.StartsWith('>')));
     }
 
     [Fact]

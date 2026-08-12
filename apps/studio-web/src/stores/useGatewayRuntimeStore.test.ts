@@ -28,6 +28,30 @@ describe('gateway runtime store', () => {
     ]);
   });
 
+  it('keeps routine joint polling out of the operator event stream without dropping raw evidence', () => {
+    const jointQuery = { ...frame(1), direction: 'tx' as const, raw: '#GETJPOS', parsedKind: 'query' };
+    const jointReply = { ...frame(2), direction: 'rx' as const, raw: 'ok 1 2 3 4 5 6', parsedKind: 'jointPositions' };
+    const modeReply = { ...frame(3), direction: 'rx' as const, raw: 'ok 2 INT_POINT', parsedKind: 'mode' };
+
+    useGatewayRuntimeStore.getState().replaceProtocolFrames([jointQuery, jointReply, modeReply]);
+
+    expect(useGatewayRuntimeStore.getState().protocolFrames).toHaveLength(3);
+    expect(useGatewayRuntimeStore.getState().operatorProtocolFrames).toEqual([modeReply]);
+  });
+
+  it('keeps the operator event view within the same 256-frame raw evidence window', () => {
+    const oldOperatorFrame = { ...frame(0), direction: 'rx' as const, parsedKind: 'mode' };
+    useGatewayRuntimeStore.getState().appendProtocolFrame(oldOperatorFrame);
+    for (let index = 1; index <= 256; index += 1) {
+      useGatewayRuntimeStore.getState().appendProtocolFrame({
+        ...frame(index), direction: 'tx', raw: '#GETJPOS', parsedKind: 'query'
+      });
+    }
+
+    expect(useGatewayRuntimeStore.getState().protocolFrames).toHaveLength(256);
+    expect(useGatewayRuntimeStore.getState().operatorProtocolFrames).toEqual([]);
+  });
+
   it('resets to showcase without claiming a hardware session', () => {
     useGatewayRuntimeStore.getState().setSession({
       sessionId: 'session-1', profileId: 'dummy-6dof', connectionState: 'connected', motorState: 'enabled',
@@ -299,7 +323,7 @@ function frame(index: number): ProtocolFrame {
 
 function gatewayCapabilities(): RobotGatewayCapabilitiesV1 {
   return {
-    contractVersion: '1.2',
+    contractVersion: '1.3',
     protocolAdapterId: 'dummy-ascii-v1',
     serialEnumeration: true,
     readOnlyConnection: true,

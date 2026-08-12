@@ -2,7 +2,7 @@ namespace AethorStudioV2.Domain;
 
 public static class GatewayContractV1
 {
-    public const string Version = "1.2";
+    public const string Version = "1.3";
     public const string DummyProfileId = "dummy-6dof";
     public const string DummyProtocolAdapterId = "dummy-ascii-v1";
 }
@@ -130,6 +130,7 @@ public enum CommandEvidence
 {
     None,
     GatewayAccepted,
+    TransportWritten,
     DeviceQueued,
     DeviceAck,
     FeedbackConfirmed
@@ -203,8 +204,8 @@ public sealed record DirectCommandRequest(
 
 public enum DirectCommandStatus
 {
+    Sent,
     Replied,
-    Queued,
     Rejected,
     TimedOut,
     Failed

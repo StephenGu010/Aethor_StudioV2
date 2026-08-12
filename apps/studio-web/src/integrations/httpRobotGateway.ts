@@ -74,7 +74,7 @@ const jointGroupCompletionSchema = z.object({
   }
 });
 const capabilitiesSchema = z.object({
-  contractVersion: z.literal('1.2'),
+  contractVersion: z.literal('1.3'),
   protocolAdapterId: z.literal('dummy-ascii-v1'),
   serialEnumeration: z.boolean(),
   readOnlyConnection: z.boolean(),
@@ -123,7 +123,7 @@ const commandResultSchema = z.object({
   commandKind: commandKindSchema,
   status: z.enum(['unsupported', 'rejected', 'accepted', 'completed', 'failed', 'timedOut', 'cancelled', 'unconfirmed']),
   code: z.enum(['ok', 'commandsDisabled', 'invalidRequest', 'sessionMismatch', 'notConnected', 'feedbackStale', 'motorNotEnabled', 'invalidTarget', 'speedUnverified', 'speedOutOfRange', 'safetyInterlockLatched', 'commandInFlight', 'commandIdConflict', 'deviceRejected', 'deviceUnconfirmed', 'transportError', 'timeout', 'cancelled']),
-  evidence: z.enum(['none', 'gatewayAccepted', 'deviceQueued', 'deviceAck', 'feedbackConfirmed']),
+  evidence: z.enum(['none', 'gatewayAccepted', 'transportWritten', 'deviceQueued', 'deviceAck', 'feedbackConfirmed']),
   message: z.string().max(500),
   timestampUtc: utcTimestampSchema,
   deviceReply: z.string().max(4096).nullable().optional()
@@ -131,13 +131,20 @@ const commandResultSchema = z.object({
 const directCommandResultSchema = z.object({
   requestId: z.string().min(1).max(128),
   sessionId: z.string().min(1).max(128),
-  status: z.enum(['replied', 'queued', 'rejected', 'timedOut', 'failed']),
-  evidence: z.enum(['none', 'gatewayAccepted', 'deviceQueued', 'deviceAck', 'feedbackConfirmed']),
+  status: z.enum(['sent', 'replied', 'rejected', 'timedOut', 'failed']),
+  evidence: z.enum(['none', 'gatewayAccepted', 'transportWritten', 'deviceQueued', 'deviceAck', 'feedbackConfirmed']),
   normalizedLine: z.string().max(255),
   message: z.string().max(500),
   timestampUtc: utcTimestampSchema,
   deviceReply: z.string().max(4096).nullable().optional()
-}).strict();
+}).strict().superRefine((value, context) => {
+  if ((value.status === 'sent') !== (value.evidence === 'transportWritten')) {
+    context.addIssue({ code: 'custom', message: 'Only sent direct results may use transportWritten evidence' });
+  }
+  if (value.status === 'sent' && value.deviceReply != null) {
+    context.addIssue({ code: 'custom', message: 'A sent direct result cannot include an unverified device reply' });
+  }
+});
 const commandRequestSnapshotSchema = z.object({
   commandKind: commandKindSchema,
   requestFingerprintSha256: z.string().regex(/^[0-9A-Fa-f]{64}$/),
@@ -384,9 +391,9 @@ export class HttpRobotGateway implements RobotGatewayV1 {
     receiver?.(result.data);
   }
 
-  private async request<T>(path: string, schema: z.ZodType<T>, init: RequestInit = {}): Promise<T> {
+  private async request<T>(path: string, schema: z.ZodType<T>, init: RequestInit = {}, timeoutMs = this.requestTimeoutMs): Promise<T> {
     const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), this.requestTimeoutMs);
+    const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await this.fetcher(`${this.baseUrl}${path}`, {
         ...init,

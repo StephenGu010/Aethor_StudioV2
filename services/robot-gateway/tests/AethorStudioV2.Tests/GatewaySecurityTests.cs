@@ -111,7 +111,7 @@ public sealed class GatewaySecurityTests
     }
 
     [Theory]
-    [InlineData(49, 500)]
+    [InlineData(19, 500)]
     [InlineData(1_001, 1_001)]
     [InlineData(100, 99)]
     [InlineData(100, 10_001)]
@@ -125,6 +125,15 @@ public sealed class GatewaySecurityTests
                 [],
                 JointPollIntervalMs: jointIntervalMs,
                 StatusPollIntervalMs: statusIntervalMs).Validate(isDevelopment: true));
+    }
+
+    [Fact]
+    public void DefaultTelemetryCadenceRequestsJointPositionsAtFortyHertz()
+    {
+        var options = new GatewayHostOptions(5127, ValidToken, "development", []);
+
+        Assert.Equal(25, options.JointPollIntervalMs);
+        Assert.Equal(500, options.StatusPollIntervalMs);
     }
 
     [Fact]
