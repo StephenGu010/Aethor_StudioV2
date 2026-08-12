@@ -181,6 +181,8 @@ internal sealed class FakeAsciiTransport : IAsciiTransport
         }
     }
 
+    public void ReleaseWrites() => writeRelease.TrySetResult();
+
     public ValueTask DisposeAsync()
     {
         if (!disposed)

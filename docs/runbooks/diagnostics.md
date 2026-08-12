@@ -67,6 +67,8 @@ Desktop 通过 `Runtime.consoleAPICalled` 接收前端 `console.info`，只把�
 
 既有资源/会话探针继续使用 `serial.opened`、`serial.closed`、`serial.open.failed`、`serial.open.timeout`、`serial.open.cancelled`、`serial.query.timeout`、`serial.polling.faulted`、`serial.close.failed`、`events.publish.timeout`、`events.publish.failed`、`events.shutdown.timeout` 和 `events.shutdown.abandoned`。这些事件可包含 session/port 上下文，但不得据此推断电机状态或命令完成。`serial.open.timeout/cancelled` 表示候选连接没有成为 active transport；网关已开始释放候选资源并隔离本进程后续打开尝试，操作者应关闭并重启该 Gateway，不应连续点击连接。
 
+A1-U1 双工运行时另定义 `serial.scheduler.queue.rejected`、`serial.scheduler.queue.superseded`、`serial.scheduler.write.expired`、`serial.scheduler.write.failed`、`serial.scheduler.read.failed`、`serial.scheduler.receive_handler.failed` 和 `serial.scheduler.close.failed`。写入异常同时通过 ticket 的 `failed` 终态和 probe `FailedWrites/LastFault` 观察。事件详情只包含 work ID、priority、queue depth、替代关系或异常类别，不包含串口 payload。probe snapshot 提供四级队列深度，以及 accepted/rejected/completed/expired/superseded/failed、received chunks/bytes 和 last fault。该运行时当前未注册生产 DI，因此正式日志中没有这些事件是正常现象；A1-U2 接线后才纳入现场排查。
+
 ### WebView2 性能样本
 
 1. 包内页面成功导航后立即采一条，随后每 60 秒最多一条；上一次 CDP 请求未终结时不并发创建第二次采样。

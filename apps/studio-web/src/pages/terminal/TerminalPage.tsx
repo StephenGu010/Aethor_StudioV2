@@ -2,23 +2,41 @@ import { Clipboard, Download, Eye, EyeOff, Filter, Search, Send, ShieldAlert, Tr
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { SourceTag } from '../../components/ui/SourceTag';
 import type { ConnectionState, DataSource, DirectCommandResult, ProtocolFrame, Validity } from '@aethor/contracts';
+import { validateAethorCandidateCommand } from '../../domain/aethorCandidateCommand';
 import { validateDummyCommand } from '../../domain/dummyCommand';
 import { buildProtocolLogText } from '../../domain/protocolExport';
 import { showcaseProtocolFrames } from '../../fixtures/showcase';
 import { robotGateway } from '../../integrations/gatewayInstance';
 import type { RobotGatewayV1 } from '../../integrations/robotGateway';
+import { aethorRoboProfile } from '../../profile/aethorRoboProfile';
+import { dummyProfile } from '../../profile/dummyProfile';
+import { useActiveRobotProfileStore } from '../../stores/useActiveRobotProfileStore';
 import { isRoutineJointPositionFrame, useGatewayRuntimeStore } from '../../stores/useGatewayRuntimeStore';
 
 type DirectionFilter = 'all' | ProtocolFrame['direction'];
-const quickCommands = ['#GETJPOS', '#GETMODE', '#GETENABLE', '#CMDMODE 1', '#CMDMODE 2', '#CMDMODE 3', '!START', '!STOP', '!DISABLE'];
+const dummyQuickCommands = ['#GETJPOS', '#GETMODE', '#GETENABLE', '#CMDMODE 1', '#CMDMODE 2', '#CMDMODE 3', '!START', '!STOP', '!DISABLE'];
+const aethorQuickCommands = [
+  'REQ 1 HELLO *<CRC16>',
+  'REQ 2 GET_INFO *<CRC16>',
+  'REQ 3 GET_CONFIG *<CRC16>',
+  'REQ 4 GET_STATE *<CRC16>',
+  'REQ 5 GET_JPOS *<CRC16>',
+  'REQ 6 GET_MOTORS *<CRC16>',
+  'REQ 7 SET_STREAM hz=50 *<CRC16>',
+  'REQ 8 STOP behavior=controlled *<CRC16>',
+  'REQ 9 DISABLE *<CRC16>'
+];
 
 export function TerminalPage({ gateway = robotGateway }: { gateway?: RobotGatewayV1 }) {
+  const activeProfileId = useActiveRobotProfileStore((state) => state.activeProfileId);
+  const isDummy = activeProfileId === dummyProfile.profileId;
+  const profileUi = isDummy ? dummyTerminalUi : aethorTerminalUi;
   const [query, setQuery] = useState('');
   const [direction, setDirection] = useState<DirectionFilter>('all');
   const [autoScroll, setAutoScroll] = useState(true);
   const [showJointPositionFrames, setShowJointPositionFrames] = useState(false);
   const [hiddenFrameIds, setHiddenFrameIds] = useState<Set<string>>(() => new Set());
-  const [command, setCommand] = useState('#GETJPOS');
+  const [command, setCommand] = useState<string>(profileUi.defaultCommand);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [directResult, setDirectResult] = useState<DirectCommandResult | null>(null);
@@ -28,16 +46,23 @@ export function TerminalPage({ gateway = robotGateway }: { gateway?: RobotGatewa
     : state.operatorProtocolFrames);
   const session = useGatewayRuntimeStore((state) => state.session);
   const jointState = useGatewayRuntimeStore((state) => state.jointState);
-  const gatewayConfigured = gateway.capabilities.readOnlyConnection;
-  const captureFrames = gatewayConfigured
+  const gatewayConfigured = isDummy && gateway.capabilities.readOnlyConnection;
+  const captureFrames = !isDummy
+    ? []
+    : gatewayConfigured
     ? runtimeFrames
     : showJointPositionFrames
       ? showcaseProtocolFrames
       : showcaseProtocolFrames.filter((frame) => !isRoutineJointPositionFrame(frame));
-  const liveCapture = gatewayConfigured;
-  const captureState = getCaptureState(gatewayConfigured, session.connectionState, session.validity, runtimeFrames.length);
-  const validation = validateDummyCommand(command);
-  const sendDisabledReason = getDirectSendDisabledReason({ gateway, session, jointState, command, validation, sending });
+  const liveCapture = isDummy && gatewayConfigured;
+  const captureState = isDummy
+    ? getCaptureState(gatewayConfigured, session.connectionState, session.validity, runtimeFrames.length)
+    : aethorPendingCaptureState;
+  const validation = isDummy ? validateDummyCommand(command) : validateAethorCandidateCommand(command);
+  const directReady = isDummy && gateway.capabilities.rawCommand;
+  const sendDisabledReason = isDummy
+    ? getDirectSendDisabledReason({ gateway, session, jointState, command, validation, sending })
+    : 'Aethor_robo 固件 CRC 向量与独立网关 adapter 尚未完成；当前只做候选协议本地校验';
   const visibleFrames = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return captureFrames.filter((frame) =>
@@ -48,7 +73,12 @@ export function TerminalPage({ gateway = robotGateway }: { gateway?: RobotGatewa
     );
   }, [captureFrames, direction, hiddenFrameIds, query]);
 
-  useEffect(() => setHiddenFrameIds(new Set()), [gatewayConfigured, session.sessionId]);
+  useEffect(() => {
+    setHiddenFrameIds(new Set());
+    setCommand(profileUi.defaultCommand);
+    setDirectResult(null);
+    setSending(false);
+  }, [activeProfileId, gatewayConfigured, profileUi.defaultCommand, session.sessionId]);
 
   useEffect(() => {
     if (!autoScroll || document.visibilityState === 'hidden') return;
@@ -83,7 +113,7 @@ export function TerminalPage({ gateway = robotGateway }: { gateway?: RobotGatewa
       setDirectResult(await gateway.sendDirectCommand({
         requestId: crypto.randomUUID(),
         sessionId: session.sessionId,
-        profileId: 'dummy-6dof',
+        profileId: dummyProfile.profileId,
         line: command.trim()
       }));
     } catch (cause) {
@@ -119,7 +149,7 @@ export function TerminalPage({ gateway = robotGateway }: { gateway?: RobotGatewa
         <div className="terminalCaptureBanner">
           <div><span className={`statusDot ${captureState.tone}`} /><strong>{captureState.label}</strong><span>{captureState.detail}</span></div>
           <span className="terminalCaptureActions">
-            <button
+            {isDummy && <button
               type="button"
               className={showJointPositionFrames ? 'active' : ''}
               aria-pressed={showJointPositionFrames}
@@ -129,7 +159,7 @@ export function TerminalPage({ gateway = robotGateway }: { gateway?: RobotGatewa
             >
               {showJointPositionFrames ? <EyeOff size={13} /> : <Eye size={13} />}
               {showJointPositionFrames ? '隐藏 GETJPOS' : '显示 GETJPOS'}
-            </button>
+            </button>}
             <SourceTag source={captureState.source} />
           </span>
         </div>
@@ -142,7 +172,9 @@ export function TerminalPage({ gateway = robotGateway }: { gateway?: RobotGatewa
               <span className="protocolKind">{frame.parsedKind}</span>
               <SourceTag source={frame.source} />
             </div>
-          )) : <div className="emptyState">{gatewayConfigured
+          )) : <div className="emptyState">{!isDummy
+            ? 'Aethor_robo 终端尚未接入真实 adapter；这里不会显示 Dummy 帧或伪造 TX/RX。'
+            : gatewayConfigured
             ? showJointPositionFrames
               ? '当前网关会话缓冲区没有匹配的协议帧；未使用展示记录回填。'
               : '当前没有匹配的操作事件；GETJPOS 轮询仅从终端隐藏，设备反馈仍在后台更新，未使用展示记录回填。'
@@ -151,13 +183,13 @@ export function TerminalPage({ gateway = robotGateway }: { gateway?: RobotGatewa
 
         <div className="commandComposer">
           <div className="commandComposerHeader">
-            <div><strong>Dummy 指令</strong><span>DUMMY ASCII V1 · ENGINEERING DIRECT</span></div>
-            <span className={`expertState ${gateway.capabilities.rawCommand ? 'unlocked' : ''}`}>{gateway.capabilities.rawCommand ? 'DIRECT READY' : 'LOCAL VALIDATION'}</span>
+            <div><strong>{profileUi.title}</strong><span>{profileUi.protocolLabel}</span></div>
+            <span className={`expertState ${directReady ? 'unlocked' : ''}`}>{directReady ? 'DIRECT READY' : profileUi.inactiveState}</span>
           </div>
           <div className="commandEntry">
             <code>&gt;</code>
             <input
-              aria-label="Dummy ASCII 命令"
+              aria-label={profileUi.inputLabel}
               value={command}
               onChange={(event) => { setCommand(event.currentTarget.value); setDirectResult(null); }}
               onKeyDown={(event) => { if (event.key === 'Enter' && !sendDisabledReason) void sendDirect(); }}
@@ -169,7 +201,7 @@ export function TerminalPage({ gateway = robotGateway }: { gateway?: RobotGatewa
             <span className="statusDot" />
             <strong>{validation.valid ? `${validation.kind} · FORMAT VALID` : 'INVALID'}</strong>
             <span>{sendDisabledReason ?? validation.message}</span>
-            <small>{gateway.capabilities.rawCommand ? '实际 TX/RX 只来自 C# 网关' : '离线校验不会写入 TX/RX'}</small>
+            <small>{directReady ? '实际 TX/RX 只来自 C# 网关' : '离线校验不会写入 TX/RX'}</small>
           </div>
           {directResult && <div className={`directCommandResult status-${directResult.status}`} role="status"><strong>{directResult.status.toUpperCase()}</strong><span>{directResult.message}</span>{directResult.deviceReply && <code>{directResult.deviceReply}</code>}</div>}
         </div>
@@ -177,20 +209,53 @@ export function TerminalPage({ gateway = robotGateway }: { gateway?: RobotGatewa
 
       <aside className="terminalSide panelSurface">
         <div className="sideSection">
-          <div className="sideSectionTitle"><Filter size={14} /><span><strong>快捷命令</strong><small>CANONICAL README · 5b9b602d</small></span></div>
+          <div className="sideSectionTitle"><Filter size={14} /><span><strong>快捷命令</strong><small>{profileUi.quickSource}</small></span></div>
           <div className="quickCommands">
-            {quickCommands.map((item) => <button type="button" key={item} onClick={() => setCommand(item)}><code>{item}</code><span>填入</span></button>)}
+            {profileUi.quickCommands.map((item) => <button type="button" key={item} title={item} onClick={() => setCommand(item)}><code>{item}</code><span>填入</span></button>)}
           </div>
         </div>
         <div className="sideSection expertSection">
           <div className="sideSectionTitle"><ShieldAlert size={14} /><span><strong>直连边界</strong><small>GATEWAY CONTROLLED</small></span></div>
-          <p>已移除前端解锁步骤。调试命令由本机 C# 网关统一校验、串行发送并限制超时；HOME、RESET、RGB、电流和多行输入保持拒绝。</p>
+          <p>{profileUi.boundaryDescription}</p>
         </div>
-        <div className="terminalSafety"><ShieldAlert size={16} /><div><strong>{gateway.capabilities.rawCommand ? 'ENGINEERING DIRECT' : 'SERIAL OFFLINE'}</strong><span>关节队列应答不等于实机到位；运动后必须观察实测反馈，物理急停必须可触达。</span></div></div>
+        <div className="terminalSafety"><ShieldAlert size={16} /><div><strong>{directReady ? 'ENGINEERING DIRECT' : profileUi.safetyState}</strong><span>{profileUi.safetyDescription}</span></div></div>
       </aside>
     </div>
   );
 }
+
+const dummyTerminalUi = {
+  title: 'Dummy 指令',
+  protocolLabel: 'DUMMY ASCII V1 · ENGINEERING DIRECT',
+  inputLabel: 'Dummy ASCII 命令',
+  defaultCommand: '#GETJPOS',
+  inactiveState: 'LOCAL VALIDATION',
+  quickSource: 'CANONICAL README · 5b9b602d',
+  quickCommands: dummyQuickCommands,
+  boundaryDescription: '已移除前端解锁步骤。调试命令由本机 C# 网关统一校验、串行发送并限制超时；HOME、RESET、RGB、电流和多行输入保持拒绝。',
+  safetyState: 'SERIAL OFFLINE',
+  safetyDescription: '关节队列应答不等于实机到位；运动后必须观察实测反馈，物理急停必须可触达。'
+} as const;
+
+const aethorTerminalUi = {
+  title: 'Aethor_robo 指令',
+  protocolLabel: 'AETHOR ARM ASCII V1 · DRAFT',
+  inputLabel: 'Aethor Arm 候选协议命令',
+  defaultCommand: 'REQ 1 HELLO *<CRC16>',
+  inactiveState: 'ADAPTER PENDING',
+  quickSource: 'AETHOR ARM V1 · DRAFT',
+  quickCommands: aethorQuickCommands,
+  boundaryDescription: '当前只校验候选 REQ 包络和 operation 白名单。CRC 测试向量、固件 parser 与独立 C# adapter 冻结后，快捷命令才会生成可发送帧。',
+  safetyState: 'SERIAL ADAPTER PENDING',
+  safetyDescription: '不会借用 Dummy codec 或会话；当前输入不会打开串口，也不会生成 TX/RX 记录。'
+} as const;
+
+const aethorPendingCaptureState = {
+  label: 'AETHOR ADAPTER · PENDING',
+  detail: '候选协议仅用于本地准备；真实串口帧将在独立 adapter 完成后接入',
+  source: 'unavailable',
+  tone: 'muted'
+} as const;
 
 function getDirectSendDisabledReason({ gateway, session, jointState, command, validation, sending }: {
   gateway: RobotGatewayV1;

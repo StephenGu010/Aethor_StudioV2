@@ -1,5 +1,13 @@
 # 变更记录
 
+## 2026-08-13 - A1-U1 有界串口双工软件门与双 Profile 终端（DONE）
+
+- Application 新增未注册生产 DI 的 `SerialDuplexScheduler`：唯一持续 reader/唯一 writer、RX 有界背压、P0–P3 有界队列、安全容量预留、满载低优先级淘汰、排队时效、ticket 终态和资源探针。关闭先关 transport 解除不响应 cancellation 的 I/O，再唯一 dispose。
+- `/terminal` 移除 Dummy-only 路由门并按全局 Profile 分流。Dummy 行为不变；Aethor_robo 只显示候选 REQ 模板、uint32 request ID/ASCII/长度/operation 白名单校验和 `ADAPTER PENDING`，不消费 Dummy 帧、不打开串口、不产生 TX/RX。
+- 1366×768、1920×1080 与 2560×1440 实页检查无根横向溢出；长快捷命令改为单行省略并保留完整 title，“填入”动作不再换行或重叠。
+- 本阶段没有替换 Dummy `serialIoGate`，也没有实现 Aethor codec/CRC/pending request/REST/SignalR。生产迁移进入 A1-U2，固件接入仍由 A1-H 阻塞。本轮自动验证未枚举或打开 COM4，未发送硬件命令。
+- 最终软件证据为 contracts 98 + frontend 225 + gateway 113 + desktop 118 + legal inventory 6，共 560/560；双工调度器定向测试 10/10，production Web 2653 modules，Gateway/Desktop Release 0 warning/0 error，三档 Playwright 63/63。隔离 wrapper 明确 `serialPortOpened=false / hardwareCommandSent=false`。
+
 ## 2026-08-12 - Aethor_robo A1-U0 电机发现契约与模型诊断（DONE）
 
 - 新增独立的 `AethorArmMotorFrameV1` TypeScript/JSON Schema 边界。帧按左右臂携带 controller/arm/boot/sequence 身份，允许最多 32 条无序、部分、重复或范围外样本，使异常证据在领域层诊断而不是在 wire 校验时被静默丢弃。

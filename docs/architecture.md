@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-仓库已经包含可运行的 React/Vite 前端、共享 TypeScript/JSON Schema 契约、Dummy 与 Aethor_robo 两个内置 Profile、Dummy 专属 .NET 10 网关，以及 Phase 8A 的 WinForms/WebView2 桌面壳。Aethor_robo A0 模型与双七轴本地控制台、A1-U0 上位机候选电机帧与 ID 诊断已完成；运行时仍未进入网关、动作执行或真实硬件状态层。Phase 5 Gate B 运动未执行；Phase 6A 已实现 Dummy 离线动作编辑器，6B-S 已实现无生产接线的 C# 执行内核，6B-H 硬件接线未开始。Phase 7A 已实现 Dummy 有界实时示波/协议观测，7B 真实网关长测未开始；Phase 8B 的安装签名、DPI 与正式发布门尚未完成。当前代码统一为：
+仓库已经包含可运行的 React/Vite 前端、共享 TypeScript/JSON Schema 契约、Dummy 与 Aethor_robo 两个内置 Profile、Dummy 专属 .NET 10 网关，以及 Phase 8A 的 WinForms/WebView2 桌面壳。Aethor_robo A0 模型与双七轴本地控制台、A1-U0 候选电机帧与 ID 诊断、A1-U1 有界串口双工软件门与共用终端入口已完成；Aethor 运行时仍未进入生产网关、动作执行或真实硬件状态层。Phase 5 Gate B 运动未执行；Phase 6A 已实现 Dummy 离线动作编辑器，6B-S 已实现无生产接线的 C# 执行内核，6B-H 硬件接线未开始。Phase 7A 已实现 Dummy 有界实时示波/协议观测，7B 真实网关长测未开始；Phase 8B 的安装签名、DPI 与正式发布门尚未完成。当前代码统一为：
 
 ```text
 apps/
@@ -65,7 +65,7 @@ studio-desktop ──> DesktopBridgeV1 ──> studio-web
        └────────> process supervisor ──> robot-gateway
 ```
 
-- Dummy 设备、示波、终端和状态页面只依赖 `RobotGatewayV1`，不直接访问 HTTP、SignalR 或串口。只有当前 Profile 为 Dummy 时，AppShell 才挂载唯一 `GatewaySessionCoordinator` 和全局安全告警；路由切换不创建第二条 SignalR 通道。Aethor_robo 控制台在独立适配器完成前不依赖该端口，Dummy 专属工作区显示明确能力边界。
+- Dummy 设备、示波、终端和状态页面只依赖 `RobotGatewayV1`，不直接访问 HTTP、SignalR 或串口。只有当前 Profile 为 Dummy 时，AppShell 才挂载唯一 `GatewaySessionCoordinator` 和全局安全告警；路由切换不创建第二条 SignalR 通道。`/terminal` 是双 Profile 外壳，Aethor 分支只做候选协议校验并保持 TX 禁用；示波和动作编排仍使用明确的 Dummy 能力门。
 - C# `RobotGateway` 独占串口、查询循环、命令仲裁、超时、取消和协议/命令历史；所有写入经过 Domain formatter 与 Infrastructure payload policy，不能另建前端命令通道。
 - 桌面壳只负责窗口生命周期、进程启动、会话令牌、应用数据路径和能力声明，不拥有机器人业务状态；网关仍是串口与命令唯一所有者。
 - Profile 是设备描述和资源来源，不能承载运行时连接状态。
@@ -131,7 +131,7 @@ Dummy 的 `RobotGatewayV1` 有两个实现，相关页面不直接依赖 HTTP、
 
 浏览器开发模式只有在 `VITE_AETHOR_GATEWAY_URL` 和 `VITE_AETHOR_GATEWAY_SESSION_TOKEN` 同时有效时才创建 `HttpRobotGateway`；否则显式回退为 `BACKEND ABSENT`。有效 Desktop bootstrap（包括显式 `gateway=null`）是唯一权威配置，不能被 `.env.local` 或构建变量覆盖；production/e2e bundle 强制清空两项 Vite 网关值，Windows 打包还会扫描并拒绝开发 URL 或令牌进入产物。
 
-未来 Aethor adapter 不复制 Dummy 等待响应期间占有 `serialIoGate` 的问答模型。它采用持续 RX reader 与有界优先级 TX writer：串口写锁只覆盖一次物理写入，pending request 通过 request ID/boot/session 等待响应但不拥有 writer；停止/去使能、交互命令、心跳查询和后台诊断按 P0–P3 仲裁。该设计目前只在候选协议中冻结，C# 代码尚未实现。
+Application 已实现未注册生产 DI 的 `SerialDuplexScheduler` 软件门：一个持续 RX reader、一个有界优先级 TX writer、RX 有界背压、P0 安全预留/低优先级淘汰、P1/P2/P3 公平调度、排队时效和关闭 transport 解锁。协议 parser 与 response correlation 不进入调度器；Aethor 后续以 request ID/boot/session 等待响应但不拥有 writer。Dummy A1-U2 必须一次性删除旧 reader 后再接线，当前生产 `RobotGateway` 仍使用 `serialIoGate`。
 
 串口目录与会话动作属于临时运行态，由 `useGatewayRuntimeStore` 唯一持有。顶部入口和设备页通过 `refreshSerialPortCatalog` 合并同一 gateway 上的并发枚举；显式连接/断开通过 `serialSessionOperations` 合并相同意图并拒绝冲突意图，两个入口不能各自拥有第二套 busy 状态或直接发起物理会话请求。UUID `operationId` 贯穿前端 `AETHOR_PROBE_V1` 与网关：目录使用 Event 1006/1007/1002，会话使用 Event 1008/1009/1010；只记录终态、耗时、数量/连接状态和失败分类，不记录令牌、端口身份或请求正文。完整约定见 [诊断与日志探针](runbooks/diagnostics.md)。
 

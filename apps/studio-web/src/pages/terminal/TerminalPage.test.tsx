@@ -2,15 +2,34 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { robotGateway } from '../../integrations/gatewayInstance';
 import type { RobotGatewayV1 } from '../../integrations/robotGateway';
+import { aethorRoboProfile } from '../../profile/aethorRoboProfile';
+import { dummyProfile } from '../../profile/dummyProfile';
+import { useActiveRobotProfileStore } from '../../stores/useActiveRobotProfileStore';
 import { useGatewayRuntimeStore } from '../../stores/useGatewayRuntimeStore';
 import { useRobotSessionStore } from '../../stores/useRobotSessionStore';
 import { TerminalPage } from './TerminalPage';
 
 describe('TerminalPage offline behavior', () => {
   beforeEach(() => {
+    useActiveRobotProfileStore.setState({ activeProfileId: dummyProfile.profileId });
     robotGateway.capabilities.readOnlyConnection = false;
     useGatewayRuntimeStore.getState().resetRuntime();
     useRobotSessionStore.getState().resetSession();
+  });
+
+  it('switches to the Aethor candidate terminal without exposing Dummy frames or TX', () => {
+    useActiveRobotProfileStore.setState({ activeProfileId: aethorRoboProfile.profileId });
+    robotGateway.capabilities.readOnlyConnection = true;
+    useGatewayRuntimeStore.getState().appendProtocolFrame(measuredFrame('dummy-frame', '#GETJPOS', 'tx'));
+
+    const { container } = render(<TerminalPage />);
+
+    expect(screen.getByText('Aethor_robo 指令')).toBeVisible();
+    expect(screen.getByText('AETHOR ADAPTER · PENDING')).toBeVisible();
+    expect(screen.getByLabelText('Aethor Arm 候选协议命令')).toHaveValue('REQ 1 HELLO *<CRC16>');
+    expect(screen.getByRole('button', { name: '发送' })).toBeDisabled();
+    expect(container.querySelector('.terminalLog')?.textContent).not.toContain('#GETJPOS');
+    expect(screen.queryByText('Dummy 指令')).not.toBeInTheDocument();
   });
 
   it('keeps real sending disabled and validates locally without adding a frame', () => {

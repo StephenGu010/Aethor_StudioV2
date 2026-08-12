@@ -138,7 +138,7 @@ C# 服务是串口的唯一所有者，采用一个持续 RX reader 和一个有
 - 请求超时不自动用新 ID 重放运动；先查询状态，结果仍未知时由操作者停止和恢复；
 - 串口终端的辅助模式必须经过 Aethor codec 校验，raw 模式仍只提交一次 transport write，不等待回包占住发送队列。
 
-该模型与当前 Dummy adapter 分开实现；不能把 Dummy 的 `serialIoGate` 等待响应方式复制到 Aethor，因为它会让查询、终端和运动响应彼此阻塞。
+该模型与当前 Dummy adapter 分开实现；不能把 Dummy 的 `serialIoGate` 等待响应方式复制到 Aethor，因为它会让查询、终端和运动响应彼此阻塞。A1-U1 已提供未注册生产 DI 的共用双工调度软件门；协议 codec、response correlation 和 Aethor session adapter 仍未实现。
 
 ## 错误与恢复
 

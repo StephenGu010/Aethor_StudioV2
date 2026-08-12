@@ -13,11 +13,12 @@
 | 动作文档（6A） | Schema/Zod、来源、限位、文件上限、显式保存、持久化恢复、导入冲突、dirty guard、导出、三档 E2E | 禁止访问串口 | 只恢复校验通过的 V1；SHOWCASE/人工/实测不混淆；刷新恢复已保存库；页面零硬件请求且 runner 不存在 |
 | 动作执行内核（6B-S） | fake command port、单 owner、逐点确认、弱证据、取消/停止、checkpoint 恢复、并发、超时、dispose | 禁止访问串口 | 无 DI/API/UI/RobotGateway adapter；逐点只消费 `completed + feedbackConfirmed`；到位后才等待；异常至多一次有界停止；未确认停止不显示 Stopped；恢复绑定 revision/session/计划指纹 |
 | 动作执行接线（6B-H） | 运行计划 wire contract、真实 adapter、命令审计恢复、断线与未知结果 | Gate B 后监督执行低风险短动作 | 不预灌 FIFO；不以固定 sleep 或 ACK 判断完成；停止后不遗留待发队列；页面和后端均有运行态与冲突命令保护 |
-| 示波/终端 | 18 路有界 buffer、重复/乱序/缺口、可见性刷新节流、ECharts 生命周期、过滤、CSV/文本导出、视图清空、GETJPOS 显示切换、direct 白名单与状态门 | Phase 7B 验证真实帧、资源曲线与故障恢复；engineering 发送按独立手册 | 来源和单位字段存在；单路 ≤4800、总计 ≤86400；网关空缓冲不回填 SHOWCASE；隐藏 GETJPOS 不停止反馈或删除原始帧；离线编辑不产生伪 TX/RX；只有网关返回结果和协议帧才显示真实发送；120s 后真实资源仍有界 |
+| 示波/终端 | 18 路有界 buffer、重复/乱序/缺口、可见性刷新节流、ECharts 生命周期、过滤、CSV/文本导出、视图清空、GETJPOS 显示切换、双 Profile 隔离、direct 白名单与状态门 | Phase 7B 验证真实帧、资源曲线与故障恢复；engineering 发送按独立手册 | 来源和单位字段存在；单路 ≤4800、总计 ≤86400；网关空缓冲不回填 SHOWCASE；隐藏 GETJPOS 不停止反馈或删除原始帧；Aethor_robo 只显示候选模板和本地校验，不消费 Dummy 帧或产生伪 TX/RX；只有网关返回结果和协议帧才显示真实发送；120s 后真实资源仍有界 |
 | 桌面壳（8A） | bridge、参数、令牌、有界日志/性能探针、诊断包、窗口恢复、进程监督、便携包清单、Profile 法律/溯源闭包、生产依赖/SPDX 清单、并发打包门、离线 smoke、实际 WebView2 | 禁止连接串口 | 浏览器不伪造原生能力；诊断包只含说明、清单和最多五份有界脱敏日志，取消/失败不留半成品；性能采样 60 秒 single-flight，只保留规范化工作区、白名单 Web 指标及宿主/WebView2/可空网关的受跟踪聚合值，进程句柄即时释放且异常停止，完整 URL 不落盘；同版本/Runtime 并发打包失败关闭；manifest 与实际文件集合完全相等；两个 Profile NOTICE/provenance 与第三方 SPDX/摘要/法律附件缺失时失败关闭；组件、PURL、关系和缺口计数一致；命令策略关闭；REST/SignalR 成功；正常退出不留桌面/网关进程 |
 | 桌面发布（8B） | 实际窗口句柄 DPI/Per-Monitor V2/可见范围、WebView2 Stable-only 前置条件、第三方与模型许可完整性、四档 DPI、多显示器、安装/升级/卸载、签名、受控崩溃恢复 | Windows 真机与独立监督硬件门 | 依赖正文缺口以 `third-party-license-incomplete`、模型条款缺口以 `model-redistribution-incomplete` 失败关闭；仓库补充正文必须绑定精确组件版本、包完整性和不可变上游来源；每档 DPI 必须与 96/120/144/192 实测一致且窗口可见；Runtime 失败先于网关启动且不自动下载；网关崩溃立即阻断且只允许显式离线重启；干净 MSI 候选可修复/升级；用户数据默认保留；退出不留后台进程，COM4 句柄有监督释放证据 |
 | Aethor_robo 控制台（A0） | `/console` 路由、旧 `/twin` 重定向、全局 Profile 切换、14 轴独立 store、左右臂 tab、资产加载、三档截图、零网络/零命令 | 禁止访问串口 | 页面只操作两组七轴本地草稿；读取/下发/软件急停固定禁用；永不显示真实连接/反馈/使能；根文档无溢出且模型可见 |
 | Aethor_robo 候选契约（A1-U0） | JSON Schema/Ajv、任意子集与乱序、重复/范围外 ID、完整/增量快照、boot/sequence、目标隔离、灰显材质恢复与资源计数 | 禁止访问串口 | ID 1–7 只更新对应关节；重复值不应用；ID >7 只诊断；完整快照标记缺失，串联链从首个不确定关节起灰显；目标不被反馈覆盖；默认仍为本地预览且真实命令禁用 |
+| Aethor_robo 双工软件门（A1-U1） | 唯一 reader、串行 writer、P0–P3 优先级/公平、急停预留、满载替代、队列时效、重复任务、RX 背压、拔线与不合作 I/O 关闭、终端 Profile 隔离 | 禁止访问串口 | 调度器保持生产 DI 未注册；普通发送不能耗尽急停容量，后台任务不会饿死，过期任务不落 transport，故障或关闭释放所有 ticket 与句柄；Aethor TX 固定禁用，Dummy 生产迁移留给 A1-U2 |
 
 ## 实机安全门
 

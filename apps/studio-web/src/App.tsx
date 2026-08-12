@@ -17,7 +17,7 @@ export function App() {
         <Route path="/console" element={<PageBoundary><ConsolePage /></PageBoundary>} />
         <Route path="/twin" element={<Navigate replace to="/console" />} />
         <Route path="/scope" element={<PageBoundary><ProfileWorkspaceGate supportedProfileId={dummyProfile.profileId} workspaceName="数据示波"><ScopePage /></ProfileWorkspaceGate></PageBoundary>} />
-        <Route path="/terminal" element={<PageBoundary><ProfileWorkspaceGate supportedProfileId={dummyProfile.profileId} workspaceName="串口终端"><TerminalPage /></ProfileWorkspaceGate></PageBoundary>} />
+        <Route path="/terminal" element={<PageBoundary><TerminalPage /></PageBoundary>} />
         <Route path="/devices" element={<PageBoundary><DeviceModelPage /></PageBoundary>} />
         <Route path="/actions" element={<PageBoundary><ProfileWorkspaceGate supportedProfileId={dummyProfile.profileId} workspaceName="动作编排"><ActionProgrammingPage /></ProfileWorkspaceGate></PageBoundary>} />
         <Route path="/" element={<Navigate replace to="/console" />} />

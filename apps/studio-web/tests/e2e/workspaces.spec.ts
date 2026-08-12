@@ -93,8 +93,12 @@ test.describe('Aethor Studio V2 workspaces', () => {
     await selectRobotProfile(page, 'Aethor_robo');
     await expect(page.getByText('Aethor_robo · URDF READY')).toBeVisible({ timeout: WORKSPACE_READY_TIMEOUT_MS });
     await page.goto('/terminal');
-    await expect(page.getByRole('heading', { name: /串口终端尚未支持 Aethor_robo/ })).toBeVisible();
-    await page.getByRole('button', { name: '切换到 Dummy' }).click();
+    await expect(page.getByText('AETHOR ADAPTER · PENDING')).toBeVisible();
+    await expect(page.getByLabel('Aethor Arm 候选协议命令')).toHaveValue('REQ 1 HELLO *<CRC16>');
+    await expect(page.getByRole('button', { name: '发送' })).toBeDisabled();
+    await expect(page.locator('.terminalLog')).not.toContainText('#GETJPOS');
+
+    await selectRobotProfile(page, 'Dummy');
     await expect(page.getByText('STATIC PROTOCOL CAPTURE')).toBeVisible();
 
     await page.goto('/console');
