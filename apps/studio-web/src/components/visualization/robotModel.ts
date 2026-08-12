@@ -9,6 +9,7 @@ export interface LoadedModels {
   target: THREE.Object3D;
   actualJoints: Map<string, JointLike>;
   targetJoints: Map<string, JointLike>;
+  actualMaterials?: Map<THREE.Mesh, THREE.Material | THREE.Material[]>;
 }
 
 export interface JointLike extends THREE.Object3D {
@@ -24,6 +25,7 @@ export function createLoadedModels(
   const actualJoints = collectJoints(loadedRobot);
   const targetJoints = collectJoints(target);
   const controlledJointNames = new Set(profile.joints.map((joint) => joint.urdfJointName));
+  const actualMaterials = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>();
   const ghostMaterials = new Map<string, THREE.MeshStandardMaterial>();
   target.traverse((child) => {
     const mesh = child as THREE.Mesh;
@@ -44,13 +46,37 @@ export function createLoadedModels(
   loadedRobot.traverse((child) => {
     const mesh = child as THREE.Mesh;
     if (mesh.isMesh) {
+      actualMaterials.set(mesh, mesh.material);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
     }
   });
   resolveJointBindings(profile, actualJoints.keys());
   resolveJointBindings(profile, targetJoints.keys());
-  return { actual: loadedRobot, target, actualJoints, targetJoints };
+  return { actual: loadedRobot, target, actualJoints, targetJoints, actualMaterials };
+}
+
+export function applyActualJointAvailability(
+  models: LoadedModels,
+  profile: RobotProfileManifestV1,
+  degradedJointIds: ReadonlySet<string>,
+  degradedMaterial?: THREE.Material
+) {
+  const originalMaterials = models.actualMaterials;
+  if (!originalMaterials) return 0;
+  const degradedUrdfJointNames = new Set(profile.joints
+    .filter((joint) => degradedJointIds.has(joint.jointId))
+    .map((joint) => joint.urdfJointName));
+  let degradedMeshCount = 0;
+  originalMaterials.forEach((material, mesh) => {
+    mesh.material = material;
+    if (!degradedMaterial) return;
+    const owner = findOwningJointName(mesh, models.actualJoints);
+    if (!owner || !degradedUrdfJointNames.has(owner)) return;
+    mesh.material = degradedMaterial;
+    degradedMeshCount += 1;
+  });
+  return degradedMeshCount;
 }
 
 export function updateTargetHighlight(

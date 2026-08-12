@@ -23,6 +23,7 @@ import {
 } from './referenceGrid';
 import {
   applyJointPositions,
+  applyActualJointAvailability,
   applyVisibility,
   calculateLoadedModelBounds,
   createLoadedModels,
@@ -46,6 +47,7 @@ interface RobotSceneProps {
   selectedJointId: string;
   cameraResetSignal: number;
   cameraFocusGroupId?: string | null;
+  degradedActualJointIds?: readonly string[];
   settings: {
     showVisual: boolean;
     showCollision: boolean;
@@ -376,6 +378,7 @@ function RobotModels(props: RobotSceneProps & {
   const previousCameraResetSignal = useRef(props.cameraResetSignal);
   const previousActualPositions = useRef<readonly number[] | null>(null);
   const previousTargetPositions = useRef<readonly number[] | null>(null);
+  const degradedActualJointKey = [...(props.degradedActualJointIds ?? [])].sort().join('|');
 
   useFrame(() => {
     if (!models || readyFrameCount.current >= 2) return;
@@ -522,6 +525,31 @@ function RobotModels(props: RobotSceneProps & {
     const counts = inspectObjectGraphs([models.actual, models.target]);
     return acquireSceneResources({ modelRoots: 2, ...counts });
   }, [models]);
+
+  useEffect(() => {
+    if (!models || !degradedActualJointKey) {
+      if (models) applyActualJointAvailability(models, props.profile, new Set());
+      return;
+    }
+    const degradedMaterial = new THREE.MeshStandardMaterial({
+      color: '#4b5258',
+      metalness: 0.12,
+      roughness: 0.82
+    });
+    const release = acquireSceneResources({ materials: 1 });
+    applyActualJointAvailability(
+      models,
+      props.profile,
+      new Set(degradedActualJointKey.split('|')),
+      degradedMaterial
+    );
+    invalidate();
+    return () => {
+      applyActualJointAvailability(models, props.profile, new Set());
+      degradedMaterial.dispose();
+      release();
+    };
+  }, [degradedActualJointKey, invalidate, models, props.profile]);
 
   useEffect(() => {
     if (!models) return;

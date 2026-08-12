@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-仓库已经包含可运行的 React/Vite 前端、共享 TypeScript/JSON Schema 契约、Dummy 与 Aethor_robo 两个内置 Profile、Dummy 专属 .NET 10 网关，以及 Phase 8A 的 WinForms/WebView2 桌面壳。Aethor_robo A0 模型与双七轴本地控制台已完成，但仍只进入模型与前端本地预览层，未进入网关、动作执行或硬件状态层。Phase 5 Gate B 运动未执行；Phase 6A 已实现 Dummy 离线动作编辑器，6B-S 已实现无生产接线的 C# 执行内核，6B-H 硬件接线未开始。Phase 7A 已实现 Dummy 有界实时示波/协议观测，7B 真实网关长测未开始；Phase 8B 的安装签名、DPI 与正式发布门尚未完成。当前代码统一为：
+仓库已经包含可运行的 React/Vite 前端、共享 TypeScript/JSON Schema 契约、Dummy 与 Aethor_robo 两个内置 Profile、Dummy 专属 .NET 10 网关，以及 Phase 8A 的 WinForms/WebView2 桌面壳。Aethor_robo A0 模型与双七轴本地控制台、A1-U0 上位机候选电机帧与 ID 诊断已完成；运行时仍未进入网关、动作执行或真实硬件状态层。Phase 5 Gate B 运动未执行；Phase 6A 已实现 Dummy 离线动作编辑器，6B-S 已实现无生产接线的 C# 执行内核，6B-H 硬件接线未开始。Phase 7A 已实现 Dummy 有界实时示波/协议观测，7B 真实网关长测未开始；Phase 8B 的安装签名、DPI 与正式发布门尚未完成。当前代码统一为：
 
 ```text
 apps/
@@ -58,7 +58,8 @@ studio-web ──> shared/contracts
 robot-gateway ───────┘ ──> SerialPort ──> Dummy firmware
 
 Aethor_robo console ──> profile + local 14-joint draft
-                    └─X─> RobotGatewayV1 / SerialPort
+                    ├──> AethorArmMotorFrameV1 domain projection (test seam)
+                    └─X─> runtime gateway / SerialPort
 
 studio-desktop ──> DesktopBridgeV1 ──> studio-web
        └────────> process supervisor ──> robot-gateway
@@ -69,6 +70,7 @@ studio-desktop ──> DesktopBridgeV1 ──> studio-web
 - 桌面壳只负责窗口生命周期、进程启动、会话令牌、应用数据路径和能力声明，不拥有机器人业务状态；网关仍是串口与命令唯一所有者。
 - Profile 是设备描述和资源来源，不能承载运行时连接状态。
 - `shared/contracts` 不拥有串口；其中的 transport 只是端口，fake 只用于无硬件测试。Phase 4 的 C# adapter 才拥有真实 SerialPort 生命周期。
+- Aethor 的 `AethorArmMotorFrameV1` 是未来 adapter 到 UI 的信任边界，不是第二个串口入口。Schema 保留无序子集、重复和范围外 ID；前端领域层按 ID 1–7 更新对应关节，并隔离冲突值。同一 `bootId` 下倒序帧不覆盖新状态，`bootId` 改变后重新建立序列基准。
 
 ## 桌面宿主与进程边界
 
@@ -99,6 +101,7 @@ studio-desktop ──> DesktopBridgeV1 ──> studio-web
 | 有界遥测历史 | runtime store → `LiveSignalHistory` | 当前 measured session；18 路、每路最多 4800 点/120 秒，session identity/offline 改变即清空，同 session 重连保留可信历史 |
 | Dummy 目标关节角 | `useRobotSessionStore` draft | 当前前端会话；新硬件 session 首个可信实测帧可一次性建立目标基准，用户编辑优先；只供预览/受门控整组命令，不由后续反馈覆盖 |
 | Aethor_robo 双臂目标角 | `useAethorRoboConsoleStore` draft | 当前前端会话；14 轴本地预览，与 Dummy 状态和网关完全隔离 |
+| Aethor_robo commissioning 帧/实体姿态 | `useAethorRoboConsoleStore` ephemeral projection | 当前只有测试注入入口；按左右臂和 motor ID 更新，不覆盖目标草稿；断开/重启语义将在 A1-H adapter 中接线 |
 | 动作文档草稿、选择和预览标记 | `useActionProgramStore` ephemeral state | 当前编辑会话；不持久化 |
 | 页面、筛选、选中信号 | URL | 可分享导航状态 |
 | 工具窗布局、显示偏好 | Versioned local storage | 本机用户 |
@@ -127,6 +130,8 @@ Dummy 的 `RobotGatewayV1` 有两个实现，相关页面不直接依赖 HTTP、
 - 串口成功打开后先显示 `connected + stale`，完整有效查询循环后才是 `valid`；普通打开失败会释放临时 transport、保留关联错误并直接恢复 `offline`，不会生成需要人工释放的 faulted 会话或阻塞桌面关闭。打开阶段另有默认 5 秒、宿主可在 `100–30000 ms` 内配置的总超时；超时或调用方取消会立即触发候选连接 dispose、记录 `serial.open.timeout/cancelled`，并隔离本 Gateway 进程的后续打开尝试，要求重启后再连，防止不响应取消的原生 `SerialPort.Open()` 工作项重复累积。通常，成功打开后的连续三次协议查询超时、拔线或 I/O 错误进入 `faulted` 并释放 transport；engineering 人工运动写入后是明确例外：查询超时保持 `connected + stale` 并继续低噪声重试，直到反馈恢复、显式停止/去使能或人工断开。Windows adapter 使用短同步读窗口检查取消，避免 `BaseStream.ReadAsync` 在驱动无回包时永久占有串口；硬件命令获取串口所有权使用 `CommandTimeout` 有界等待，STOP 未取得所有权时返回未确认并锁存联锁，普通命令在零写入前超时则拒绝。
 
 浏览器开发模式只有在 `VITE_AETHOR_GATEWAY_URL` 和 `VITE_AETHOR_GATEWAY_SESSION_TOKEN` 同时有效时才创建 `HttpRobotGateway`；否则显式回退为 `BACKEND ABSENT`。有效 Desktop bootstrap（包括显式 `gateway=null`）是唯一权威配置，不能被 `.env.local` 或构建变量覆盖；production/e2e bundle 强制清空两项 Vite 网关值，Windows 打包还会扫描并拒绝开发 URL 或令牌进入产物。
+
+未来 Aethor adapter 不复制 Dummy 等待响应期间占有 `serialIoGate` 的问答模型。它采用持续 RX reader 与有界优先级 TX writer：串口写锁只覆盖一次物理写入，pending request 通过 request ID/boot/session 等待响应但不拥有 writer；停止/去使能、交互命令、心跳查询和后台诊断按 P0–P3 仲裁。该设计目前只在候选协议中冻结，C# 代码尚未实现。
 
 串口目录与会话动作属于临时运行态，由 `useGatewayRuntimeStore` 唯一持有。顶部入口和设备页通过 `refreshSerialPortCatalog` 合并同一 gateway 上的并发枚举；显式连接/断开通过 `serialSessionOperations` 合并相同意图并拒绝冲突意图，两个入口不能各自拥有第二套 busy 状态或直接发起物理会话请求。UUID `operationId` 贯穿前端 `AETHOR_PROBE_V1` 与网关：目录使用 Event 1006/1007/1002，会话使用 Event 1008/1009/1010；只记录终态、耗时、数量/连接状态和失败分类，不记录令牌、端口身份或请求正文。完整约定见 [诊断与日志探针](runbooks/diagnostics.md)。
 

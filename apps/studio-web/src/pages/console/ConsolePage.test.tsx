@@ -14,6 +14,7 @@ const sceneCapture = vi.hoisted(() => ({ props: null as null | {
   profile: { profileId: string; model: { dof: number } };
   actualPositionsDeg: readonly number[];
   targetPositionsDeg: readonly number[];
+  degradedActualJointIds?: readonly string[];
   cameraFocusGroupId?: string | null;
   onSelectedJointChange: (jointId: string) => void;
 }, renderCount: 0 }));
@@ -56,8 +57,41 @@ describe('Aethor_robo dual-arm console', () => {
 
     expect(useAethorRoboConsoleStore.getState().targetPositionsDeg[0]).toBe(25);
     expect(screen.getByRole('button', { name: '读取当前' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: '硬件协议待实现 · 禁止下发' })).toBeDisabled();
-    expect(screen.getByText('No serial, feedback, enable or command path')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '网关未连接 · 禁止下发' })).toBeDisabled();
+    expect(screen.getByText('Gateway and firmware adapter not connected')).toBeInTheDocument();
+  });
+
+  it('maps unordered motor IDs to joints and surfaces missing, duplicate, and out-of-range IDs', async () => {
+    act(() => useAethorRoboConsoleStore.getState().applyMotorFrame({
+      contractVersion: '1.0',
+      profileId: 'aethor-robo-dual-7dof',
+      jointGroupId: 'left-arm',
+      controllerId: 'commissioning-controller',
+      armId: 'left',
+      bootId: 'boot-a',
+      frameSeq: 1,
+      receivedAtUtc: '2026-08-12T08:00:00.000Z',
+      snapshotComplete: true,
+      motors: [
+        { motorId: 7, positionDeg: 72.5, feedbackAgeMs: 4, valid: true },
+        { motorId: 3, positionDeg: 31.5, feedbackAgeMs: 3, valid: true },
+        { motorId: 2, positionDeg: 20, feedbackAgeMs: 2, valid: true },
+        { motorId: 8, positionDeg: 80, feedbackAgeMs: 2, valid: true },
+        { motorId: 2, positionDeg: 21, feedbackAgeMs: 2, valid: true }
+      ]
+    }));
+
+    render(<Tooltip.Provider><ConsolePage /></Tooltip.Provider>);
+    await screen.findByTestId('robot-scene');
+
+    expect(sceneCapture.props?.actualPositionsDeg[2]).toBe(31.5);
+    expect(sceneCapture.props?.actualPositionsDeg[6]).toBe(72.5);
+    expect(sceneCapture.props?.degradedActualJointIds).toEqual(['j1', 'j2', 'j3', 'j4', 'j5', 'j6', 'j7']);
+    expect(screen.getByText('2/7 motors observed')).toBeInTheDocument();
+    expect(screen.getByText('ID 2 conflict · ID 8 out of range')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '选择 L-J2 关节' }).closest('.jointRow')).toHaveAttribute('data-availability', 'conflict');
+    expect(screen.getByRole('button', { name: '选择 L-J3 关节' }).closest('.jointRow')).toHaveAttribute('data-availability', 'present');
+    expect(screen.getByRole('button', { name: '选择 L-J4 关节' }).closest('.jointRow')).toHaveAttribute('data-availability', 'missing');
   });
 
   it('switches the visible control group when a joint is selected in the 3D model', async () => {
@@ -81,7 +115,7 @@ describe('Aethor_robo dual-arm console', () => {
     fireEvent.click(focusControls.getByRole('button', { name: '右臂' }));
     expect(sceneCapture.props?.cameraFocusGroupId).toBe('right-arm');
     expect(screen.getByRole('button', { name: '右臂 · 7轴' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: '硬件协议待实现 · 禁止下发' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '网关未连接 · 禁止下发' })).toBeDisabled();
 
     fireEvent.click(focusControls.getByRole('button', { name: '整机' }));
     expect(sceneCapture.props?.cameraFocusGroupId).toBeNull();

@@ -196,7 +196,7 @@ test.describe('Aethor Studio V2 workspaces', () => {
     await target.fill('25');
     await expect(page.locator('tr[data-joint-id="j1"] td[data-column="target"]')).toHaveText('25.00');
     await expect(page.locator('tr[data-joint-id="j1"] td[data-column="actual"]')).toHaveText(actualBefore ?? '');
-    await expect(page.getByRole('button', { name: '硬件协议待实现 · 禁止下发' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: '网关未连接 · 禁止下发' })).toBeDisabled();
     await expect(page.getByText('MODEL PREVIEW ONLY', { exact: false }).first()).toBeVisible();
   });
 
@@ -320,7 +320,7 @@ test.describe('Aethor Studio V2 workspaces', () => {
     await page.getByLabel('R-J2 目标角度数值').fill('999');
     await expect(page.getByLabel('R-J2 目标角度数值')).toHaveValue('360');
     expect(hardwareRequests).toEqual([]);
-    await expect(page.getByRole('button', { name: '硬件协议待实现 · 禁止下发' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: '网关未连接 · 禁止下发' })).toBeDisabled();
   });
 
   test('releases renderer, controls and model ownership across repeated workspace mounts', async ({ page }) => {
@@ -377,7 +377,7 @@ test.describe('Aethor Studio V2 workspaces', () => {
     await expect(page.getByRole('button', { name: '选择 L-J1 关节' })).toHaveAttribute('aria-pressed', 'true');
     await expect(page.locator('tr[data-joint-id="j1"] td[data-column="actual"]')).toHaveText(initialActual ?? '');
     expect(hardwareRequests).toEqual([]);
-    await expect(page.getByRole('button', { name: '硬件协议待实现 · 禁止下发' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: '网关未连接 · 禁止下发' })).toBeDisabled();
     const diagnostics = page.getByRole('dialog', { name: '模型诊断' });
     if (await diagnostics.count() === 0) await page.getByRole('button', { name: '诊断' }).click();
     await expect(diagnostics.locator('dt', { hasText: 'DRAG SESSION' }).locator('..').locator('dd')).toHaveText('0');
@@ -388,7 +388,7 @@ test.describe('Aethor Studio V2 workspaces', () => {
     await page.goto('/console');
     await expect(page.getByText('URDF LOAD FAILED', { exact: true })).toBeVisible({ timeout: WORKSPACE_READY_TIMEOUT_MS });
     await expect(page.getByRole('alert')).toContainText('MODEL RESOURCE FAILED');
-    await expect(page.getByRole('button', { name: '硬件协议待实现 · 禁止下发' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: '网关未连接 · 禁止下发' })).toBeDisabled();
   });
 
   test('recovers one interrupted same-origin mesh request without hiding persistent failures', async ({ page }) => {
@@ -402,7 +402,7 @@ test.describe('Aethor Studio V2 workspaces', () => {
     await page.goto('/console');
     await expect(page.getByText('Aethor_robo · URDF READY')).toBeVisible({ timeout: WORKSPACE_READY_TIMEOUT_MS });
     expect(meshAttempts).toBe(2);
-    await expect(page.getByRole('button', { name: '硬件协议待实现 · 禁止下发' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: '网关未连接 · 禁止下发' })).toBeDisabled();
   });
 
   test('terminal allows direct editing but keeps offline sending disabled', async ({ page }) => {
@@ -500,7 +500,7 @@ test.describe('Aethor Studio V2 workspaces', () => {
     await page.goto('/console');
     await expect(page.getByText('Aethor_robo · URDF READY')).toBeVisible({ timeout: WORKSPACE_READY_TIMEOUT_MS });
     await expect(page.getByRole('button', { name: '软件急停' })).toBeVisible();
-    await expect(page.getByRole('button', { name: '硬件协议待实现 · 禁止下发' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '网关未连接 · 禁止下发' })).toBeVisible();
     const profile = page.getByRole('combobox', { name: '当前机器人配置' });
     await expect(profile).toContainText('Aethor_robo');
     await expect(profile).not.toContainText('DUAL 7-DOF');
@@ -525,7 +525,7 @@ test.describe('Aethor Studio V2 workspaces', () => {
     });
     expect(profileTypography.scrollWidth).toBeLessThanOrEqual(profileTypography.clientWidth);
     await expect(page.locator('.serialSessionControl select')).toBeDisabled();
-    await expect(page.getByRole('button', { name: '连接' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: '连接', exact: true })).toBeDisabled();
 
     const headerColumns = await page.evaluate(() => {
       const rect = (selector: string) => {
@@ -620,7 +620,7 @@ test.describe('Aethor Studio V2 workspaces', () => {
     await reason.focus();
     await expect(reason).toBeFocused();
     await expect(page.getByRole('button', { name: '软件急停' })).toBeDisabled();
-    await expect(page.getByRole('button', { name: '硬件协议待实现 · 禁止下发' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: '网关未连接 · 禁止下发' })).toBeDisabled();
   });
 
   test('edits and explicitly saves an offline action document without hardware traffic', async ({ page }) => {

@@ -1,5 +1,13 @@
 # 变更记录
 
+## 2026-08-12 - Aethor_robo A1-U0 电机发现契约与模型诊断（DONE）
+
+- 新增独立的 `AethorArmMotorFrameV1` TypeScript/JSON Schema 边界。帧按左右臂携带 controller/arm/boot/sequence 身份，允许最多 32 条无序、部分、重复或范围外样本，使异常证据在领域层诊断而不是在 wire 校验时被静默丢弃。
+- 新增纯领域 reducer：固定 `motor ID 1…7 → J1…J7`，同一 boot 下拒绝倒序/重复 sequence，新 boot 重新建序；重复 ID 隔离为 conflict，ID >7 只进入 warning，完整快照中的缺失轴标为 missing，增量帧保留既有状态。实体反馈与 14 轴目标草稿继续分离。
+- Aethor 控制台可显示左右臂已观测数量、`OBSERVED/MISSING/STALE/ID CONFLICT`、重复/范围外 ID，并将串联链从首个不确定关节起灰显；灰色材质只作用于实体模型，清理时恢复原材质并计入 Three.js 资源所有权。默认无帧时仍是 `LOCAL PREVIEW`，读取和下发保持禁用。
+- 仓库新增 `aethor-arm-ascii-v1` 候选协议，冻结请求关联、七轴 mask、发现态、动作/停止语义与未来持续 RX + 有界优先级 TX 的串口所有权设计。当前没有 C# adapter、串口枚举或真实硬件访问，Profile adapter 仍为 `aethor-robo-pending`。
+- 外部固件 PRD 同步到 0.3.0-draft，补充部分接线、ID 冲突/范围外诊断和上位机非阻塞并发要求；该目录不属于仓库，未包含在本次 Git 提交。
+
 ## 2026-08-12 - Engineering 运动反馈冻结识别（Phase 7 IN PROGRESS）
 
 - 复核固定 Dummy 固件后确认：模式 1–3 的 200 Hz 使能分支只执行 `MoveJoints()` 与 `UpdateJointPose6D()`，没有调用触发 CAN `0x23` 角度采集的 `UpdateJointAngles()`；`#GETJPOS` 又直接输出 `currentJoints`。因此串口回包频繁、sequence 递增并不保证六轴设备角在运动期间更新。

@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aethor.local/schemas/aethor-arm-gateway-v1.schema.json",
+  "title": "Aethor arm commissioning contracts v1",
+  "$defs": {
+    "AethorArmMotorSampleV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["motorId", "positionDeg", "feedbackAgeMs", "valid"],
+      "properties": {
+        "motorId": { "type": "integer", "minimum": 0, "maximum": 255 },
+        "positionDeg": { "type": "number" },
+        "feedbackAgeMs": { "type": "number", "minimum": 0, "maximum": 65535 },
+        "valid": { "type": "boolean" }
+      }
+    },
+    "AethorArmMotorFrameV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contractVersion",
+        "profileId",
+        "jointGroupId",
+        "controllerId",
+        "armId",
+        "bootId",
+        "frameSeq",
+        "receivedAtUtc",
+        "snapshotComplete",
+        "motors"
+      ],
+      "properties": {
+        "contractVersion": { "const": "1.0" },
+        "profileId": { "const": "aethor-robo-dual-7dof" },
+        "jointGroupId": { "enum": ["left-arm", "right-arm"] },
+        "controllerId": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9._-]+$" },
+        "armId": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9._-]+$" },
+        "bootId": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9._-]+$" },
+        "frameSeq": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+        "receivedAtUtc": { "type": "string", "format": "date-time" },
+        "snapshotComplete": { "type": "boolean" },
+        "motors": {
+          "type": "array",
+          "maxItems": 32,
+          "items": { "$ref": "#/$defs/AethorArmMotorSampleV1" }
+        }
+      }
+    }
+  }
+}

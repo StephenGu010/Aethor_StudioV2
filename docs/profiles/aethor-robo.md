@@ -31,12 +31,13 @@
 |---|---|---|
 | 整机 URDF/STL 加载 | SOFTWARE VERIFIED | Vite 复制 23 个 STL；Schema/URDF 映射与逐资产 SHA-256 溯源门通过；visual/collision 每个 URL 只解析一份共享 geometry |
 | 左/右七轴本地 FK 预览 | SOFTWARE VERIFIED | 独立 14 轴 store；拖动、滑块、数值、键盘只改变幽灵模型；支持整机/左臂/右臂显式取景 |
+| 电机发现帧与 ID 投影 | SOFTWARE VERIFIED | `AethorArmMotorFrameV1` 接受任意子集/顺序；ID 1–7 直接映射 J1–J7，重复/范围外 ID 诊断，缺失链灰显；目前仅有测试注入入口 |
 | 串口、反馈、使能、停止、模式 | BLOCKED | 固件和规范指令集未完成 |
 | 关节组硬件下发 | BLOCKED | 无可信限位、速度、完成确认和停止语义 |
 | Aethor_robo 动作编排 | NOT STARTED | 当前 `ActionProgramV1` 只支持 Dummy 六轴 |
 | 车轮控制 | OUT OF SCOPE | 首版只控制两个七轴机械臂 |
 
-控制台固定显示 `SERIAL OFFLINE / MOTOR UNAVAILABLE / FEEDBACK MODEL ONLY / MODE N/A`，读取、下发和软件急停均禁用。Dummy 的协议、会话、模式与停止语义不得复用。
+控制台默认显示本地预览；只有未来 adapter 提交的版本化电机帧才会按臂显示 `OBSERVED/MISSING/STALE/ID CONFLICT`。当前没有运行时 adapter，读取、下发和软件急停仍禁用。Dummy 的协议、会话、模式与停止语义不得复用。
 
 本地 Profile 资产遇到一次浏览器 `NETWORK_CHANGED / failed fetch` 时可进行一次同源重试；持续失败、404、外部 URL 或解析错误仍显示模型失败。该恢复只属于打包 URDF/STL，不扩展到硬件或网关通信。
 
@@ -46,4 +47,4 @@ Aethor_robo URDF 的 visual/collision 会引用同一组 23 个大 STL。场景�
 
 ## 并行阶段
 
-进度以 [路线图](../roadmap.md) 的 A0–A3 表为准：A0 模型与双臂控制台已完成；A1 等待固件/协议；A2 为只读网关；A3 为安全控制和动作编排。每个共享阶段的 handoff 都要记录对本 Profile 的影响。
+进度以 [路线图](../roadmap.md) 的 A0–A3 表为准：A0 模型与双臂控制台、A1-U0 上位机候选契约已完成；A1-H 等待固件和跨语言 adapter；A2 为只读网关；A3 为安全控制和动作编排。每个共享阶段的 handoff 都要记录对本 Profile 的影响。

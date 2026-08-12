@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./aethor-arm-v1": "./src/aethorArmV1.ts",
     "./dummy-ascii-v1": "./src/dummyAsciiV1.ts",
     "./testing": "./src/testing.ts"
   },

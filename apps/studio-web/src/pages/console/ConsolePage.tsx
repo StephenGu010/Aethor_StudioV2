@@ -22,6 +22,10 @@ import {
   subscribeSceneResources
 } from '../../components/visualization/sceneResourceTracker';
 import { FloatingToolWindow } from '../../components/workbench/FloatingToolWindow';
+import type {
+  AethorArmJointAvailability,
+  AethorArmMotorSnapshot
+} from '../../domain/aethorArmMotorState';
 import { getJointKeyboardNudgeDeg } from '../../domain/jointInteraction';
 import {
   aethorRoboJointGroups,
@@ -36,14 +40,11 @@ import { DummyConsole } from './DummyConsole';
 const RobotScene = lazy(() => import('../../components/visualization/RobotScene')
   .then((module) => ({ default: module.RobotScene })));
 
-const modelPoseDeg = [...(aethorRoboProfile.model.showcasePoseDeg
-  ?? Array(aethorRoboProfile.model.dof).fill(0))];
-
 const consoleEvents = [
   { id: 'model', severity: 'info', title: 'Dual-arm model normalized', detail: '14 arm joints / 6 model-only wheel joints' },
   { id: 'left', severity: 'info', title: 'Left arm mapping ready', detail: 'L-J1…L-J7 · local preview only' },
   { id: 'right', severity: 'info', title: 'Right arm mapping ready', detail: 'R-J1…R-J7 · local preview only' },
-  { id: 'protocol', severity: 'warning', title: 'Hardware contract pending', detail: 'No serial, feedback, enable or command path' }
+  { id: 'protocol', severity: 'warning', title: 'Commissioning contract staged', detail: 'Gateway and firmware adapter not connected' }
 ] as const;
 
 export function ConsolePage() {
@@ -130,12 +131,7 @@ function AethorRoboConsole() {
               onCapabilityState={setSceneCapability}
             />
           </Suspense>
-          <div className="feedbackHud">
-            <div><small>MODEL STATE</small><strong>LOCAL PREVIEW</strong></div>
-            <div><span>LEFT</span><strong>7-DOF</strong></div>
-            <div><span>RIGHT</span><strong>7-DOF</strong></div>
-            <div><span>FRAME</span><strong>BASE / Z-UP</strong></div>
-          </div>
+          <AethorFeedbackHud />
           <div className="sceneLegend">
             <div><span className="legendLine solid" /> SOLID · MODEL POSE</div>
             <div><span className="legendLine ghost" /> GHOST · TARGET</div>
@@ -198,8 +194,14 @@ function RobotScenePreview({
   onModelState: (state: 'loading' | 'ready' | 'error') => void;
   onCapabilityState: (state: SceneCapabilityState) => void;
 }) {
+  const actual = useAethorRoboConsoleStore((state) => state.actualPositionsDeg);
   const target = useAethorRoboConsoleStore((state) => state.targetPositionsDeg);
+  const motorSnapshots = useAethorRoboConsoleStore((state) => state.motorSnapshots);
   const setJointTarget = useAethorRoboConsoleStore((state) => state.setJointTarget);
+  const degradedActualJointIds = useMemo(
+    () => Object.values(motorSnapshots).flatMap((snapshot) => snapshot.degradedJointIds),
+    [motorSnapshots]
+  );
   const settings = {
     showVisual: useWorkbenchStore((state) => state.showVisual),
     showCollision: useWorkbenchStore((state) => state.showCollision),
@@ -215,8 +217,9 @@ function RobotScenePreview({
     <RobotScene
       profile={aethorRoboProfile}
       urdfUrl={aethorRoboUrdfUrl}
-      actualPositionsDeg={modelPoseDeg}
+      actualPositionsDeg={actual}
       targetPositionsDeg={target}
+      degradedActualJointIds={degradedActualJointIds}
       selectedJointId={selectedJointId}
       cameraResetSignal={cameraResetSignal}
       cameraFocusGroupId={cameraFocusGroupId}
@@ -266,10 +269,13 @@ function JointControlPanel({
   onActiveGroupChange: (groupId: string) => void;
   onSelectedJointChange: (jointId: string) => void;
 }) {
+  const actual = useAethorRoboConsoleStore((state) => state.actualPositionsDeg);
   const target = useAethorRoboConsoleStore((state) => state.targetPositionsDeg);
+  const motorSnapshots = useAethorRoboConsoleStore((state) => state.motorSnapshots);
   const setJointTarget = useAethorRoboConsoleStore((state) => state.setJointTarget);
   const alignTarget = useAethorRoboConsoleStore((state) => state.alignTarget);
   const resetPreview = useAethorRoboConsoleStore((state) => state.resetPreview);
+  const activeSnapshot = motorSnapshots[activeGroupId];
   return (
     <aside className="jointControlPanel">
       <div className="panelTitle">
@@ -291,12 +297,18 @@ function JointControlPanel({
           >{group.displayName} · 7轴</button>
         ))}
       </div>
+      <MotorDiscoveryBanner snapshot={activeSnapshot} />
       <div className="jointRows">
         {activeJoints.map((joint) => {
-          const current = modelPoseDeg[joint.protocolIndex] ?? 0;
+          const current = actual[joint.protocolIndex] ?? 0;
           const targetValue = target[joint.protocolIndex] ?? current;
+          const availability = getJointAvailability(activeSnapshot, joint.jointId);
           return (
-            <div className={joint.jointId === selectedJointId ? 'jointRow selected' : 'jointRow'} key={joint.jointId}>
+            <div
+              className={joint.jointId === selectedJointId ? 'jointRow selected' : 'jointRow'}
+              data-availability={availability}
+              key={joint.jointId}
+            >
               <div className="jointRowHeader">
                 <button
                   type="button"
@@ -354,42 +366,46 @@ function JointControlPanel({
         <Hint content="Aethor_robo 固件和反馈协议尚未完成">
           <button type="button" disabled>读取当前</button>
         </Hint>
-        <button type="button" onClick={() => alignTarget(modelPoseDeg)}>目标对齐模型</button>
+        <button type="button" onClick={() => alignTarget(actual)}>目标对齐模型</button>
         <button type="button" onClick={resetPreview}>恢复模型位</button>
       </div>
       <div className="jointCommandResult unsupported" role="status">
-        <strong>HARDWARE PENDING</strong>
-        <span>未定义串口、反馈、使能、停止、限位或速度契约；Dummy 指令集不会复用于此设备。</span>
+        <strong>COMMISSIONING CONTRACT</strong>
+        <span>电机 ID 1–7 与关节映射已固化；固件和独立网关尚未连接，当前只允许模型预览与诊断。</span>
       </div>
-      <Hint content="Aethor_robo 硬件和规范指令集完成并通过独立验收前，控制台没有发送路径。">
-        <button className="sendGroupButton" type="button" disabled>硬件协议待实现 · 禁止下发</button>
+      <Hint content="Aethor_robo 固件和独立网关通过联调前，控制台没有真实发送路径。">
+        <button className="sendGroupButton" type="button" disabled>网关未连接 · 禁止下发</button>
       </Hint>
     </aside>
   );
 }
 
 function ConsoleBottom({ activeJoints }: { activeJoints: readonly RobotJointProfile[] }) {
+  const actual = useAethorRoboConsoleStore((state) => state.actualPositionsDeg);
   const target = useAethorRoboConsoleStore((state) => state.targetPositionsDeg);
+  const motorSnapshots = useAethorRoboConsoleStore((state) => state.motorSnapshots);
   const errors = useMemo(
-    () => modelPoseDeg.map((value, index) => (target[index] ?? value) - value),
-    [target]
+    () => actual.map((value, index) => (target[index] ?? value) - value),
+    [actual, target]
   );
   return (
     <section className="twinBottom">
-      <DualArmSummary target={target} />
+      <DualArmSummary actual={actual} target={target} motorSnapshots={motorSnapshots} />
       <div className="jointTableWrap">
         <table className="dataTable">
           <thead><tr><th>JOINT</th><th>MODEL (deg)</th><th>TARGET (deg)</th><th>DELTA (deg)</th><th>STATE</th></tr></thead>
           <tbody>
             {activeJoints.map((joint) => {
               const index = joint.protocolIndex;
+              const group = aethorRoboJointGroups.find((candidate) => candidate.jointIds.includes(joint.jointId));
+              const availability = getJointAvailability(group ? motorSnapshots[group.groupId] : undefined, joint.jointId);
               return (
                 <tr key={joint.jointId} data-joint-id={joint.jointId}>
                   <th>{joint.displayName}</th>
-                  <td data-column="actual">{modelPoseDeg[index]?.toFixed(2)}</td>
+                  <td data-column="actual">{actual[index]?.toFixed(2)}</td>
                   <td data-column="target">{target[index]?.toFixed(2)}</td>
                   <td>{(errors[index] ?? 0).toFixed(2)}</td>
-                  <td><span className="tableState showcase">PREVIEW</span></td>
+                  <td><span className={`tableState ${availability}`}>{availabilityLabel(availability)}</span></td>
                 </tr>
               );
             })}
@@ -532,25 +548,80 @@ function ModelDiagnostics({ modelState, capability }: {
   );
 }
 
-function DualArmSummary({ target }: { target: readonly number[] }) {
+function DualArmSummary({ actual, target, motorSnapshots }: {
+  actual: readonly number[];
+  target: readonly number[];
+  motorSnapshots: Record<string, AethorArmMotorSnapshot>;
+}) {
   return (
     <div className="miniTrend dualArmOverview">
       <div className="bottomTitle"><strong>双臂目标概览</strong><span>14 DOF · LOCAL</span></div>
       <div className="armOverviewRows">
         {aethorRoboJointGroups.map((group) => {
           const joints = groupJoints(group);
-          const changed = joints.filter((joint) => Math.abs((target[joint.protocolIndex] ?? 0) - (modelPoseDeg[joint.protocolIndex] ?? 0)) > 0.001).length;
-          const maximumDelta = Math.max(0, ...joints.map((joint) => Math.abs((target[joint.protocolIndex] ?? 0) - (modelPoseDeg[joint.protocolIndex] ?? 0))));
+          const changed = joints.filter((joint) => Math.abs((target[joint.protocolIndex] ?? 0) - (actual[joint.protocolIndex] ?? 0)) > 0.001).length;
+          const maximumDelta = Math.max(0, ...joints.map((joint) => Math.abs((target[joint.protocolIndex] ?? 0) - (actual[joint.protocolIndex] ?? 0))));
+          const snapshot = motorSnapshots[group.groupId];
+          const observed = snapshot?.joints.filter((joint) => joint.availability === 'present').length ?? 0;
           return (
             <div className="armOverviewRow" key={group.groupId}>
-              <div><strong>{group.displayName}</strong><span>{changed}/7 TARGETS CHANGED</span></div>
+              <div><strong>{group.displayName}</strong><span>{snapshot ? `${observed}/7 MOTORS · ${changed} TARGETS` : `${changed}/7 TARGETS CHANGED`}</span></div>
               <output>{maximumDelta.toFixed(2)}°</output>
               <small>MAX MODEL DELTA</small>
             </div>
           );
         })}
       </div>
-      <div className="trendFooter"><span>MODEL POSE</span><span>NO FEEDBACK</span><span>NO SEND PATH</span></div>
+      <div className="trendFooter"><span>MODEL / OBSERVED</span><span>ID-MAPPED</span><span>NO SEND PATH</span></div>
     </div>
   );
+}
+
+function AethorFeedbackHud() {
+  const snapshots = useAethorRoboConsoleStore((state) => state.motorSnapshots);
+  const groupStatus = (groupId: string) => {
+    const snapshot = snapshots[groupId];
+    if (!snapshot) return 'NO DATA';
+    const present = snapshot.joints.filter((joint) => joint.availability === 'present').length;
+    return `${present}/7 OBSERVED`;
+  };
+  const hasObservedFrame = Object.keys(snapshots).length > 0;
+  return (
+    <div className="feedbackHud">
+      <div><small>MODEL STATE</small><strong>{hasObservedFrame ? 'COMMISSIONING' : 'LOCAL PREVIEW'}</strong></div>
+      <div><span>LEFT</span><strong>{groupStatus('left-arm')}</strong></div>
+      <div><span>RIGHT</span><strong>{groupStatus('right-arm')}</strong></div>
+      <div><span>FRAME</span><strong>BASE / Z-UP</strong></div>
+    </div>
+  );
+}
+
+function MotorDiscoveryBanner({ snapshot }: { snapshot: AethorArmMotorSnapshot | undefined }) {
+  if (!snapshot) return null;
+  const present = snapshot.joints.filter((joint) => joint.availability === 'present').length;
+  const issues = [
+    snapshot.duplicateMotorIds.length > 0 ? `ID ${snapshot.duplicateMotorIds.join(', ')} conflict` : null,
+    snapshot.unexpectedMotorIds.length > 0 ? `ID ${snapshot.unexpectedMotorIds.join(', ')} out of range` : null
+  ].filter((issue): issue is string => Boolean(issue));
+  return (
+    <div className={`motorDiscoveryBanner${issues.length > 0 ? ' warning' : ''}`} role={issues.length > 0 ? 'alert' : 'status'}>
+      <strong>{present}/7 motors observed</strong>
+      <span>{issues.length > 0 ? issues.join(' · ') : 'Motor IDs mapped directly to joints'}</span>
+    </div>
+  );
+}
+
+function getJointAvailability(snapshot: AethorArmMotorSnapshot | undefined, jointId: string): AethorArmJointAvailability {
+  return snapshot?.joints.find((joint) => joint.jointId === jointId)?.availability ?? 'notObserved';
+}
+
+function availabilityLabel(availability: AethorArmJointAvailability) {
+  const labels: Record<AethorArmJointAvailability, string> = {
+    notObserved: 'PREVIEW',
+    present: 'OBSERVED',
+    stale: 'STALE',
+    missing: 'MISSING',
+    conflict: 'ID CONFLICT'
+  };
+  return labels[availability];
 }

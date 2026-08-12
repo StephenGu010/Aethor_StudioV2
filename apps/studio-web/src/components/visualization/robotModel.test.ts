@@ -4,6 +4,7 @@ import { aethorRoboProfile } from '../../profile/aethorRoboProfile';
 import { dummyProfile } from '../../profile/dummyProfile';
 import {
   applyJointPositions,
+  applyActualJointAvailability,
   calculateLoadedModelBounds,
   createLoadedModels,
   type JointLike,
@@ -128,6 +129,44 @@ describe('target preview rendering', () => {
   });
 });
 
+describe('partial motor availability rendering', () => {
+  it('replaces only the declared uncertain joint chain material and can restore it', () => {
+    const source = new THREE.Object3D();
+    const meshes = new Map<string, THREE.Mesh>();
+    aethorRoboProfile.joints.forEach((profileJoint) => {
+      const joint = new TestJoint();
+      joint.name = profileJoint.urdfJointName;
+      const mesh = namedMesh(`${profileJoint.jointId}-actual`);
+      meshes.set(profileJoint.jointId, mesh);
+      joint.add(mesh);
+      source.add(joint);
+    });
+    const models = createLoadedModels(source, aethorRoboProfile);
+    const unavailable = new THREE.MeshStandardMaterial({ color: '#4b5258' });
+    const originalJ2 = meshes.get('j2')?.material;
+    const originalRightJ1 = meshes.get('j8')?.material;
+
+    try {
+      expect(applyActualJointAvailability(
+        models,
+        aethorRoboProfile,
+        new Set(['j3', 'j4', 'j5', 'j6', 'j7']),
+        unavailable
+      )).toBe(5);
+      expect(meshes.get('j2')?.material).toBe(originalJ2);
+      expect(meshes.get('j3')?.material).toBe(unavailable);
+      expect(meshes.get('j7')?.material).toBe(unavailable);
+      expect(meshes.get('j8')?.material).toBe(originalRightJ1);
+
+      applyActualJointAvailability(models, aethorRoboProfile, new Set());
+      expect(meshes.get('j3')?.material).not.toBe(unavailable);
+    } finally {
+      unavailable.dispose();
+      disposeModelMaterials(models);
+    }
+  });
+});
+
 function createDualArmFixture(): LoadedModels {
   const actual = new THREE.Object3D();
   const target = new THREE.Object3D();
@@ -170,4 +209,15 @@ function namedMesh(name: string) {
   mesh.name = name;
   disposableMeshes.push(mesh);
   return mesh;
+}
+
+function disposeModelMaterials(models: LoadedModels) {
+  const materials = new Set<THREE.Material>();
+  models.target.traverse((child) => {
+    const mesh = child as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    (Array.isArray(mesh.material) ? mesh.material : [mesh.material])
+      .forEach((material) => materials.add(material));
+  });
+  materials.forEach((material) => material.dispose());
 }

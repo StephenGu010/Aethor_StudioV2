@@ -27,7 +27,9 @@
 | 阶段 | 状态 | 目标 | 当前事实 | 退出门槛 |
 |---|---|---|---|---|
 | A0 模型接入与双臂控制台 | DONE | 规范化整机资源，并以左右两组七轴提供可选/可拖动本地 FK 预览 | 23 links、22 joints、23 STL 已迁移；逐资产 SHA-256 溯源门、全局 Dummy/Aethor_robo Profile 切换、geometry/幽灵材质去重、目标 collision 零绘制、差量关节更新、按需渲染、相机按需重算、14 个臂关节分组、整机/双臂取景和一次同源资产中断恢复已完成；`/console` 无硬件发送路径 | 439 项软件回归、三档 63/63 视觉/交互、空闲帧收敛与资源释放回归通过；模型和 handoff 落盘；阶段提交/远端一致 |
-| A1 固件与协议契约 | BLOCKED | 定义独立的七轴组命令、反馈、停止、能力和错误语义 | 硬件与固件尚未完成；adapter 为 `aethor-robo-pending` | 固件提交与指令集可追溯；parser/formatter/vectors/状态机通过；不得复制 Dummy 协议 |
+| A1 固件与协议契约 | IN PROGRESS | 定义独立的七轴组命令、反馈、停止、能力和错误语义 | A1-U0 上位机候选契约与 ID 诊断已完成；固件和真实 adapter 尚未实现 | 固件提交与指令集可追溯；parser/formatter/vectors/状态机通过；不得复制 Dummy 协议 |
+| A1-U0 上位机候选契约 | DONE | 固化任意子集/顺序的 ID→关节投影、异常诊断和非阻塞串口所有权设计 | `AethorArmMotorFrameV1` Schema/类型、领域 reducer、缺失链灰显、候选协议与测试均已落盘；零串口路径 | contracts 98、frontend 222、strict typecheck/build 通过；默认仍为本地预览且命令禁用 |
+| A1-H 固件与跨语言适配 | BLOCKED | 实现固件 parser/CRC/快照、C# codec 与真实串口联调 | Keil/CubeMX/FreeRTOS 固件仍在外部开发，仓库没有可执行 adapter | 固件 commit、CRC vectors、fake transport、只读监督实机验收全部通过 |
 | A2 只读网关与观测 | NOT STARTED | 人工连接、双臂反馈、协议日志和有界示波 | 没有串口/传输/反馈契约 | fake transport、loopback/token、只读监督 runbook 和实机授权验收通过 |
 | A3 安全控制与动作编排 | NOT STARTED | 独立双臂整组下发、停止、到位确认和版本化动作程序 | 当前文档与 6B-S 执行内核均只支持 Dummy 六轴 | 可信限位/速度/完成/停止语义、逐臂命令仲裁、监督低风险实机门全部关闭 |
 
@@ -36,7 +38,8 @@
 - `aethor-robo-dual-7dof` 的规范化 URDF、23 个 STL、双七轴分组和逐资产 SHA-256 溯源门已落盘；来源包缺少完整 BSD 条款的限制继续保留，不把完整性验证冒充为分发授权。
 - 当前退出门为 contracts 93 + frontend 184 + gateway 82 + desktop 79 + legal inventory 1，共 439/439；strict TypeScript、Web 2639 modules、隔离 gateway Release 与 desktop Release 构建通过，0 warning/0 error；三档生产 E2E 63/63 通过。
 - E2E 覆盖双 Profile 隔离、左右七轴本地编辑、零硬件路径、三档无关键溢出、同源资产一次恢复、23 份 geometry 共享、按需帧收敛及重复挂载资源释放。本轮没有新启动或访问网关，没有枚举或打开串口，也没有发送硬件命令；既有未知 COM4 会话保持原样。
-- A1 继续因固件和独立七轴协议证据缺失保持 `BLOCKED`；A0 完成不会为 Aethor_robo 声明连接、反馈、使能、停止或下发能力。
+- A1-U0 已完成上位机候选契约：任意子集/顺序按 ID 1–7 映射，重复和范围外 ID 保留诊断，完整发现快照中的缺失链从首个不确定关节起灰显。该入口尚未接入运行时网关，不会产生连接、反馈、使能、停止或下发能力。
+- A1-H 继续因固件、CRC/parser 测试向量和独立 C# adapter 缺失保持 `BLOCKED`；因此 A1 总体仍为 `IN PROGRESS`，不能把软件注入测试当作真实反馈。
 
 ## Phase 4 验收结果
 

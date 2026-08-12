@@ -26,6 +26,8 @@
 20. [Aethor_robo 当前交接](handoffs/aethor-robo.md)：下一位工程师继续模型、协议和硬件接入时的入口与禁区。
 21. [ADR-0009 Engineering 直连调试边界](decisions/0009-engineering-direct-debug-boundary.md)：开发环境受限 ASCII 调试、错误端口释放和 queued 语义。
 22. [Dummy Engineering 直连手册](runbooks/dummy-engineering-direct.md)：本机网关启动、连接、使能、关节组发送、停止与退出流程。
+23. [Aethor Arm ASCII v1 候选协议](protocols/aethor-arm-ascii-v1.md)：七轴 ID 映射、发现态、帧、并发、停止与动作编排契约；当前没有真实 adapter。
+24. [Aethor_robo A1-U0 交接](handoffs/aethor-robo.md)：已完成的软件契约/模型诊断与仍被固件阻塞的真实网关边界。
 
 ## 状态约定
 
@@ -34,4 +36,4 @@
 - `NOT STARTED`：仅有规划，尚未实现。
 - `BLOCKED`：已记录外部阻塞与恢复条件。
 
-当前状态以 [阶段路线图](roadmap.md) 为准。Aethor_robo A0 模型接入与双七轴本地控制台已完成，A1 仍等待独立固件和协议证据。Dummy Phase 4 已完成监督只读 COM4 验收；Phase 6B-S 无生产接线执行内核已验证，但 Phase 5 Gate B 与 Phase 6B-H 仍被运动包络和独立授权阻止。Phase 7A 有界观测软件门和 Phase 8A 桌面软件门已验证，但 7B 实机长测与 8B 正式发布门未完成，因此 Dummy Phase 5–8 均保持 `IN PROGRESS`。协议只在 `protocols/` 维护；接口 Schema 只在 `shared/contracts/` 维护，阶段提示词不复制这些定义。
+当前状态以 [阶段路线图](roadmap.md) 为准。Aethor_robo A0 模型接入与双七轴本地控制台、A1-U0 上位机候选契约与 ID 诊断已完成；A1 总体仍等待固件实现和跨语言协议证据。Dummy Phase 4 已完成监督只读 COM4 验收；Phase 6B-S 无生产接线执行内核已验证，但 Phase 5 Gate B 与 Phase 6B-H 仍被运动包络和独立授权阻止。Phase 7A 有界观测软件门和 Phase 8A 桌面软件门已验证，但 7B 实机长测与 8B 正式发布门未完成，因此 Dummy Phase 5–8 均保持 `IN PROGRESS`。协议只在 `protocols/` 维护；接口 Schema 只在 `shared/contracts/` 维护，阶段提示词不复制这些定义。
