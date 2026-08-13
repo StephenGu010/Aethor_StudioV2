@@ -2,7 +2,7 @@ namespace AethorStudioV2.Domain;
 
 public static class GatewayContractV1
 {
-    public const string Version = "1.3";
+    public const string Version = "1.4";
     public const string DummyProfileId = "dummy-6dof";
     public const string DummyProtocolAdapterId = "dummy-ascii-v1";
 }
@@ -204,10 +204,12 @@ public sealed record DirectCommandRequest(
 
 public enum DirectCommandStatus
 {
+    Queued,
     Sent,
-    Replied,
     Rejected,
-    TimedOut,
+    Expired,
+    Superseded,
+    Cancelled,
     Failed
 }
 

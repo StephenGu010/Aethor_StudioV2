@@ -74,7 +74,7 @@ const jointGroupCompletionSchema = z.object({
   }
 });
 const capabilitiesSchema = z.object({
-  contractVersion: z.literal('1.3'),
+  contractVersion: z.literal('1.4'),
   protocolAdapterId: z.literal('dummy-ascii-v1'),
   serialEnumeration: z.boolean(),
   readOnlyConnection: z.boolean(),
@@ -131,13 +131,19 @@ const commandResultSchema = z.object({
 const directCommandResultSchema = z.object({
   requestId: z.string().min(1).max(128),
   sessionId: z.string().min(1).max(128),
-  status: z.enum(['sent', 'replied', 'rejected', 'timedOut', 'failed']),
+  status: z.enum(['queued', 'sent', 'rejected', 'expired', 'superseded', 'cancelled', 'failed']),
   evidence: z.enum(['none', 'gatewayAccepted', 'transportWritten', 'deviceQueued', 'deviceAck', 'feedbackConfirmed']),
   normalizedLine: z.string().max(255),
   message: z.string().max(500),
   timestampUtc: utcTimestampSchema,
   deviceReply: z.string().max(4096).nullable().optional()
 }).strict().superRefine((value, context) => {
+  if (value.status === 'queued' && value.evidence !== 'gatewayAccepted') {
+    context.addIssue({ code: 'custom', message: 'Queued direct results require gatewayAccepted evidence' });
+  }
+  if (value.status === 'queued' && value.deviceReply != null) {
+    context.addIssue({ code: 'custom', message: 'A queued direct result cannot include an unverified device reply' });
+  }
   if ((value.status === 'sent') !== (value.evidence === 'transportWritten')) {
     context.addIssue({ code: 'custom', message: 'Only sent direct results may use transportWritten evidence' });
   }
@@ -305,12 +311,17 @@ export class HttpRobotGateway implements RobotGatewayV1 {
     return this.request('/api/v1/commands?limit=50', z.array(commandAuditSchema));
   }
 
+  async getDirectCommandHistory(): Promise<DirectCommandResult[]> {
+    return this.request('/api/v1/engineering/direct-commands?limit=50', z.array(directCommandResultSchema));
+  }
+
   async openTelemetry(listener: RobotGatewayTelemetryListener): Promise<CloseGatewayTelemetry> {
     const connection = this.createHubConnection();
     connection.on('sessionSnapshot', (value: unknown) => this.deliver(value, sessionSchema, listener.onSession, listener));
     connection.on('jointStateFrame', (value: unknown) => this.deliver(value, jointStateSchema, listener.onJointState, listener));
     connection.on('protocolFrame', (value: unknown) => this.deliver(value, protocolFrameSchema, listener.onProtocolFrame, listener));
     connection.on('commandResult', (value: unknown) => this.deliver(value, commandResultSchema, listener.onCommandResult, listener));
+    connection.on('directCommandResult', (value: unknown) => this.deliver(value, directCommandResultSchema, listener.onDirectCommandResult, listener));
     connection.onreconnecting(() => listener.onTransportError?.({
       kind: 'reconnecting',
       message: '实时遥测正在重连；等待通道恢复后核对 REST 权威快照'

@@ -104,12 +104,11 @@ describe('TerminalPage offline behavior', () => {
     const sendDirectCommand = vi.fn(async (request) => ({
       requestId: request.requestId,
       sessionId: request.sessionId,
-      status: 'replied' as const,
-      evidence: 'feedbackConfirmed' as const,
+      status: 'queued' as const,
+      evidence: 'gatewayAccepted' as const,
       normalizedLine: request.line,
-      message: '设备已返回匹配应答',
-      timestampUtc: '2026-08-09T00:00:01.000Z',
-      deviceReply: 'ok 0 0 0 0 0 0'
+      message: '请求已进入网关有界发送队列',
+      timestampUtc: '2026-08-09T00:00:01.000Z'
     }));
     const gateway = {
       capabilities: {
@@ -127,7 +126,7 @@ describe('TerminalPage offline behavior', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '发送' }));
 
-    expect(await screen.findByText('REPLIED')).toBeVisible();
+    expect(await screen.findByText('QUEUED')).toBeVisible();
     expect(sendDirectCommand).toHaveBeenCalledWith(expect.objectContaining({ line: '#GETJPOS', sessionId: 'session-1' }));
     expect(useGatewayRuntimeStore.getState().protocolFrames).toHaveLength(0);
   });
@@ -173,6 +172,49 @@ describe('TerminalPage offline behavior', () => {
 
     expect(await screen.findByText('SENT')).toBeVisible();
     expect(sendDirectCommand).toHaveBeenCalledWith(expect.objectContaining({ line: '>1,2,3,4,5,6,10' }));
+  });
+
+  it('accepts consecutive direct requests and renders their independent queue states', async () => {
+    let sequence = 0;
+    let releaseFirst!: () => void;
+    const firstResponse = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    const sendDirectCommand = vi.fn(async (request) => {
+      sequence += 1;
+      if (sequence === 1) await firstResponse;
+      return {
+        requestId: request.requestId,
+        sessionId: request.sessionId,
+        status: 'queued' as const,
+        evidence: 'gatewayAccepted' as const,
+        normalizedLine: request.line,
+        message: '请求已进入有界串口队列',
+        timestampUtc: `2026-08-13T00:00:0${sequence}.000Z`
+      };
+    });
+    const gateway = {
+      capabilities: {
+        ...robotGateway.capabilities,
+        readOnlyConnection: true,
+        hardwareCommands: true,
+        rawCommand: true,
+        commandPolicy: 'engineering' as const,
+        engineeringJointSpeedMaxDegS: 100
+      },
+      sendDirectCommand
+    } as unknown as RobotGatewayV1;
+    useGatewayRuntimeStore.getState().setSession(measuredSession('connected'));
+    render(<TerminalPage gateway={gateway} />);
+
+    fireEvent.click(screen.getByRole('button', { name: '发送' }));
+    fireEvent.change(screen.getByLabelText('Dummy ASCII 命令'), { target: { value: '#GETMODE' } });
+    fireEvent.click(screen.getByRole('button', { name: '发送' }));
+
+    expect(sendDirectCommand).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole('button', { name: '发送' })).toBeEnabled();
+    expect(await screen.findByText('#GETMODE')).toBeVisible();
+    releaseFirst();
+    expect(await screen.findByText('#GETJPOS')).toBeVisible();
+    expect(screen.getAllByText('QUEUED')).toHaveLength(2);
   });
 });
 

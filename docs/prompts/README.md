@@ -14,6 +14,7 @@
 8. [阶段 6：动作编排](phase-06-action-programming.md)
 9. [阶段 7：实时遥测](phase-07-live-telemetry.md)
 10. [阶段 8：桌面发布](phase-08-desktop-release.md)
-11. [Aethor_robo A1-H：固件证据与跨语言适配](aethor-robo-a1-h-firmware-adapter.md)
+11. [Aethor_robo A1-U2：Dummy 运行时迁移（已完成）](aethor-robo-a1-u2-dummy-runtime-migration.md)
+12. [Aethor_robo A1-H：固件证据与跨语言适配](aethor-robo-a1-h-firmware-adapter.md)
 
 开始阶段 N 前，必须同时阅读 [路线图](../roadmap.md)、[产品与安全边界](../product-boundaries.md)、[验收矩阵](../testing/acceptance-matrix.md)、相关权威协议/Schema，以及 `docs/handoffs/phase-(N-1).md`。完成后从 [handoff 模板](../handoffs/template.md) 生成该阶段实际交接文档。

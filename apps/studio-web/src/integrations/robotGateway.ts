@@ -38,6 +38,7 @@ export interface RobotGatewayTelemetryListener {
   onJointState?: (frame: JointStateFrame) => void;
   onProtocolFrame?: (frame: ProtocolFrame) => void;
   onCommandResult?: (result: CommandResult) => void;
+  onDirectCommandResult?: (result: DirectCommandResult) => void;
   onTransportError?: (incident: RobotGatewayTransportIncident) => void;
   onTransportRecovered?: () => void;
 }
@@ -56,6 +57,7 @@ export interface RobotGatewayV1 {
   getJointState(): Promise<JointStateFrame>;
   getProtocolFrames(): Promise<ProtocolFrame[]>;
   getCommandHistory(): Promise<CommandAuditRecord[]>;
+  getDirectCommandHistory(): Promise<DirectCommandResult[]>;
   enable(command: SimpleRobotCommand): Promise<CommandResult>;
   stopAndDisable(command: SimpleRobotCommand): Promise<CommandResult>;
   home(command: SimpleRobotCommand): Promise<CommandResult>;

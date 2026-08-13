@@ -48,7 +48,7 @@
 - 每个信号最多保存 120 秒 × 40 Hz = 4800 点；六轴 actual/target/error 共 18 路，理论上限 86400 点。默认窗口 60 秒，图表前台最多 10 Hz、隐藏时最多 1 Hz。
 - 目标序列标记 `COMMANDED` 只表示当前前端目标意图，不代表设备 ACK；误差为 `COMPUTED`。会话断开或 identity 改变清空历史，同 session 重连/陈旧时保留最后可信历史并明确标记 `STALE`。
 - 协议日志最多 256 帧并按稳定 ID 去重；“清空视图”只隐藏当时已有帧，不删除网关审计或阻止新帧。网关已配置但无帧时显示空缓冲，不回退 SHOWCASE。
-- `RobotGatewayV1.3` 的默认与生产策略仍无直发能力。Development-only `engineering` 提供受限 direct 端点：只接受 Dummy 查询、启停/去使能、模式 1–3 和带显式速度的六轴目标；不接受任意 raw 字节。六轴写入只显示 `SENT · MANUAL CONFIRM`，不显示设备确认或到位。
+- `RobotGatewayV1.4` 的默认与生产策略仍无直发能力。Development-only `engineering` 提供受限 direct 端点：只接受 Dummy 查询、启停/去使能、模式 1–3 和带显式速度的六轴目标；不接受任意 raw 字节。HTTP 入队显示 `QUEUED · GATEWAY ACCEPTED`，物理写入显示 `SENT · MANUAL CONFIRM`，均不表示设备确认或到位。
 - 错误 COM 口造成 `connected + stale/unknown` 时允许释放串口；只有命令在途或电机已确认 enabled 才拒绝普通断开。释放端口不等于机械臂安全状态确认。
 
 ## Phase 8A 当前边界

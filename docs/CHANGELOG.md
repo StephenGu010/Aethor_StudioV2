@@ -1,5 +1,13 @@
 # 变更记录
 
+## 2026-08-13 - A1-U2 Dummy 生产双工迁移与连续终端发送（DONE）
+
+- Dummy 生产网关一次性迁移到 `DummySerialSession + SerialDuplexScheduler`：所有 RX 由唯一持续 reader/decoder 处理，所有 TX 由 P0–P3 有界 writer 处理；旧 `serialIoGate` 与直接 transport 读写路径已删除。
+- Dummy 无标签结构化问答使用单一 response fence，结构化响应、命令审计与联锁语义保持独立；P0 STOP/DISABLE 可抢占低优先级 fence，被抢占事务不会写成成功。
+- RobotGatewayV1 升级为 1.4。engineering direct 入队返回 `queued + gatewayAccepted`，物理写入再通过 REST history 与 SignalR 发布 `sent + transportWritten`；过期、淘汰、断开取消和写失败分别收束。终端按 request ID 展示多条结果，任一请求缺少 RX 不再禁用下一次发送。
+- 前端在 session identity 改变时清空并恢复有界 direct history；真实 TX/RX 仍只来自 C# 网关。Aethor_robo 的 TX、codec 和真实串口入口保持禁用，本阶段没有改变其硬件能力。
+- 验证证据：contracts 98 + frontend 230 + gateway 122 + desktop 118 + legal 6，共 574/574；A1-U2 前端定向 50/50。Web Release 为 2653 modules，Gateway/Desktop Release 均 0 warning/0 error，三档 Playwright 63/63。隔离入口明确报告零串口打开、零硬件命令。
+
 ## 2026-08-13 - A1-U1 有界串口双工软件门与双 Profile 终端（DONE）
 
 - Application 新增未注册生产 DI 的 `SerialDuplexScheduler`：唯一持续 reader/唯一 writer、RX 有界背压、P0–P3 有界队列、安全容量预留、满载低优先级淘汰、排队时效、ticket 终态和资源探针。关闭先关 transport 解除不响应 cancellation 的 I/O，再唯一 dispose。

@@ -85,6 +85,7 @@ function fakeGateway({
     getJointState: vi.fn(async () => ({ ...showcaseJointFrame, source: 'measured' as const, validity: 'valid' as const })),
     getProtocolFrames: vi.fn(async () => []),
     getCommandHistory,
+    getDirectCommandHistory: vi.fn(async () => []),
     enable: vi.fn(), stopAndDisable: vi.fn(), home: vi.fn(), reset: vi.fn(), setMode: vi.fn(), sendJointGroup: vi.fn(), sendDirectCommand: vi.fn()
   };
   return { gateway, getSession, getCommandHistory };

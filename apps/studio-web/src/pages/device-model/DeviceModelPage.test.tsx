@@ -303,7 +303,7 @@ describe('DeviceModelPage supervised safety states', () => {
 });
 
 const readOnlyCapabilities: RobotGatewayCapabilitiesV1 = {
-  contractVersion: '1.3',
+  contractVersion: '1.4',
   protocolAdapterId: 'dummy-ascii-v1',
   serialEnumeration: true,
   readOnlyConnection: true,
@@ -374,6 +374,7 @@ function fakeGateway({
     }),
     getProtocolFrames: async () => [],
     getCommandHistory: async () => commandHistory,
+    getDirectCommandHistory: async () => [],
     enable,
     stopAndDisable,
     home: async (command) => unsupported(command.commandId, command.sessionId, 'home'),

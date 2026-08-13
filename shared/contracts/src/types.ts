@@ -125,7 +125,7 @@ export interface RobotConnectRequest {
 }
 
 export interface RobotGatewayCapabilitiesV1 {
-  contractVersion: '1.3';
+  contractVersion: '1.4';
   protocolAdapterId: 'dummy-ascii-v1';
   serialEnumeration: boolean;
   readOnlyConnection: boolean;
@@ -180,7 +180,14 @@ export interface DirectCommandRequest {
   line: string;
 }
 
-export type DirectCommandStatus = 'sent' | 'replied' | 'rejected' | 'timedOut' | 'failed';
+export type DirectCommandStatus =
+  | 'queued'
+  | 'sent'
+  | 'rejected'
+  | 'expired'
+  | 'superseded'
+  | 'cancelled'
+  | 'failed';
 
 export interface DirectCommandResult {
   requestId: string;

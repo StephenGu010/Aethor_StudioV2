@@ -17,7 +17,7 @@
 | 2 UI 字体、比例与信息架构 | DONE | 修复字号、密度和空间比例，形成展示级工业控制台 | token、响应式布局、状态组件、五工作区信息架构、视觉基线 | 113 项单元测试与三档视口 21 项 E2E 通过；无关键裁切、重叠和跳动 |
 | 3 Dummy 六轴三维预览基础 | DONE | 实现类似 Robot Viewer 的关节直接操作，仅 FK 预览 | 关节拾取、约束拖动、轴/限位反馈、实体/幽灵隔离 | 六关节 URDF 原点/轴/限位、拖动零发送、故障降级与重复挂载资源证据通过 |
 | 4 C# 基础与只读 COM4 | DONE | 建立 .NET 10 网关，只枚举/连接/读取真实状态 | 分层服务、串口生命周期、REST/SignalR、会话令牌 | fake serial 集成测试通过；监督下手动连接 COM4；无运动命令 |
-| 5 安全硬件控制 | IN PROGRESS | 接入使能、停止、受约束模式 1–3 和整组关节下发；HOME/RESET 按固件证据降级 | v1.3 契约、命令仲裁、受限 engineering direct、目标校验、实测到位、前端能力门、监督 runbook | 软件门与 Gate A 已通过；engineering 六轴运动只确认 transport 写入并由操作者控制，supervised Gate B 未执行，任何失败不显示成功 |
+| 5 安全硬件控制 | IN PROGRESS | 接入使能、停止、受约束模式 1–3 和整组关节下发；HOME/RESET 按固件证据降级 | v1.4 契约、命令仲裁、受限 engineering direct、目标校验、实测到位、前端能力门、监督 runbook | 软件门与 Gate A 已通过；engineering 六轴运动区分网关入队与 transport 写入并由操作者控制，supervised Gate B 未执行，任何失败不显示成功 |
 | 6 动作编排与单点示教 | IN PROGRESS | 版本化动作 JSON、点位编辑/采集和逐点执行 | 6A editor 已验证；6B-S 无生产接线执行内核已验证；6B-H 硬件接线未开始 | 6A/6B-S 零硬件路径；6B-H 不用固定 sleep 冒充完成，暂停/停止语义与固件能力一致 |
 | 7 实时示波、终端与故障恢复 | IN PROGRESS | 将静态工具升级为有界实时观测工作台 | 7A 软件门已验证；7B 真实网关长测未开始 | 来源/单位准确；内存有界；断线和陈旧反馈可见且不可下发 |
 | 8 WebView2、发布与最终交接 | IN PROGRESS | 完成 Windows 桌面壳、打包、DPI 和最终验收 | 8A 桌面壳/便携包已验证；8B 安装签名/DPI/恢复/最终 handoff 未完成 | 三档分辨率与 Windows DPI 通过；安装/升级/卸载演练；最终页面打开 |
@@ -27,10 +27,10 @@
 | 阶段 | 状态 | 目标 | 当前事实 | 退出门槛 |
 |---|---|---|---|---|
 | A0 模型接入与双臂控制台 | DONE | 规范化整机资源，并以左右两组七轴提供可选/可拖动本地 FK 预览 | 23 links、22 joints、23 STL 已迁移；逐资产 SHA-256 溯源门、全局 Dummy/Aethor_robo Profile 切换、geometry/幽灵材质去重、目标 collision 零绘制、差量关节更新、按需渲染、相机按需重算、14 个臂关节分组、整机/双臂取景和一次同源资产中断恢复已完成；`/console` 无硬件发送路径 | 439 项软件回归、三档 63/63 视觉/交互、空闲帧收敛与资源释放回归通过；模型和 handoff 落盘；阶段提交/远端一致 |
-| A1 固件与协议契约 | IN PROGRESS | 定义独立的七轴组命令、反馈、停止、能力和错误语义 | A1-U0 候选契约、A1-U1 双工调度软件门和共用终端入口已完成；生产迁移、固件和真实 adapter 尚未实现 | 固件提交与指令集可追溯；parser/formatter/vectors/状态机通过；不得复制 Dummy 协议 |
+| A1 固件与协议契约 | IN PROGRESS | 定义独立的七轴组命令、反馈、停止、能力和错误语义 | A1-U0 候选契约、A1-U1 双工调度软件门和 A1-U2 Dummy 生产迁移已完成；Aethor 固件和真实 adapter 尚未实现 | 固件提交与指令集可追溯；parser/formatter/vectors/状态机通过；不得复制 Dummy 协议 |
 | A1-U0 上位机候选契约 | DONE | 固化任意子集/顺序的 ID→关节投影、异常诊断和非阻塞串口所有权设计 | `AethorArmMotorFrameV1` Schema/类型、领域 reducer、缺失链灰显、候选协议与测试均已落盘；零串口路径 | contracts 98、frontend 222、strict typecheck/build 通过；默认仍为本地预览且命令禁用 |
 | A1-U1 双工运行时软件门 | DONE | 建立唯一持续 reader、有界优先 writer、背压/关闭探针与双 Profile 终端入口 | `SerialDuplexScheduler` 与 fake transport 测试已落盘；Aethor 终端只做候选校验且 TX 禁用；生产 DI 未接线 | 定向并发/容量/拔线测试、前端 Profile 隔离、两档实页无溢出；零串口路径 |
-| A1-U2 Dummy 生产迁移 | NOT STARTED | 用新运行时替换 Dummy `serialIoGate`，使 direct terminal 有界入队后立即返回 | 当前 Dummy 除关节组外仍等待匹配回包；旧 reader 仍是生产 owner | 零双 reader、P0 抢占、连续终端发送、结构化响应/审计兼容和全量回归通过 |
+| A1-U2 Dummy 生产迁移 | DONE | 用新运行时替换 Dummy `serialIoGate`，使 direct terminal 有界入队后立即返回 | `DummySerialSession` 已成为唯一 reader/decoder owner；direct 按 request ID 产生 queued→sent/失败类状态，结构化问答保留 response fence | 零双 reader、P0 抢占、连续终端发送、结构化响应/审计兼容和全量回归通过 |
 | A1-H 固件与跨语言适配 | BLOCKED | 实现固件 parser/CRC/快照、C# codec 与真实串口联调 | Keil/CubeMX/FreeRTOS 固件仍在外部开发，仓库没有可执行 adapter | 固件 commit、CRC vectors、fake transport、只读监督实机验收全部通过 |
 | A2 只读网关与观测 | NOT STARTED | 人工连接、双臂反馈、协议日志和有界示波 | 没有串口/传输/反馈契约 | fake transport、loopback/token、只读监督 runbook 和实机授权验收通过 |
 | A3 安全控制与动作编排 | NOT STARTED | 独立双臂整组下发、停止、到位确认和版本化动作程序 | 当前文档与 6B-S 执行内核均只支持 Dummy 六轴 | 可信限位/速度/完成/停止语义、逐臂命令仲裁、监督低风险实机门全部关闭 |
@@ -41,7 +41,7 @@
 - 当前退出门为 contracts 93 + frontend 184 + gateway 82 + desktop 79 + legal inventory 1，共 439/439；strict TypeScript、Web 2639 modules、隔离 gateway Release 与 desktop Release 构建通过，0 warning/0 error；三档生产 E2E 63/63 通过。
 - E2E 覆盖双 Profile 隔离、左右七轴本地编辑、零硬件路径、三档无关键溢出、同源资产一次恢复、23 份 geometry 共享、按需帧收敛及重复挂载资源释放。本轮没有新启动或访问网关，没有枚举或打开串口，也没有发送硬件命令；既有未知 COM4 会话保持原样。
 - A1-U0 已完成上位机候选契约：任意子集/顺序按 ID 1–7 映射，重复和范围外 ID 保留诊断，完整发现快照中的缺失链从首个不确定关节起灰显。该入口尚未接入运行时网关，不会产生连接、反馈、使能、停止或下发能力。
-- A1-U1 已完成跨 adapter 串口调度软件门：唯一持续 reader、P0–P3 有界 writer、RX 背压、队列时效、关闭解锁和探针均有 fake transport 证据；`/terminal` 可按 Profile 显示 Dummy 或 Aethor 候选界面。生产 DI 尚未接线，Aethor TX 仍固定禁用，Dummy 非阻塞迁移进入 A1-U2。
+- A1-U2 已完成 Dummy 生产迁移：`DummySerialSession + SerialDuplexScheduler` 统一拥有物理读写，旧 `serialIoGate` 已删除。`/terminal` 可连续提交多个 direct 请求，HTTP 入队与物理写入分阶段显示；结构化响应、审计、P0 抢占和资源关闭保持独立证据。Aethor TX 仍固定禁用。
 - A1-H 继续因固件、CRC/parser 测试向量和独立 C# adapter 缺失保持 `BLOCKED`；因此 A1 总体仍为 `IN PROGRESS`，不能把软件注入测试当作真实反馈。
 
 ## Phase 4 验收结果
@@ -52,7 +52,7 @@
 
 ## Phase 5 当前结果
 
-- RobotGatewayV1 当前为 1.3：保留结构化命令、稳定结果/证据码、有界命令审计和 SignalR 终态，并为 Development engineering 六轴运动增加 `sent + transportWritten` 人工确认语义。
+- RobotGatewayV1 当前为 1.4：保留结构化命令、稳定结果/证据码、有界命令审计和 SignalR 终态，并将 Development engineering direct 拆为 `queued + gatewayAccepted` 与 `sent + transportWritten` 两阶段人工确认语义。
 - C# 已实现单在途、幂等、超时、停止抢占、目标/限位/速度/状态双重校验；关节组只有在配置速度、到位容差、连续稳定窗口和总超时后才声明能力，并以实测六轴误差持续收敛返回完成。前端同步显示并校验该完整包络。
 - Gate A 已在 COM4 上验证使能、停止去使能、模式 1–3 和恢复模式 2，6 条命令结果均为 `completed + feedbackConfirmed`；未发送关节目标，断开前为 measured/valid、disabled、mode 2，清理后 gateway 进程和 5127 listener 均为 0。
 - 实机运行暴露协议环会被高频轮询覆盖早期命令 TX；命令审计已增加有界请求快照、请求指纹和实际成功写入 transport 的 payload。旧 Gate A 证据不追写，后续按命令即时采证。
@@ -82,7 +82,7 @@
 - 7A 已实现 18 路、每路 4800 点/120 秒的有界历史，默认 60 秒窗口；采集与 10 Hz/1 Hz 可见性刷新分离，ECharts 实例跨数据更新复用。
 - 网关模式不再因缓冲为空而回退 SHOWCASE；示波/终端显示 measured/waiting/stale/idle 的真实状态。终端日志限 256 帧、去重，清空只影响当前视图。
 - 终端不再使用管理员/专家解锁。`engineering` 网关下可直接发送 Dummy 单行白名单；C# 仍独占串口并二次校验 session、状态、模式、六轴限位和显式速度。HOME/RESET、RGB、电流/PID、reboot、多行及任意 raw 均拒绝。
-- engineering 关节组按人工模式呈现：所有模式写入成功即显示 `SENT · MANUAL CONFIRM / transportWritten`，不等待或解释 FIFO/`ok`，也不写成设备接收或实测到位。后台继续使用唯一 reader 尝试轮询，查询超时不自动断开；正式 `supervised` Gate B 仍依赖四参数运动包络和独立实机验收。
+- engineering direct 按人工模式呈现：HTTP 受理显示 `QUEUED · GATEWAY ACCEPTED`，物理写入显示 `SENT · MANUAL CONFIRM / transportWritten`；请求不等待或解释 FIFO/`ok`，也不写成设备接收或实测到位。后台唯一 reader 继续轮询，查询超时不自动断开；正式 `supervised` Gate B 仍依赖四参数运动包络和独立实机验收。
 - 错误 COM 口造成 `stale/unknown/faulted` 时允许人工释放会话；只有明确 `motor=enabled` 或存在在途命令时拒绝普通断开。
 - 当前软件回归为 contracts 95 + frontend 211 + gateway 103 + desktop 118 + legal inventory 6，共 533/533；strict TypeScript、2644-module Web、Gateway/Desktop Release build 0 warning/0 error，三档生产 E2E 63/63。engineering 人工运动现能识别“`#GETJPOS` 持续回包但角度冻结”，只把关节反馈降为 stale，连续人工目标不被锁定，角度重新变化后恢复 valid。本次自动验证未打开 COM4、未发送任何硬件命令；既有 disabled/engineering 包 smoke 记录不冒充本次新代码的打包复验。
 - 当前 10 分钟 × 40 Hz 合成长测达到单路 4800、总 86400 点上限；早期 20 Hz 验证数据仍保留在 Phase 7 历史记录中。全量回归数量以最新 handoff 和变更记录为准。

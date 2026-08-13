@@ -143,35 +143,35 @@ describe('JSON Schema and TypeScript contract conformance', () => {
   it('rejects contradictory capability claims and malformed six-axis targets', () => {
     const validateCapabilities = gatewayValidator('RobotGatewayCapabilitiesV1');
     expect(validateCapabilities({
-      contractVersion: '1.3', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
+      contractVersion: '1.4', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
       readOnlyConnection: true, liveTelemetry: true, hardwareCommands: true, directCommand: false,
       commandPolicy: 'disabled', allowedQueries: ['#GETJPOS', '#GETMODE', '#GETENABLE'],
       supportedCommands: ['enable'], jointGroupSpeedLimitDegS: null, jointGroupCompletion: null,
       engineeringJointSpeedMaxDegS: null
     })).toBe(false);
     expect(validateCapabilities({
-      contractVersion: '1.3', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
+      contractVersion: '1.4', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
       readOnlyConnection: true, liveTelemetry: true, hardwareCommands: true, directCommand: true,
       commandPolicy: 'engineering', allowedQueries: ['#GETJPOS', '#GETMODE', '#GETENABLE'],
       supportedCommands: ['enable', 'stopAndDisable', 'setMode'], jointGroupSpeedLimitDegS: null,
       jointGroupCompletion: null, engineeringJointSpeedMaxDegS: 100
     })).toBe(true);
     expect(validateCapabilities({
-      contractVersion: '1.3', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
+      contractVersion: '1.4', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
       readOnlyConnection: true, liveTelemetry: true, hardwareCommands: true, directCommand: false,
       commandPolicy: 'supervised', allowedQueries: ['#GETJPOS', '#GETMODE', '#GETENABLE'],
       supportedCommands: ['jointGroup'], jointGroupSpeedLimitDegS: null, jointGroupCompletion: null,
       engineeringJointSpeedMaxDegS: null
     })).toBe(false);
     expect(validateCapabilities({
-      contractVersion: '1.3', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
+      contractVersion: '1.4', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
       readOnlyConnection: true, liveTelemetry: true, hardwareCommands: true, directCommand: false,
       commandPolicy: 'supervised', allowedQueries: ['#GETJPOS', '#GETMODE', '#GETENABLE'],
       supportedCommands: ['jointGroup'], jointGroupSpeedLimitDegS: 10, jointGroupCompletion: null,
       engineeringJointSpeedMaxDegS: null
     })).toBe(false);
     expect(validateCapabilities({
-      contractVersion: '1.3', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
+      contractVersion: '1.4', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
       readOnlyConnection: true, liveTelemetry: true, hardwareCommands: true, directCommand: false,
       commandPolicy: 'supervised', allowedQueries: ['#GETJPOS', '#GETMODE', '#GETENABLE'],
       supportedCommands: ['jointGroup'], jointGroupSpeedLimitDegS: 10,
@@ -217,11 +217,18 @@ describe('JSON Schema and TypeScript contract conformance', () => {
 
   it('keeps write-only direct results distinct from device acknowledgements', () => {
     const validate = gatewayValidator('DirectCommandResult');
+    const queued = {
+      requestId: 'move-1', sessionId: 'session-1', status: 'queued', evidence: 'gatewayAccepted',
+      normalizedLine: '>1,2,3,4,5,6,10', message: 'bounded queue accepted', timestampUtc: '2026-08-12T00:00:00.000Z'
+    };
     const sent = {
       requestId: 'move-1', sessionId: 'session-1', status: 'sent', evidence: 'transportWritten',
       normalizedLine: '>1,2,3,4,5,6,10', message: 'written only', timestampUtc: '2026-08-12T00:00:00.000Z'
     };
 
+    expect(validate(queued), JSON.stringify(validate.errors)).toBe(true);
+    expect(validate({ ...queued, evidence: 'transportWritten' })).toBe(false);
+    expect(validate({ ...queued, deviceReply: 'ok' })).toBe(false);
     expect(validate(sent), JSON.stringify(validate.errors)).toBe(true);
     expect(validate({ ...sent, evidence: 'deviceAck' })).toBe(false);
     expect(validate({ ...sent, deviceReply: 'ok' })).toBe(false);
@@ -240,7 +247,7 @@ describe('JSON Schema and TypeScript contract conformance', () => {
       portName: 'COM4', profileId: 'dummy-6dof'
     }],
     ['RobotGatewayCapabilitiesV1', {
-      contractVersion: '1.3', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
+      contractVersion: '1.4', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
       readOnlyConnection: true, liveTelemetry: true, hardwareCommands: false, directCommand: false,
       commandPolicy: 'disabled', allowedQueries: ['#GETJPOS', '#GETMODE', '#GETENABLE'],
       supportedCommands: [], jointGroupSpeedLimitDegS: null, jointGroupCompletion: null,

@@ -22,7 +22,25 @@ public sealed record SerialWriteRequest(
     ReadOnlyMemory<byte> Payload,
     SerialWorkPriority Priority,
     TimeSpan MaximumQueueDelay,
-    string? CorrelationId = null);
+    string? CorrelationId = null,
+    SerialResponseFence? ResponseFence = null);
+
+/// <summary>
+/// Holds non-safety writes after a transaction payload reaches the transport.
+/// The protocol adapter releases the fence after its matching response reaches
+/// a terminal state. Safety writes remain dispatchable while the fence is held.
+/// </summary>
+public sealed class SerialResponseFence
+{
+    private readonly TaskCompletionSource released =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    internal Task Released => released.Task;
+
+    public bool IsReleased => released.Task.IsCompleted;
+
+    public void Release() => released.TrySetResult();
+}
 
 public sealed record SerialWriteCompletion(
     string WorkId,
@@ -125,13 +143,15 @@ public sealed class SerialDuplexScheduler : IAsyncDisposable
         new()
     ];
     private readonly HashSet<string> pendingWorkIds = new(StringComparer.Ordinal);
-    private readonly SemaphoreSlim queuedSignal = new(0);
+    private readonly System.Threading.Channels.Channel<byte> writerWake;
     private readonly SemaphoreSlim closeGate = new(1, 1);
     private readonly System.Threading.Channels.Channel<byte[]> receiveQueue;
     private readonly CancellationTokenSource lifetimeCancellation = new();
     private readonly Task readerTask;
     private readonly Task writerTask;
     private readonly Task dispatcherTask;
+    private readonly Action<SerialWriteRequest>? writeObserver;
+    private readonly Action<SerialWriteRequest>? writeStartedObserver;
 
     private int queueDepth;
     private int fairScheduleIndex;
@@ -153,13 +173,17 @@ public sealed class SerialDuplexScheduler : IAsyncDisposable
         Func<ReadOnlyMemory<byte>, CancellationToken, ValueTask> receiveHandler,
         IGatewayDiagnostics? diagnostics = null,
         TimeProvider? timeProvider = null,
-        SerialDuplexSchedulerOptions? options = null)
+        SerialDuplexSchedulerOptions? options = null,
+        Action<SerialWriteRequest>? writeObserver = null,
+        Action<SerialWriteRequest>? writeStartedObserver = null)
     {
         this.transport = transport ?? throw new ArgumentNullException(nameof(transport));
         this.receiveHandler = receiveHandler ?? throw new ArgumentNullException(nameof(receiveHandler));
         this.diagnostics = diagnostics ?? new NullGatewayDiagnostics();
         this.timeProvider = timeProvider ?? TimeProvider.System;
         this.options = options ?? new SerialDuplexSchedulerOptions();
+        this.writeObserver = writeObserver;
+        this.writeStartedObserver = writeStartedObserver;
         this.options.Validate();
 
         if (!transport.IsOpen)
@@ -174,12 +198,21 @@ public sealed class SerialDuplexScheduler : IAsyncDisposable
                 SingleWriter = true,
                 FullMode = System.Threading.Channels.BoundedChannelFullMode.Wait
             });
+        writerWake = System.Threading.Channels.Channel.CreateBounded<byte>(
+            new System.Threading.Channels.BoundedChannelOptions(1)
+            {
+                SingleReader = true,
+                SingleWriter = false,
+                FullMode = System.Threading.Channels.BoundedChannelFullMode.DropWrite
+            });
         readerTask = RunReaderAsync(lifetimeCancellation.Token);
         writerTask = RunWriterAsync(lifetimeCancellation.Token);
         dispatcherTask = RunDispatcherAsync(lifetimeCancellation.Token);
     }
 
     public Task Completion => Task.WhenAll(readerTask, writerTask, dispatcherTask);
+
+    public string PortName => transport.PortName;
 
     public SerialWriteTicket QueueWrite(SerialWriteRequest request)
     {
@@ -188,7 +221,6 @@ public sealed class SerialDuplexScheduler : IAsyncDisposable
 
         PendingWrite? superseded = null;
         PendingWrite? accepted = null;
-        var addedDepth = false;
         lock (queueGate)
         {
             if (Volatile.Read(ref stopping) != 0)
@@ -238,7 +270,6 @@ public sealed class SerialDuplexScheduler : IAsyncDisposable
             else
             {
                 queueDepth++;
-                addedDepth = true;
             }
 
             accepted = new PendingWrite(
@@ -264,10 +295,7 @@ public sealed class SerialDuplexScheduler : IAsyncDisposable
                 $"WorkId={superseded.Request.WorkId} Priority={superseded.Request.Priority} ReplacedBy={request.WorkId}"));
         }
 
-        if (addedDepth)
-        {
-            queuedSignal.Release();
-        }
+        SignalWriter();
 
         return new(true, request.WorkId, accepted!.Completion.Task);
     }
@@ -322,7 +350,6 @@ public sealed class SerialDuplexScheduler : IAsyncDisposable
             CancelQueuedWrites();
             await transport.DisposeAsync().ConfigureAwait(false);
             lifetimeCancellation.Dispose();
-            queuedSignal.Dispose();
             closeGate.Dispose();
         }
     }
@@ -379,14 +406,20 @@ public sealed class SerialDuplexScheduler : IAsyncDisposable
 
     private async Task RunWriterAsync(CancellationToken cancellationToken)
     {
+        SerialResponseFence? activeFence = null;
         try
         {
             while (!cancellationToken.IsCancellationRequested)
             {
-                await queuedSignal.WaitAsync(cancellationToken).ConfigureAwait(false);
-                var pending = TakeNextWrite();
+                if (activeFence?.IsReleased == true)
+                {
+                    activeFence = null;
+                }
+
+                var pending = TakeNextWrite(safetyOnly: activeFence is not null);
                 if (pending is null)
                 {
+                    await WaitForEligibleWriteAsync(activeFence, cancellationToken).ConfigureAwait(false);
                     continue;
                 }
 
@@ -409,12 +442,37 @@ public sealed class SerialDuplexScheduler : IAsyncDisposable
 
                 try
                 {
+                    writeStartedObserver?.Invoke(pending.Request);
                     await transport.WriteAsync(pending.Request.Payload, cancellationToken).ConfigureAwait(false);
+                    if (writeObserver is not null)
+                    {
+                        try
+                        {
+                            writeObserver(pending.Request);
+                        }
+                        catch (Exception exception)
+                        {
+                            Interlocked.Increment(ref failedWrites);
+                            CompleteWrite(pending, new(
+                                pending.Request.WorkId,
+                                SerialWriteOutcome.Failed,
+                                timeProvider.GetUtcNow(),
+                                exception.Message));
+                            await RecordFaultAndStopAsync("serial.scheduler.write_observer.failed", exception).ConfigureAwait(false);
+                            break;
+                        }
+                    }
+
                     Interlocked.Increment(ref completedWrites);
                     CompleteWrite(pending, new(
                         pending.Request.WorkId,
                         SerialWriteOutcome.Written,
                         timeProvider.GetUtcNow()));
+
+                    if (pending.Request.ResponseFence is { IsReleased: false } responseFence)
+                    {
+                        activeFence = responseFence;
+                    }
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
@@ -455,12 +513,12 @@ public sealed class SerialDuplexScheduler : IAsyncDisposable
         }
     }
 
-    private PendingWrite? TakeNextWrite()
+    private PendingWrite? TakeNextWrite(bool safetyOnly)
     {
         lock (queueGate)
         {
             PendingWrite? pending = RemoveFirstLocked(SerialWorkPriority.Safety);
-            if (pending is null)
+            if (pending is null && !safetyOnly)
             {
                 for (var attempt = 0; attempt < FairSchedule.Length; attempt++)
                 {
@@ -483,6 +541,48 @@ public sealed class SerialDuplexScheduler : IAsyncDisposable
             return pending;
         }
     }
+
+    private async Task WaitForEligibleWriteAsync(
+        SerialResponseFence? activeFence,
+        CancellationToken cancellationToken)
+    {
+        while (writerWake.Reader.TryRead(out _))
+        {
+        }
+
+        if (activeFence is null || activeFence.IsReleased)
+        {
+            lock (queueGate)
+            {
+                if (queueDepth > 0)
+                {
+                    return;
+                }
+            }
+
+            await writerWake.Reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        lock (queueGate)
+        {
+            if (queues[(int)SerialWorkPriority.Safety].Count > 0)
+            {
+                return;
+            }
+        }
+
+        using var wakeCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var wakeTask = writerWake.Reader.ReadAsync(wakeCancellation.Token).AsTask();
+        var completed = await Task.WhenAny(activeFence.Released, wakeTask).ConfigureAwait(false);
+        wakeCancellation.Cancel();
+        if (completed == wakeTask)
+        {
+            await wakeTask.ConfigureAwait(false);
+        }
+    }
+
+    private void SignalWriter() => writerWake.Writer.TryWrite(0);
 
     private PendingWrite? RemoveOldestLowerPriorityLocked()
     {

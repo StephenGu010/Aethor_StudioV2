@@ -48,6 +48,7 @@ export function DummyConsole() {
   const transportWarning = useGatewayRuntimeStore((state) => state.transportWarning);
   const lastCommandResult = useGatewayRuntimeStore((state) => state.lastCommandResult);
   const protocolFrames = useGatewayRuntimeStore((state) => state.operatorProtocolFrames);
+  const directCommandHistory = useGatewayRuntimeStore((state) => state.directCommandHistory);
   const setSession = useGatewayRuntimeStore((state) => state.setSession);
   const setJointState = useGatewayRuntimeStore((state) => state.setJointState);
   const markTelemetryDegraded = useGatewayRuntimeStore((state) => state.markTelemetryDegraded);
@@ -63,6 +64,7 @@ export function DummyConsole() {
   const [reading, setReading] = useState(false);
   const [sending, setSending] = useState(false);
   const [directResult, setDirectResult] = useState<DirectCommandResult | null>(null);
+  const [directRequestId, setDirectRequestId] = useState<string | null>(null);
   const previousConnectionState = useRef(session.connectionState);
   const engineeringDirect = capabilities?.commandPolicy === 'engineering' && capabilities.directCommand;
   const negotiatedSpeedLimit = engineeringDirect
@@ -97,6 +99,9 @@ export function DummyConsole() {
     speedDegS,
     sending
   });
+  const displayedDirectResult = directRequestId
+    ? directCommandHistory.find((result) => result.requestId === directRequestId) ?? directResult
+    : directResult;
   const settings = {
     showVisual: useWorkbenchStore((state) => state.showVisual),
     showCollision: useWorkbenchStore((state) => state.showCollision),
@@ -114,6 +119,7 @@ export function DummyConsole() {
     if (previous === 'offline' || session.connectionState !== 'offline') return;
     setSelectedJointId(dummyProfile.joints[0]!.jointId);
     setDirectResult(null);
+    setDirectRequestId(null);
     setCameraResetSignal((value) => value + 1);
   }, [session.connectionState]);
 
@@ -122,6 +128,7 @@ export function DummyConsole() {
       && lastCommandResult.status === 'completed'
       && lastCommandResult.evidence === 'feedbackConfirmed') {
       setDirectResult(null);
+      setDirectRequestId(null);
     }
   }, [lastCommandResult]);
 
@@ -149,6 +156,7 @@ export function DummyConsole() {
     setSending(true);
     setDirectResult(null);
     const commandId = crypto.randomUUID();
+    setDirectRequestId(engineeringDirect ? commandId : null);
     try {
       if (engineeringDirect) {
         setDirectResult(await robotGateway.sendDirectCommand({
@@ -288,7 +296,7 @@ export function DummyConsole() {
               ? 'Engineering direct gateway unavailable'
               : `Verified limit ≤ ${negotiatedSpeedLimit.toFixed(2)} deg/s`}</span>
         </div>
-        {directResult && <div className={`jointCommandResult ${directResult.status}`} role="status"><strong>{getDirectResultLabel(directResult)}</strong><span>{directResult.message}</span></div>}
+        {displayedDirectResult && <div className={`jointCommandResult ${displayedDirectResult.status}`} role="status"><strong>{getDirectResultLabel(displayedDirectResult)}</strong><span>{displayedDirectResult.message}</span></div>}
         {lastCommandResult?.commandKind === 'jointGroup' && <div className={`jointCommandResult ${lastCommandResult.status}`} role="status"><strong>{lastCommandResult.status.toUpperCase()}</strong><span>{lastCommandResult.message}</span></div>}
         <Hint content={sendDisabledReason ?? (engineeringDirect ? '写入完成即释放操作；设备是否接收和到位由操作者结合实机与 #GETJPOS 判断。' : '执行前再次确认现场安全；完成只以实测反馈稳定收敛为准。')}><button className="sendGroupButton" type="button" disabled={Boolean(sendDisabledReason)} onClick={() => void sendJointGroup()}>{sending ? '正在写入串口…' : '下发整组关节角'}</button></Hint>
       </aside>
@@ -335,8 +343,8 @@ function getJointGroupDisabledReason({ capabilities, session, jointState, comman
 }
 
 function getDirectResultLabel(result: DirectCommandResult) {
+  if (result.status === 'queued') return 'QUEUED · GATEWAY ACCEPTED';
   if (result.status === 'sent') return 'SENT · MANUAL CONFIRM';
-  if (result.status === 'replied') return 'DEVICE REPLIED';
   return result.status.toUpperCase();
 }
 

@@ -123,6 +123,10 @@ public sealed class RobotGatewayEventPumpTests
             CommandResult result,
             CancellationToken cancellationToken) => Block();
 
+        public ValueTask PublishDirectCommandResultAsync(
+            DirectCommandResult result,
+            CancellationToken cancellationToken) => Block();
+
         private ValueTask Block()
         {
             Interlocked.Increment(ref callCount);

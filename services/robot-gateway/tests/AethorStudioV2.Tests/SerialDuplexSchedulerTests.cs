@@ -229,6 +229,50 @@ public sealed class SerialDuplexSchedulerTests
     }
 
     [Fact]
+    public async Task ResponseFenceBlocksNormalWritesButSafetyStillPreempts()
+    {
+        var transport = new FakeAsciiTransport((_, _) => []);
+        await transport.OpenAsync(CancellationToken.None);
+        var scheduler = CreateScheduler(transport);
+        var responseFence = new SerialResponseFence();
+
+        var transaction = scheduler.QueueWrite(new(
+            "transaction",
+            Encoding.ASCII.GetBytes("#GETMODE\n"),
+            SerialWorkPriority.Interactive,
+            TimeSpan.FromSeconds(2),
+            ResponseFence: responseFence));
+        Assert.Equal(SerialWriteOutcome.Written, (await transaction.Completion!).Outcome);
+
+        var blocked = scheduler.QueueWrite(Request("blocked", "#GETJPOS\n", SerialWorkPriority.Telemetry));
+        var safety = scheduler.QueueWrite(Request("safety", "!STOP\n", SerialWorkPriority.Safety));
+        Assert.Equal(SerialWriteOutcome.Written, (await safety.Completion!).Outcome);
+        Assert.False(blocked.Completion!.IsCompleted);
+        Assert.Equal(["#GETMODE", "!STOP"], transport.Writes);
+
+        responseFence.Release();
+        Assert.Equal(SerialWriteOutcome.Written, (await blocked.Completion).Outcome);
+        Assert.Equal(["#GETMODE", "!STOP", "#GETJPOS"], transport.Writes);
+        await scheduler.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task WriteObserverRunsBeforeTheTicketReportsPhysicalCompletion()
+    {
+        var observed = new ConcurrentQueue<string>();
+        var transport = new FakeAsciiTransport((_, _) => []);
+        await transport.OpenAsync(CancellationToken.None);
+        await using var scheduler = new SerialDuplexScheduler(
+            transport,
+            (_, _) => ValueTask.CompletedTask,
+            writeObserver: request => observed.Enqueue(request.WorkId));
+
+        var ticket = scheduler.QueueWrite(Request("observed", "#GETMODE\n", SerialWorkPriority.Interactive));
+        Assert.Equal(SerialWriteOutcome.Written, (await ticket.Completion!).Outcome);
+        Assert.Equal(["observed"], observed);
+    }
+
+    [Fact]
     public async Task DisposeClosesTransportToReleaseUncancellableIoAndCancelsQueue()
     {
         var transport = new FakeAsciiTransport((_, _) => [])

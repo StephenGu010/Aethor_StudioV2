@@ -417,11 +417,12 @@ public sealed class RobotGatewayCommandTests
         Assert.Equal(GatewayCommandPolicy.Engineering, gateway.Capabilities.CommandPolicy);
         Assert.True(gateway.Capabilities.DirectCommand);
         Assert.DoesNotContain(RobotCommandKind.JointGroup, gateway.Capabilities.SupportedCommands);
-        Assert.Equal(DirectCommandStatus.Sent, result.Status);
-        Assert.Equal(CommandEvidence.TransportWritten, result.Evidence);
-        Assert.Contains("未等待设备队列号、ok 或到位确认", result.Message);
-        Assert.Equal(DirectCommandStatus.Sent, replacement.Status);
-        Assert.Equal(CommandEvidence.TransportWritten, replacement.Evidence);
+        Assert.Equal(DirectCommandStatus.Queued, result.Status);
+        Assert.Equal(CommandEvidence.GatewayAccepted, result.Evidence);
+        Assert.Equal(DirectCommandStatus.Queued, replacement.Status);
+        Assert.Equal(CommandEvidence.GatewayAccepted, replacement.Evidence);
+        await WaitForDirectStatusAsync(gateway, result.RequestId, DirectCommandStatus.Sent);
+        await WaitForDirectStatusAsync(gateway, replacement.RequestId, DirectCommandStatus.Sent);
         Assert.Equal(2, transport.Writes.Count(line => line.StartsWith('>')));
         Assert.Contains(">1,2,3,4,5,6,10", transport.Writes);
         Assert.Equal(2, diagnostics.Events.Count(item => item.EventName == "engineering.motion.transport_written"));
@@ -465,9 +466,10 @@ public sealed class RobotGatewayCommandTests
             new("sequential-move-2", session.SessionId, GatewayContractV1.DummyProfileId, ">2,3,4,5,6,7,10"),
             CancellationToken.None);
 
-        Assert.Equal(DirectCommandStatus.Sent, first.Status);
+        Assert.Equal(DirectCommandStatus.Queued, first.Status);
         await TestWait.UntilAsync(() => diagnostics.Events.Count(item => item.EventName == "engineering.motion.device_response_observed") >= 2);
-        Assert.Equal(DirectCommandStatus.Sent, second.Status);
+        Assert.Equal(DirectCommandStatus.Queued, second.Status);
+        await WaitForDirectStatusAsync(gateway, second.RequestId, DirectCommandStatus.Sent);
         Assert.Equal(2, transport.Writes.Count(line => line.StartsWith('>')));
         Assert.DoesNotContain(diagnostics.Events, item => item.EventName == "engineering.motion.unconfirmed");
     }
@@ -495,14 +497,13 @@ public sealed class RobotGatewayCommandTests
             new("explicit-stop", session.SessionId, GatewayContractV1.DummyProfileId, "!STOP"),
             CancellationToken.None);
 
-        Assert.Equal(DirectCommandStatus.Sent, move.Status);
-        Assert.Equal(DirectCommandStatus.Replied, stop.Status);
-        Assert.Equal("Stopped ok", stop.DeviceReply);
-        Assert.Contains(
-            gateway.GetProtocolFrames(),
+        Assert.Equal(DirectCommandStatus.Queued, move.Status);
+        Assert.Equal(DirectCommandStatus.Queued, stop.Status);
+        await WaitForDirectStatusAsync(gateway, stop.RequestId, DirectCommandStatus.Sent);
+        await TestWait.UntilAsync(() => gateway.GetProtocolFrames().Any(
             frame => frame.Raw == "Stopped ok"
-                && frame.CorrelationId is not null
-                && !frame.CorrelationId.StartsWith("engineering-manual-", StringComparison.Ordinal));
+                && (frame.CorrelationId is null
+                    || !frame.CorrelationId.StartsWith("engineering-manual-", StringComparison.Ordinal))));
     }
 
     [Fact]
@@ -538,10 +539,11 @@ public sealed class RobotGatewayCommandTests
             new("missing-queue-2", session.SessionId, GatewayContractV1.DummyProfileId, ">2,3,4,5,6,7,10"),
             CancellationToken.None);
 
-        Assert.Equal(DirectCommandStatus.Sent, first.Status);
+        Assert.Equal(DirectCommandStatus.Queued, first.Status);
         Assert.Equal(ConnectionState.Connected, gateway.GetSession().ConnectionState);
         Assert.Equal(Validity.Stale, gateway.GetSession().Validity);
-        Assert.Equal(DirectCommandStatus.Sent, second.Status);
+        Assert.Equal(DirectCommandStatus.Queued, second.Status);
+        await WaitForDirectStatusAsync(gateway, second.RequestId, DirectCommandStatus.Sent);
         Assert.Equal(2, transport.Writes.Count(line => line.StartsWith('>')));
         Assert.Equal(2, diagnostics.Events.Count(item => item.EventName == "engineering.motion.query_timeout"));
     }
@@ -576,7 +578,7 @@ public sealed class RobotGatewayCommandTests
         await TestWait.UntilAsync(() => diagnostics.Events.Any(
             item => item.EventName == "engineering.motion.feedback_frozen_suspected"));
 
-        Assert.Equal(DirectCommandStatus.Sent, sent.Status);
+        Assert.Equal(DirectCommandStatus.Queued, sent.Status);
         Assert.Equal(Validity.Stale, gateway.GetJointState().Validity);
         var frozenFrame = Assert.Single(gateway.GetProtocolFrames(100), frame => frame.ParsedKind == "feedbackFrozen");
         Assert.Equal(ProtocolDirection.Error, frozenFrame.Direction);
@@ -588,7 +590,8 @@ public sealed class RobotGatewayCommandTests
             CancellationToken.None);
         await TestWait.UntilAsync(() => transport.Writes.Count(line => line == "#GETJPOS") >= 2);
 
-        Assert.Equal(DirectCommandStatus.Sent, replacement.Status);
+        Assert.Equal(DirectCommandStatus.Queued, replacement.Status);
+        await WaitForDirectStatusAsync(gateway, replacement.RequestId, DirectCommandStatus.Sent);
         Assert.Equal(Validity.Stale, gateway.GetJointState().Validity);
         Assert.Equal(2, transport.Writes.Count(line => line.StartsWith('>')));
 
@@ -667,10 +670,10 @@ public sealed class RobotGatewayCommandTests
 
         Assert.Equal(CommandStatus.Completed, stop.Status);
         Assert.Equal(CommandEvidence.FeedbackConfirmed, stop.Evidence);
-        Assert.Equal(DirectCommandStatus.Sent, firstMove.Status);
+        Assert.Equal(DirectCommandStatus.Queued, firstMove.Status);
         Assert.Equal(CommandStatus.Completed, enable.Status);
-        Assert.Equal(DirectCommandStatus.Sent, secondMove.Status);
-        Assert.Equal(CommandEvidence.TransportWritten, secondMove.Evidence);
+        Assert.Equal(DirectCommandStatus.Queued, secondMove.Status);
+        await WaitForDirectStatusAsync(gateway, secondMove.RequestId, DirectCommandStatus.Sent);
         Assert.Equal(2, transport.Writes.Count(line => line.StartsWith('>')));
     }
 
@@ -714,7 +717,8 @@ public sealed class RobotGatewayCommandTests
 
         Assert.Equal(CommandStatus.Completed, stop.Status);
         Assert.Equal(CommandEvidence.FeedbackConfirmed, stop.Evidence);
-        Assert.Equal(DirectCommandStatus.Failed, direct.Status);
+        Assert.Equal(DirectCommandStatus.Queued, direct.Status);
+        await WaitForDirectStatusAsync(gateway, direct.RequestId, DirectCommandStatus.Sent);
         Assert.Equal(MotorState.Disabled, gateway.GetSession().MotorState);
         Assert.Contains("!STOP", transport.Writes);
         Assert.Contains("!DISABLE", transport.Writes);
@@ -822,7 +826,7 @@ public sealed class RobotGatewayCommandTests
     }
 
     [Fact]
-    public async Task StopChainContinuesToDisableWhenBestEffortZeroWriteFails()
+    public async Task StopChainFailsClosedWhenPhysicalZeroCurrentWriteFaultsTheScheduler()
     {
         var enabled = true;
         var transport = new FakeAsciiTransport((line, _) => line switch
@@ -845,15 +849,14 @@ public sealed class RobotGatewayCommandTests
         var session = await ConnectAndWaitAsync(gateway);
         var stop = await gateway.StopAndDisableAsync(Command("stop-after-zero-failure", session.SessionId), CancellationToken.None);
 
-        Assert.Equal(CommandStatus.Completed, stop.Status);
-        Assert.Equal(CommandEvidence.FeedbackConfirmed, stop.Evidence);
-        Assert.Contains("Serial port is occupied or access was denied", stop.DeviceReply);
-        Assert.Contains("!DISABLE", transport.Writes);
-        Assert.Equal(MotorState.Disabled, gateway.GetSession().MotorState);
+        Assert.Equal(CommandStatus.Failed, stop.Status);
+        Assert.Equal(CommandResultCode.TransportError, stop.Code);
+        Assert.Contains("!STOP", transport.Writes);
+        Assert.DoesNotContain("!DISABLE", transport.Writes);
     }
 
     [Fact]
-    public async Task StopReturnsUnconfirmedWhenAnUncancellablePollingReadOwnsSerialIo()
+    public async Task StopPreemptsAnUncancellablePollingResponseFenceAndStillWritesSafetyChain()
     {
         var transport = new FakeAsciiTransport((_, _) => [])
         {
@@ -870,14 +873,14 @@ public sealed class RobotGatewayCommandTests
             .WaitAsync(TimeSpan.FromSeconds(1));
 
         Assert.Equal(CommandStatus.Unconfirmed, stop.Status);
-        Assert.Equal(CommandResultCode.Timeout, stop.Code);
-        Assert.Equal(CommandEvidence.GatewayAccepted, stop.Evidence);
-        Assert.DoesNotContain("!STOP", transport.Writes);
+        Assert.Equal(CommandResultCode.DeviceUnconfirmed, stop.Code);
+        Assert.Contains("!STOP", transport.Writes);
+        Assert.Contains("!DISABLE", transport.Writes);
         Assert.Equal(Validity.Stale, gateway.GetSession().Validity);
     }
 
     [Fact]
-    public async Task StopReturnsUnconfirmedInsteadOfWaitingForeverForSerialOwnership()
+    public async Task StopPreemptsSilentEnableAndCompletesFromDisabledReadback()
     {
         var transport = new FakeAsciiTransport((line, _) => line switch
         {
@@ -894,18 +897,27 @@ public sealed class RobotGatewayCommandTests
 
         var stop = await gateway.StopAndDisableAsync(Command("bounded-stop", session.SessionId), CancellationToken.None);
 
-        Assert.Equal(CommandStatus.Unconfirmed, stop.Status);
-        Assert.Equal(CommandResultCode.Timeout, stop.Code);
-        Assert.Equal(Validity.Stale, gateway.GetSession().Validity);
-        Assert.DoesNotContain("!STOP", transport.Writes);
+        Assert.Equal(CommandStatus.Completed, stop.Status);
+        Assert.Equal(CommandResultCode.Ok, stop.Code);
+        Assert.Equal(Validity.Valid, gateway.GetSession().Validity);
+        Assert.Contains("!STOP", transport.Writes);
+        Assert.Contains("!DISABLE", transport.Writes);
 
-        transport.PushInbound("Started ok\n");
         Assert.Equal(CommandStatus.Cancelled, (await enableTask).Status);
         var blocked = await gateway.SetModeAsync(
             new("blocked-after-uncertain-stop", session.SessionId, GatewayContractV1.DummyProfileId, 1),
             CancellationToken.None);
-        Assert.Equal(CommandResultCode.SafetyInterlockLatched, blocked.Code);
-        Assert.DoesNotContain("#CMDMODE 1", transport.Writes);
+        Assert.Equal(CommandStatus.TimedOut, blocked.Status);
+        Assert.Contains("#CMDMODE 1", transport.Writes);
+    }
+
+    private static async Task WaitForDirectStatusAsync(
+        RobotGateway gateway,
+        string requestId,
+        DirectCommandStatus status)
+    {
+        await TestWait.UntilAsync(() => gateway.GetDirectCommandHistory(128)
+            .Any(result => result.RequestId == requestId && result.Status == status));
     }
 
     private static SimpleRobotCommand Command(string commandId, string sessionId) =>

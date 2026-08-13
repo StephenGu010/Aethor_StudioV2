@@ -2,7 +2,7 @@
 
 ## 用途与限制
 
-本手册用于当前开发机上的 Dummy 六轴实机联调。它不会自动连接、使能或运动，也不代表 Phase 5 Gate B 完成。engineering 六轴运动只显示 `SENT · MANUAL CONFIRM`：上位机确认串口写入后立即放行，不等待 FIFO、`ok` 或到位；软件停止不能替代物理急停。
+本手册用于当前开发机上的 Dummy 六轴实机联调。它不会自动连接、使能或运动，也不代表 Phase 5 Gate B 完成。engineering direct 先显示 `QUEUED · GATEWAY ACCEPTED`，物理写入后再显示 `SENT · MANUAL CONFIRM`；两者都不等待 FIFO、`ok` 或到位，也不会阻止提交下一条请求。软件停止不能替代物理急停。
 
 禁止发送 HOME、RESET、RGB、模式 4/5、电流/PID、标定、reboot 或未列出的命令。Aethor_robo 不适用本手册。
 
@@ -14,7 +14,7 @@
 pnpm dev:engineering
 ```
 
-它会启动隐藏的本机 gateway/frontend 进程并验证 `RobotGatewayV1.3 + engineering + directCommand + session offline`，日志和 PID 只写入被忽略的 `artifacts/dev/`。它不会枚举、连接或打开串口。若端口 5127 已有 owner，入口失败关闭，不复用未知进程。
+它会启动隐藏的本机 gateway/frontend 进程并验证 `RobotGatewayV1.4 + engineering + directCommand + session offline`，日志和 PID 只写入被忽略的 `artifacts/dev/`。它不会枚举、连接或打开串口。若端口 5127 已有 owner，入口失败关闭，不复用未知进程。
 
 需要使用与 Web 同一构建的桌面壳时，先生成本机开发包，再创建工程快捷方式：
 
@@ -69,7 +69,7 @@ pnpm dev
 2. 回到“控制台”，确认六个目标仍等于当前实测值。
 3. 将 Command speed 保持在低值（默认 `1 deg/s`）。界面的 100 deg/s 上界只是固件输入上界，不是安全建议。
 4. 只对现场确认有净空的一轴设置小增量，其他五轴保持当前实测值；检查幽灵模型姿态、数值限位和预期方向。
-5. 点击“下发整组关节角”并再次确认。结果应为 `SENT · MANUAL CONFIRM`；它只表示串口写入成功。随后观察实体模型、实测数值和误差，再人为决定下一步。
+5. 点击“下发整组关节角”并再次确认。HTTP 受理先显示 `QUEUED · GATEWAY ACCEPTED`；物理写入后应转为 `SENT · MANUAL CONFIRM`。后者也只表示串口写入成功。随后观察实体模型、实测数值和误差，再人为决定下一步。
 6. 若方向、索引、起始姿态、声音、线缆或反馈任何一项异常，立即使用物理急停；不要重发、HOME 或 RESET。
 7. 调试结束点击“停止并去使能”，只有读回 disabled 后才断开串口。
 

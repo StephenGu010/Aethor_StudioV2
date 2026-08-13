@@ -8,7 +8,7 @@
     "RobotCommandKind": { "enum": ["enable", "stopAndDisable", "home", "reset", "setMode", "jointGroup"] },
     "CommandStatus": { "enum": ["unsupported", "rejected", "accepted", "completed", "failed", "timedOut", "cancelled", "unconfirmed"] },
     "CommandEvidence": { "enum": ["none", "gatewayAccepted", "transportWritten", "deviceQueued", "deviceAck", "feedbackConfirmed"] },
-    "DirectCommandStatus": { "enum": ["sent", "replied", "rejected", "timedOut", "failed"] },
+    "DirectCommandStatus": { "enum": ["queued", "sent", "rejected", "expired", "superseded", "cancelled", "failed"] },
     "CommandResultCode": { "enum": ["ok", "commandsDisabled", "invalidRequest", "sessionMismatch", "notConnected", "feedbackStale", "motorNotEnabled", "invalidTarget", "speedUnverified", "speedOutOfRange", "safetyInterlockLatched", "commandInFlight", "commandIdConflict", "deviceRejected", "deviceUnconfirmed", "transportError", "timeout", "cancelled"] },
     "RobotSessionSnapshot": {
       "type": "object",
@@ -100,7 +100,7 @@
       ],
       "required": ["contractVersion", "protocolAdapterId", "serialEnumeration", "readOnlyConnection", "liveTelemetry", "hardwareCommands", "directCommand", "commandPolicy", "allowedQueries", "supportedCommands", "jointGroupSpeedLimitDegS", "jointGroupCompletion", "engineeringJointSpeedMaxDegS"],
       "properties": {
-        "contractVersion": { "const": "1.3" },
+        "contractVersion": { "const": "1.4" },
         "protocolAdapterId": { "const": "dummy-ascii-v1" },
         "serialEnumeration": { "type": "boolean" },
         "readOnlyConnection": { "type": "boolean" },
@@ -183,6 +183,15 @@
         "deviceReply": { "type": ["string", "null"], "maxLength": 4096 }
       },
       "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "queued" } }, "required": ["status"] },
+          "then": {
+            "properties": {
+              "evidence": { "const": "gatewayAccepted" },
+              "deviceReply": { "type": "null" }
+            }
+          }
+        },
         {
           "if": { "properties": { "status": { "const": "sent" } }, "required": ["status"] },
           "then": {

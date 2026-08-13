@@ -1,6 +1,6 @@
 # ADR-0010：有界串口双工运行时
 
-- 状态：Accepted（软件门已实现，生产迁移未完成）
+- 状态：Accepted（Dummy 生产迁移已完成；Aethor adapter 待实现）
 - 日期：2026-08-13
 - 适用范围：Dummy adapter 迁移、Aethor Arm adapter、串口终端
 
@@ -28,17 +28,15 @@ Application 层提供 `SerialDuplexScheduler`，只接管已经打开的 `IAscii
 
 ## 当前接线状态
 
-调度器和 fake transport 测试已经落盘，但尚未注册到生产 DI，也没有替换 `RobotGateway` 的 `serialIoGate`。这样保证迁移完成前不会同时出现旧 reader 与新 reader。
+Dummy A1-U2 已将所有生产读写一次性迁移到 `DummySerialSession + SerialDuplexScheduler`，并删除 `RobotGateway` 的旧 `serialIoGate`/直接读写路径。单一 decoder 负责所有 Dummy RX；结构化命令的 response fence 只有在 writer 开始向 transport 提交对应 payload 后才允许匹配回包，排队期间到达的旧响应保持无主观察。direct terminal 只排队写入并通过结果事件/历史收束。Dummy 没有 request ID，writer 开始后的迟到同形响应仍无法从线协议上强区分。
 
-`/terminal` 已改为双 Profile 页面：Dummy 保持现有网关行为；Aethor_robo 显示候选 REQ 模板和白名单校验，但 CRC 跨语言向量与 adapter 缺席时发送固定禁用，不显示 Dummy 帧。
+`/terminal` 已按 request ID 展示多个 direct 请求的 `queued/sent/失败类` 状态，某个请求缺少设备回复不会禁用下一次发送。Aethor_robo 仍只显示候选 REQ 模板和白名单校验；CRC 跨语言向量与 adapter 缺席时发送固定禁用，不显示 Dummy 帧。
 
-## 后续迁移顺序
+## 后续顺序
 
-1. 先把 Dummy 的所有读写一次性迁移到调度器，删除旧 reader 路径；结构化命令响应语义和审计保持不变。
-2. direct terminal 改为“有界入队立即返回”，不能把队列接受写成 transport 已完成。
-3. 用 fake transport 验证查询、交互发送、STOP 抢占、迟到回包、队列满、拔线和关闭。
-4. Aethor 固件 commit、CRC/parser vectors 冻结后，实现独立 codec 与 pending request registry。
-5. 只有生产 adapter 的软件门完整通过后，才编写并执行新的监督实机 runbook。
+1. Aethor 固件 commit、CRC/parser vectors 冻结后，实现独立 codec 与 pending request registry。
+2. Aethor adapter 复用调度器资源所有权，但保持协议、session 与响应状态独立。
+3. 只有 Aethor 生产 adapter 的软件门完整通过后，才编写并执行新的监督实机 runbook。
 
 ## 结果
 

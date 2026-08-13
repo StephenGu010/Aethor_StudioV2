@@ -213,6 +213,7 @@ internal sealed class RecordingGatewayEventSink : IRobotGatewayEventSink
     public ConcurrentQueue<JointStateFrame> JointStates { get; } = new();
     public ConcurrentQueue<ProtocolFrame> ProtocolFrames { get; } = new();
     public ConcurrentQueue<CommandResult> CommandResults { get; } = new();
+    public ConcurrentQueue<DirectCommandResult> DirectCommandResults { get; } = new();
 
     public ValueTask PublishSessionAsync(RobotSessionSnapshot snapshot, CancellationToken cancellationToken)
     {
@@ -235,6 +236,12 @@ internal sealed class RecordingGatewayEventSink : IRobotGatewayEventSink
     public ValueTask PublishCommandResultAsync(CommandResult result, CancellationToken cancellationToken)
     {
         CommandResults.Enqueue(result);
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask PublishDirectCommandResultAsync(DirectCommandResult result, CancellationToken cancellationToken)
+    {
+        DirectCommandResults.Enqueue(result);
         return ValueTask.CompletedTask;
     }
 }

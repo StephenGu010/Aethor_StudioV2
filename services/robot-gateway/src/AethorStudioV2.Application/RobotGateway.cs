@@ -17,25 +17,23 @@ public sealed class RobotGateway : IAsyncDisposable
     private readonly TimeProvider timeProvider;
     private readonly RobotGatewayOptions options;
     private readonly SemaphoreSlim lifecycleGate = new(1, 1);
-    private readonly SemaphoreSlim serialIoGate = new(1, 1);
-    private readonly SemaphoreSlim commandGate = new(1, 1);
     private readonly object stateGate = new();
     private readonly object commandStateGate = new();
     private readonly Queue<ProtocolFrame> protocolFrames = new();
     private readonly Dictionary<string, CommandEntry> commandEntries = new(StringComparer.Ordinal);
     private readonly Queue<string> commandOrder = new();
+    private readonly Dictionary<string, DirectCommandEntry> directCommandEntries = new(StringComparer.Ordinal);
+    private readonly Queue<string> directCommandOrder = new();
     private readonly Channel<GatewayEvent> eventQueue;
     private readonly CancellationTokenSource eventPumpCancellation = new();
     private readonly Task eventPumpTask;
 
     private RobotSessionSnapshot session;
     private JointStateFrame jointState;
-    private IAsciiTransport? activeTransport;
+    private DummySerialSession? activeSerialSession;
     private CancellationTokenSource? pollingCancellation;
     private Task? pollingTask;
     private TaskCompletionSource? disconnectCompletion;
-    private CancellationTokenSource? activeDirectCommandCancellation;
-    private TaskCompletionSource? activeDirectCommandCompletion;
     private string? engineeringMotionResponseCorrelationId;
     private string? engineeringMotionRequestId;
     private double[]? engineeringMotionTargetPositionsDeg;
@@ -45,7 +43,6 @@ public sealed class RobotGateway : IAsyncDisposable
     private double engineeringMotionMaximumObservedMovementDeg;
     private bool engineeringMotionFeedbackFrozenSuspected;
     private string? exclusiveCommandId;
-    private int commandDemand;
     private int commandInterlockLatched;
     private int engineeringManualMotionActive;
     private int serialOpenRecoveryRequired;
@@ -161,6 +158,22 @@ public sealed class RobotGateway : IAsyncDisposable
         }
     }
 
+    public IReadOnlyList<DirectCommandResult> GetDirectCommandHistory(int limit = 50)
+    {
+        if (limit is < 1 or > 500)
+        {
+            throw new GatewayValidationException("Direct command history limit must be between 1 and 500");
+        }
+
+        lock (commandStateGate)
+        {
+            return directCommandOrder
+                .TakeLast(limit)
+                .Select(requestId => directCommandEntries[requestId].Result)
+                .ToArray();
+        }
+    }
+
     public CommandAuditRecord? GetCommand(string commandId)
     {
         if (string.IsNullOrWhiteSpace(commandId))
@@ -246,8 +259,8 @@ public sealed class RobotGateway : IAsyncDisposable
             return DirectResult(request, DirectCommandStatus.Rejected, CommandEvidence.None, parsedCommand.NormalizedLine, "命令会话与当前连接不匹配");
         }
 
-        var transport = activeTransport;
-        if (current.ConnectionState != ConnectionState.Connected || transport?.IsOpen != true)
+        var serialSession = activeSerialSession;
+        if (current.ConnectionState != ConnectionState.Connected || serialSession?.IsRunning != true)
         {
             return DirectResult(request, DirectCommandStatus.Rejected, CommandEvidence.None, parsedCommand.NormalizedLine, "Dummy 串口未连接");
         }
@@ -258,141 +271,87 @@ public sealed class RobotGateway : IAsyncDisposable
             return DirectResult(request, DirectCommandStatus.Rejected, CommandEvidence.None, parsedCommand.NormalizedLine, commandValidation);
         }
 
-        var directExecutionTimeout = TimeSpan.FromMilliseconds(Math.Max(500, options.CommandTimeout.TotalMilliseconds * 3));
-        using var executionCancellation = new CancellationTokenSource(directExecutionTimeout);
-        var directCompletion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var fingerprint = DirectFingerprint(request, parsedCommand.NormalizedLine);
+        DirectCommandResult queued;
         lock (commandStateGate)
         {
-            if (exclusiveCommandId is not null || activeDirectCommandCancellation is not null)
+            if (directCommandEntries.TryGetValue(request.RequestId, out var existing))
             {
-                return DirectResult(request, DirectCommandStatus.Rejected, CommandEvidence.None, parsedCommand.NormalizedLine, "已有硬件命令正在执行");
+                return string.Equals(existing.Fingerprint, fingerprint, StringComparison.Ordinal)
+                    ? existing.Result
+                    : DirectResult(request, DirectCommandStatus.Rejected, CommandEvidence.None, parsedCommand.NormalizedLine, "requestId 已用于不同的直连请求");
             }
 
-            activeDirectCommandCancellation = executionCancellation;
-            activeDirectCommandCompletion = directCompletion;
-        }
+            if (exclusiveCommandId is not null
+                && parsedCommand.Kind is not (DummyDirectCommandKind.Stop or DummyDirectCommandKind.Disable))
+            {
+                return DirectResult(request, DirectCommandStatus.Rejected, CommandEvidence.None, parsedCommand.NormalizedLine, "已有结构化硬件命令正在执行");
+            }
 
-        Interlocked.Increment(ref commandDemand);
-        var ownsCommandDemand = true;
-        var ownsCommandGate = false;
-        var ownsSerialIo = false;
+            cancellationToken.ThrowIfCancellationRequested();
+            queued = DirectResult(
+                request,
+                DirectCommandStatus.Queued,
+                CommandEvidence.GatewayAccepted,
+                parsedCommand.NormalizedLine,
+                "请求已进入有界串口队列；尚未写入 transport");
+            directCommandEntries.Add(request.RequestId, new(
+                fingerprint,
+                parsedCommand,
+                queued,
+                new(TaskCreationOptions.RunContinuationsAsynchronously)));
+            directCommandOrder.Enqueue(request.RequestId);
+            TrimDirectCommandHistoryLocked();
+        }
+        EnqueueEvent(new DirectCommandResultEvent(queued));
+
+        var priority = parsedCommand.Kind is DummyDirectCommandKind.Stop or DummyDirectCommandKind.Disable
+            ? SerialWorkPriority.Safety
+            : SerialWorkPriority.Interactive;
+        SerialWriteTicket ticket;
         try
         {
-            ownsCommandGate = await commandGate
-                .WaitAsync(options.CommandTimeout, executionCancellation.Token)
-                .ConfigureAwait(false);
-            if (!ownsCommandGate)
-            {
-                return DirectResult(request, DirectCommandStatus.Rejected, CommandEvidence.None, parsedCommand.NormalizedLine, "串口已有命令正在执行");
-            }
-
-            ownsSerialIo = await serialIoGate
-                .WaitAsync(options.CommandTimeout, executionCancellation.Token)
-                .ConfigureAwait(false);
-            if (!ownsSerialIo)
-            {
-                MarkFeedbackStale();
-                return DirectResult(request, DirectCommandStatus.TimedOut, CommandEvidence.None, parsedCommand.NormalizedLine, "未能在期限内取得串口所有权；命令未发送");
-            }
-
-            if (!ReferenceEquals(activeTransport, transport)
+            if (!ReferenceEquals(activeSerialSession, serialSession)
                 || GetSession().ConnectionState != ConnectionState.Connected)
             {
-                return DirectResult(request, DirectCommandStatus.Rejected, CommandEvidence.None, parsedCommand.NormalizedLine, "串口会话已变化，命令未发送");
-            }
-
-            var decoder = new DummyAsciiLineDecoder();
-            var readBuffer = new byte[options.ReadBufferBytes];
-            if (parsedCommand.Kind == DummyDirectCommandKind.JointGroup)
-            {
-                var correlationId = Guid.NewGuid().ToString("N");
-                await WriteLineAsync(
-                    transport,
-                    parsedCommand.NormalizedLine,
-                    DirectParsedKind(parsedCommand.Kind),
-                    request.SessionId,
-                    executionCancellation.Token,
-                    correlationId,
-                    request.RequestId).ConfigureAwait(false);
-                BeginEngineeringManualMotion(
-                    request.SessionId,
+                return UpdateDirectCommandResult(
                     request.RequestId,
-                    parsedCommand.PositionsDeg!);
-                diagnostics.Record(new(
-                    "engineering.motion.transport_written",
-                    GatewayDiagnosticSeverity.Information,
-                    request.SessionId,
-                    transport.PortName,
-                    $"RequestId={request.RequestId} Mode={current.ControlMode ?? 0} Result=sent-unconfirmed; command ownership released immediately"));
-                return DirectResult(
-                    request,
-                    DirectCommandStatus.Sent,
-                    CommandEvidence.TransportWritten,
-                    parsedCommand.NormalizedLine,
-                    "整组关节角已写入串口；未等待设备队列号、ok 或到位确认。请由操作者观察实机和 #GETJPOS 后决定下一步");
+                    DirectCommandStatus.Cancelled,
+                    CommandEvidence.GatewayAccepted,
+                    "串口会话已变化；排队请求未发送");
             }
 
-            var response = await SendAndWaitAsync(
-                transport,
+            ticket = serialSession.QueueUnobserved(
+                $"direct:{request.RequestId}",
                 parsedCommand.NormalizedLine,
                 DirectParsedKind(parsedCommand.Kind),
-                candidate => IsExpectedDirectResponse(parsedCommand, candidate),
-                decoder,
-                readBuffer,
                 request.SessionId,
+                priority,
+                options.CommandTimeout,
+                directRequestId: request.RequestId);
+        }
+        catch (Exception exception) when (exception is GatewayConflictException or InvalidOperationException or ObjectDisposedException)
+        {
+            return UpdateDirectCommandResult(
                 request.RequestId,
-                executionCancellation.Token).ConfigureAwait(false);
-
-            var evidence = parsedCommand.Kind is DummyDirectCommandKind.QueryJointPositions
-                or DummyDirectCommandKind.QueryMode
-                or DummyDirectCommandKind.QueryEnable
-                ? CommandEvidence.FeedbackConfirmed
-                : CommandEvidence.DeviceAck;
-            if (parsedCommand.Kind is DummyDirectCommandKind.Stop or DummyDirectCommandKind.Disable)
-            {
-                EndEngineeringManualMotion();
-            }
-            return DirectResult(request, DirectCommandStatus.Replied, evidence, parsedCommand.NormalizedLine, "设备已返回匹配应答", response.Raw);
-        }
-        catch (GatewayQueryTimeoutException exception)
-        {
-            if (parsedCommand.Kind != DummyDirectCommandKind.JointGroup)
-            {
-                MarkDirectCommandUnconfirmed(parsedCommand.Kind);
-            }
-            return DirectResult(request, DirectCommandStatus.TimedOut, CommandEvidence.GatewayAccepted, parsedCommand.NormalizedLine, "设备应答超时；物理结果未知", exception.Message);
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException or TimeoutException or OperationCanceledException)
-        {
-            if (parsedCommand.Kind != DummyDirectCommandKind.JointGroup)
-            {
-                MarkDirectCommandUnconfirmed(parsedCommand.Kind);
-            }
-            return DirectResult(
-                request,
                 DirectCommandStatus.Failed,
-                CommandEvidence.None,
-                parsedCommand.NormalizedLine,
-                parsedCommand.Kind == DummyDirectCommandKind.JointGroup
-                    ? "整组关节角未确认写入串口；未锁定后续人工操作"
-                    : "直连命令失败；物理结果未知",
+                CommandEvidence.GatewayAccepted,
+                "请求未能进入串口队列",
                 SafeExceptionMessage(exception));
         }
-        finally
+
+        if (!ticket.Accepted)
         {
-            if (ownsSerialIo) serialIoGate.Release();
-            if (ownsCommandGate) commandGate.Release();
-            if (ownsCommandDemand) Interlocked.Decrement(ref commandDemand);
-            lock (commandStateGate)
-            {
-                if (ReferenceEquals(activeDirectCommandCancellation, executionCancellation))
-                {
-                    activeDirectCommandCancellation = null;
-                    activeDirectCommandCompletion = null;
-                }
-            }
-            directCompletion.TrySetResult();
+            return UpdateDirectCommandResult(
+                request.RequestId,
+                DirectCommandStatus.Rejected,
+                CommandEvidence.None,
+                ticket.RejectionReason ?? "串口队列拒绝请求");
         }
+
+        _ = ObserveDirectWriteCompletionAsync(request.RequestId, ticket.Completion!);
+        await Task.CompletedTask;
+        return queued;
     }
 
     private void BeginEngineeringManualMotion(
@@ -447,9 +406,77 @@ public sealed class RobotGateway : IAsyncDisposable
                 ? GatewayDiagnosticSeverity.Warning
                 : GatewayDiagnosticSeverity.Information,
             GetSession().SessionId,
-            activeTransport?.PortName,
+            activeSerialSession?.PortName,
             $"ResponseKind={response.Kind}; unowned observation only, no command state transition"));
         return correlationId;
+    }
+
+    private bool ObserveDummyResponse(
+        DummyResponse response,
+        string sessionId,
+        DummyResponseContext? responseContext)
+    {
+        var engineeringCorrelationId = responseContext?.CommandId is null
+            ? ObserveEngineeringMotionResponse(response)
+            : null;
+        RecordProtocolFrame(
+            ProtocolDirection.Rx,
+            response.Raw,
+            response.ContractKind,
+            sessionId,
+            engineeringCorrelationId ?? responseContext?.CorrelationId);
+        ApplyObservedResponse(response);
+        return engineeringCorrelationId is not null;
+    }
+
+    private void ObservePhysicalSerialWrite(DummySerialWrite write)
+    {
+        if (write.CommandId is not null)
+        {
+            RecordCommandTransmission(write.CommandId, write.Line);
+        }
+
+        RecordProtocolFrame(
+            ProtocolDirection.Tx,
+            write.Line,
+            write.ParsedKind,
+            write.SessionId,
+            write.CorrelationId);
+
+        if (write.DirectRequestId is null)
+        {
+            return;
+        }
+
+        DirectCommandEntry? entry;
+        lock (commandStateGate)
+        {
+            directCommandEntries.TryGetValue(write.DirectRequestId, out entry);
+        }
+
+        if (entry?.Command.Kind == DummyDirectCommandKind.JointGroup)
+        {
+            BeginEngineeringManualMotion(
+                write.SessionId,
+                write.DirectRequestId,
+                entry.Command.PositionsDeg!);
+            diagnostics.Record(new(
+                "engineering.motion.transport_written",
+                GatewayDiagnosticSeverity.Information,
+                write.SessionId,
+                activeSerialSession?.PortName,
+                $"RequestId={write.DirectRequestId} Result=sent-unconfirmed; terminal did not wait for a device reply"));
+        }
+        else if (entry?.Command.Kind is DummyDirectCommandKind.Stop or DummyDirectCommandKind.Disable)
+        {
+            EndEngineeringManualMotion();
+        }
+
+        UpdateDirectCommandResult(
+            write.DirectRequestId,
+            DirectCommandStatus.Sent,
+            CommandEvidence.TransportWritten,
+            "命令已写入 transport；终端未等待设备回包");
     }
 
     private void EndEngineeringManualMotion()
@@ -483,7 +510,7 @@ public sealed class RobotGateway : IAsyncDisposable
                     "A previous serial open was interrupted; restart the gateway before retrying");
             }
 
-            if (activeTransport is not null
+            if (activeSerialSession is not null
                 || HasRunningCommand()
                 || GetSession().ConnectionState is ConnectionState.Connecting or ConnectionState.Connected or ConnectionState.Disconnecting)
             {
@@ -563,7 +590,30 @@ public sealed class RobotGateway : IAsyncDisposable
                 throw new GatewayDependencyException("Serial port could not be opened", exception);
             }
 
-            activeTransport = transport;
+            DummySerialSession serialSession;
+            try
+            {
+                serialSession = new(
+                    transport,
+                    (response, responseContext) => ObserveDummyResponse(response, sessionId, responseContext),
+                    (record, correlationId) => RecordProtocolError(
+                        record.Reason ?? "discarded",
+                        record.Value,
+                        sessionId,
+                        correlationId),
+                    ObservePhysicalSerialWrite,
+                    diagnostics,
+                    timeProvider,
+                    new SerialDuplexSchedulerOptions { ReadBufferBytes = options.ReadBufferBytes });
+            }
+            catch
+            {
+                await DisposeTransportAsync(transport).ConfigureAwait(false);
+                UpdateSession(OfflineSession(timeProvider.GetUtcNow()));
+                throw;
+            }
+
+            activeSerialSession = serialSession;
             pollingCancellation = new CancellationTokenSource();
             var connectedSnapshot = new RobotSessionSnapshot(
                 sessionId,
@@ -575,7 +625,7 @@ public sealed class RobotGateway : IAsyncDisposable
                 DataSource.Measured,
                 Validity.Stale);
             UpdateSession(connectedSnapshot);
-            pollingTask = PollAsync(transport, sessionId, pollingCancellation.Token);
+            pollingTask = PollAsync(serialSession, sessionId, pollingCancellation.Token);
             diagnostics.Record(new(
                 "serial.opened",
                 GatewayDiagnosticSeverity.Information,
@@ -601,7 +651,7 @@ public sealed class RobotGateway : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         Task? existingDisconnect = null;
-        IAsciiTransport? transport = null;
+        DummySerialSession? transport = null;
         Task? pollTask = null;
         TaskCompletionSource? completion = null;
 
@@ -612,7 +662,7 @@ public sealed class RobotGateway : IAsyncDisposable
             var disconnectState = GetSession();
             if (!allowPossiblyEnabled
                 && options.HardwareCommandsEnabled
-                && activeTransport is not null
+                && activeSerialSession is not null
                 && HasRunningCommand())
             {
                 throw new GatewayConflictException("Wait for the active hardware command to finish, or use stop and disable, before disconnecting");
@@ -620,7 +670,7 @@ public sealed class RobotGateway : IAsyncDisposable
 
             if (!allowPossiblyEnabled
                 && options.HardwareCommandsEnabled
-                && activeTransport is not null
+                && activeSerialSession is not null
                 && disconnectState.ConnectionState == ConnectionState.Connected
                 && disconnectState.MotorState == MotorState.Enabled)
             {
@@ -631,7 +681,7 @@ public sealed class RobotGateway : IAsyncDisposable
             {
                 existingDisconnect = disconnectCompletion.Task;
             }
-            else if (activeTransport is null)
+            else if (activeSerialSession is null)
             {
                 ResetSessionEvidence();
                 UpdateSession(OfflineSession(timeProvider.GetUtcNow()));
@@ -642,9 +692,9 @@ public sealed class RobotGateway : IAsyncDisposable
             {
                 completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
                 disconnectCompletion = completion;
-                transport = activeTransport;
+                transport = activeSerialSession;
                 pollTask = pollingTask;
-                activeTransport = null;
+                activeSerialSession = null;
                 pollingTask = null;
                 pollingCancellation?.Cancel();
                 pollingCancellation?.Dispose();
@@ -678,10 +728,7 @@ public sealed class RobotGateway : IAsyncDisposable
             // Closing the handle is the cancellation fallback for Windows serial drivers
             // that do not complete a pending BaseStream read when its token is cancelled.
             // Do this before awaiting runners so shutdown cannot wait forever on native I/O.
-            if (transport is not null)
-            {
-                await CloseTransportAsync(transport).ConfigureAwait(false);
-            }
+            if (transport is not null) await transport.DisposeAsync().ConfigureAwait(false);
 
             if (pollTask is not null)
             {
@@ -689,11 +736,6 @@ public sealed class RobotGateway : IAsyncDisposable
             }
 
             await AwaitRunningCommandsAsync().ConfigureAwait(false);
-
-            if (transport is not null)
-            {
-                await transport.DisposeAsync().ConfigureAwait(false);
-            }
 
             ResetSessionEvidence();
             UpdateJointState(UnavailableJointState(timeProvider.GetUtcNow()));
@@ -772,8 +814,6 @@ public sealed class RobotGateway : IAsyncDisposable
         eventPumpCancellation.Cancel();
         eventPumpCancellation.Dispose();
         lifecycleGate.Dispose();
-        serialIoGate.Dispose();
-        commandGate.Dispose();
     }
 
     private Task<CommandResult> ExecuteCommandAsync(CommandSpec spec, CancellationToken cancellationToken)
@@ -788,11 +828,6 @@ public sealed class RobotGateway : IAsyncDisposable
                 CommandResultCode.InvalidRequest,
                 CommandEvidence.None,
                 validationMessage));
-        }
-
-        if (spec.Kind == RobotCommandKind.StopAndDisable)
-        {
-            CancelActiveDirectCommand();
         }
 
         var fingerprint = Fingerprint(spec);
@@ -812,17 +847,6 @@ public sealed class RobotGateway : IAsyncDisposable
                     CommandResultCode.CommandIdConflict,
                     CommandEvidence.None,
                     "commandId 已用于不同请求，拒绝复用"));
-            }
-
-            if (activeDirectCommandCancellation is not null
-                && spec.Kind != RobotCommandKind.StopAndDisable)
-            {
-                return Task.FromResult(StoreImmediateResultLocked(
-                    spec,
-                    fingerprint,
-                    CommandStatus.Rejected,
-                    CommandResultCode.CommandInFlight,
-                    "已有 engineering 命令正在执行；一次只允许一个硬件命令"));
             }
 
             if (exclusiveCommandId is not null)
@@ -862,37 +886,18 @@ public sealed class RobotGateway : IAsyncDisposable
     private async Task RunCommandAsync(CommandEntry entry)
     {
         CommandResult result;
-        var ownsCommandGate = false;
-        Interlocked.Increment(ref commandDemand);
         try
         {
-            var gateAcquired = entry.Spec.Kind == RobotCommandKind.StopAndDisable
-                ? await commandGate.WaitAsync(options.CommandTimeout, entry.ExecutionCancellation.Token).ConfigureAwait(false)
-                : await WaitForCommandGateAsync(entry.ExecutionCancellation.Token).ConfigureAwait(false);
-            if (!gateAcquired)
+            result = await ExecuteCommandCoreAsync(entry.Spec, entry.ExecutionCancellation.Token).ConfigureAwait(false);
+            if (entry.Spec.Kind != RobotCommandKind.StopAndDisable
+                && entry.ExecutionCancellation.IsCancellationRequested)
             {
-                MarkFeedbackStale();
                 result = Result(
                     entry.Spec,
-                    CommandStatus.Unconfirmed,
-                    CommandResultCode.Timeout,
+                    CommandStatus.Cancelled,
+                    CommandResultCode.Cancelled,
                     CommandEvidence.GatewayAccepted,
-                    "停止链未能及时取得串口所有权；请立即使用物理急停并检查设备");
-            }
-            else
-            {
-                ownsCommandGate = true;
-                result = await ExecuteCommandCoreAsync(entry.Spec, entry.ExecutionCancellation.Token).ConfigureAwait(false);
-                if (entry.Spec.Kind != RobotCommandKind.StopAndDisable
-                    && entry.ExecutionCancellation.IsCancellationRequested)
-                {
-                    result = Result(
-                        entry.Spec,
-                        CommandStatus.Cancelled,
-                        CommandResultCode.Cancelled,
-                        CommandEvidence.GatewayAccepted,
-                        "命令已被停止链取消；迟到回包不能证明机械臂状态");
-                }
+                    "命令已被停止链取消；迟到回包不能证明机械臂状态");
             }
         }
         catch (OperationCanceledException) when (entry.ExecutionCancellation.IsCancellationRequested)
@@ -951,7 +956,7 @@ public sealed class RobotGateway : IAsyncDisposable
                 "command.unexpected.failed",
                 GatewayDiagnosticSeverity.Error,
                 entry.Spec.SessionId,
-                activeTransport?.PortName,
+                activeSerialSession?.PortName,
                 "Unexpected command execution failure",
                 exception));
             result = Result(
@@ -961,16 +966,6 @@ public sealed class RobotGateway : IAsyncDisposable
                 CommandEvidence.GatewayAccepted,
                 "网关内部错误；物理结果未知");
         }
-        finally
-        {
-            if (ownsCommandGate)
-            {
-                commandGate.Release();
-            }
-
-            Interlocked.Decrement(ref commandDemand);
-        }
-
         UpdateCommandInterlock(entry.Spec.Kind, result.Status);
         entry.Completion.TrySetResult(result);
         lock (commandStateGate)
@@ -985,12 +980,6 @@ public sealed class RobotGateway : IAsyncDisposable
 
         EnqueueEvent(new CommandResultEvent(result));
         entry.ExecutionCancellation.Dispose();
-    }
-
-    private async Task<bool> WaitForCommandGateAsync(CancellationToken cancellationToken)
-    {
-        await commandGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        return true;
     }
 
     private void UpdateCommandInterlock(RobotCommandKind kind, CommandStatus status)
@@ -1030,14 +1019,14 @@ public sealed class RobotGateway : IAsyncDisposable
         }
 
         var current = GetSession();
-        var transport = activeTransport;
+        var transport = activeSerialSession;
         if (!string.Equals(spec.SessionId, current.SessionId, StringComparison.Ordinal)
             || !string.Equals(spec.ProfileId, current.ProfileId, StringComparison.Ordinal))
         {
             return Result(spec, CommandStatus.Rejected, CommandResultCode.SessionMismatch, CommandEvidence.None, "命令会话或设备配置与当前连接不匹配");
         }
 
-        if (current.ConnectionState != ConnectionState.Connected || transport?.IsOpen != true)
+        if (current.ConnectionState != ConnectionState.Connected || transport?.IsRunning != true)
         {
             return Result(spec, CommandStatus.Rejected, CommandResultCode.NotConnected, CommandEvidence.None, "机械臂未连接");
         }
@@ -1063,57 +1052,25 @@ public sealed class RobotGateway : IAsyncDisposable
             return Result(spec, CommandStatus.Rejected, rejected.Code, CommandEvidence.None, rejected.Message);
         }
 
-        var serialIoAcquired = await serialIoGate
-            .WaitAsync(options.CommandTimeout, cancellationToken)
-            .ConfigureAwait(false);
-        if (!serialIoAcquired)
+        if (!ReferenceEquals(activeSerialSession, transport)
+            || GetSession().ConnectionState != ConnectionState.Connected)
         {
-            MarkFeedbackStale();
-            return spec.Kind == RobotCommandKind.StopAndDisable
-                ? Result(
-                    spec,
-                    CommandStatus.Unconfirmed,
-                    CommandResultCode.Timeout,
-                    CommandEvidence.GatewayAccepted,
-                    "STOP could not acquire serial I/O within the bounded deadline; use the physical emergency stop immediately")
-                : Result(
-                    spec,
-                    CommandStatus.Rejected,
-                    CommandResultCode.Timeout,
-                    CommandEvidence.GatewayAccepted,
-                    "Serial I/O remained busy beyond the command deadline; no command payload was sent");
+            return Result(spec, CommandStatus.Rejected, CommandResultCode.NotConnected, CommandEvidence.None, "串口会话已变化，命令未发送");
         }
 
-        try
+        return spec.Kind switch
         {
-            if (!ReferenceEquals(activeTransport, transport)
-                || GetSession().ConnectionState != ConnectionState.Connected)
-            {
-                return Result(spec, CommandStatus.Rejected, CommandResultCode.NotConnected, CommandEvidence.None, "串口会话已变化，命令未发送");
-            }
-
-            var decoder = new DummyAsciiLineDecoder();
-            var readBuffer = new byte[options.ReadBufferBytes];
-            return spec.Kind switch
-            {
-                RobotCommandKind.Enable => await ExecuteEnableAsync(spec, transport, decoder, readBuffer, cancellationToken).ConfigureAwait(false),
-                RobotCommandKind.StopAndDisable => await ExecuteStopAndDisableAsync(spec, transport, decoder, readBuffer, cancellationToken).ConfigureAwait(false),
-                RobotCommandKind.SetMode => await ExecuteSetModeAsync(spec, transport, decoder, readBuffer, cancellationToken).ConfigureAwait(false),
-                RobotCommandKind.JointGroup => await ExecuteJointGroupAsync(spec, transport, decoder, readBuffer, cancellationToken).ConfigureAwait(false),
-                _ => Result(spec, CommandStatus.Unsupported, CommandResultCode.InvalidRequest, CommandEvidence.None, "不支持的命令类型")
-            };
-        }
-        finally
-        {
-            serialIoGate.Release();
-        }
+            RobotCommandKind.Enable => await ExecuteEnableAsync(spec, transport, cancellationToken).ConfigureAwait(false),
+            RobotCommandKind.StopAndDisable => await ExecuteStopAndDisableAsync(spec, transport, cancellationToken).ConfigureAwait(false),
+            RobotCommandKind.SetMode => await ExecuteSetModeAsync(spec, transport, cancellationToken).ConfigureAwait(false),
+            RobotCommandKind.JointGroup => await ExecuteJointGroupAsync(spec, transport, cancellationToken).ConfigureAwait(false),
+            _ => Result(spec, CommandStatus.Unsupported, CommandResultCode.InvalidRequest, CommandEvidence.None, "不支持的命令类型")
+        };
     }
 
     private async Task<CommandResult> ExecuteEnableAsync(
         CommandSpec spec,
-        IAsciiTransport transport,
-        DummyAsciiLineDecoder decoder,
-        byte[] readBuffer,
+        DummySerialSession transport,
         CancellationToken cancellationToken)
     {
         if (GetSession().MotorState == MotorState.Enabled)
@@ -1126,12 +1083,10 @@ public sealed class RobotGateway : IAsyncDisposable
             DummyAsciiProtocol.FormatSystemCommand(DummySystemCommand.Enable),
             "command",
             response => response.Raw == "Started ok",
-            decoder,
-            readBuffer,
             spec.SessionId,
             spec.CommandId,
             cancellationToken).ConfigureAwait(false);
-        var enable = await QueryCoreAsync(transport, DummyReadQuery.Enable, decoder, readBuffer, spec.SessionId, spec.CommandId, cancellationToken).ConfigureAwait(false);
+        var enable = await QueryCoreAsync(transport, DummyReadQuery.Enable, spec.SessionId, spec.CommandId, cancellationToken).ConfigureAwait(false);
         return enable.Enabled == true
             ? Result(spec, CommandStatus.Completed, CommandResultCode.Ok, CommandEvidence.FeedbackConfirmed, "使能已由设备状态回读确认", enable.Raw)
             : Result(spec, CommandStatus.Unconfirmed, CommandResultCode.DeviceUnconfirmed, CommandEvidence.DeviceAck, "设备已应答，但使能状态未确认", acknowledgement.Raw);
@@ -1139,9 +1094,7 @@ public sealed class RobotGateway : IAsyncDisposable
 
     private async Task<CommandResult> ExecuteSetModeAsync(
         CommandSpec spec,
-        IAsciiTransport transport,
-        DummyAsciiLineDecoder decoder,
-        byte[] readBuffer,
+        DummySerialSession transport,
         CancellationToken cancellationToken)
     {
         if (GetSession().ControlMode == spec.Mode)
@@ -1154,12 +1107,10 @@ public sealed class RobotGateway : IAsyncDisposable
             DummyAsciiProtocol.FormatSetMode(spec.Mode!.Value),
             "command",
             response => response.Kind == DummyResponseKind.ModeAck && response.Mode == spec.Mode,
-            decoder,
-            readBuffer,
             spec.SessionId,
             spec.CommandId,
             cancellationToken).ConfigureAwait(false);
-        var mode = await QueryCoreAsync(transport, DummyReadQuery.Mode, decoder, readBuffer, spec.SessionId, spec.CommandId, cancellationToken).ConfigureAwait(false);
+        var mode = await QueryCoreAsync(transport, DummyReadQuery.Mode, spec.SessionId, spec.CommandId, cancellationToken).ConfigureAwait(false);
         return mode.Mode == spec.Mode
             ? Result(spec, CommandStatus.Completed, CommandResultCode.Ok, CommandEvidence.FeedbackConfirmed, $"模式 {spec.Mode} 已由设备回读确认", mode.Raw)
             : Result(spec, CommandStatus.Unconfirmed, CommandResultCode.DeviceUnconfirmed, CommandEvidence.DeviceAck, "设备已应答，但控制模式未确认", acknowledgement.Raw);
@@ -1167,9 +1118,7 @@ public sealed class RobotGateway : IAsyncDisposable
 
     private async Task<CommandResult> ExecuteJointGroupAsync(
         CommandSpec spec,
-        IAsciiTransport transport,
-        DummyAsciiLineDecoder decoder,
-        byte[] readBuffer,
+        DummySerialSession transport,
         CancellationToken cancellationToken)
     {
         var line = DummyAsciiProtocol.FormatJointGroup(spec.PositionsDeg!, spec.SpeedDegS!.Value);
@@ -1178,8 +1127,6 @@ public sealed class RobotGateway : IAsyncDisposable
             line,
             "jointGroupCommand",
             response => response.Kind == DummyResponseKind.Queue,
-            decoder,
-            readBuffer,
             spec.SessionId,
             spec.CommandId,
             cancellationToken).ConfigureAwait(false);
@@ -1205,8 +1152,6 @@ public sealed class RobotGateway : IAsyncDisposable
                 var positions = await QueryCoreAsync(
                     transport,
                     DummyReadQuery.JointPositions,
-                    decoder,
-                    readBuffer,
                     spec.SessionId,
                     spec.CommandId,
                     completionCancellation.Token).ConfigureAwait(false);
@@ -1293,9 +1238,7 @@ public sealed class RobotGateway : IAsyncDisposable
 
     private async Task<CommandResult> ExecuteStopAndDisableAsync(
         CommandSpec spec,
-        IAsciiTransport transport,
-        DummyAsciiLineDecoder decoder,
-        byte[] readBuffer,
+        DummySerialSession transport,
         CancellationToken cancellationToken)
     {
         var evidence = new List<string>();
@@ -1305,8 +1248,6 @@ public sealed class RobotGateway : IAsyncDisposable
                 DummyAsciiProtocol.FormatSystemCommand(DummySystemCommand.Stop),
                 "safetyCommand",
                 response => response.Raw == "Stopped ok",
-                decoder,
-                readBuffer,
                 spec.SessionId,
                 spec.CommandId,
                 cancellationToken),
@@ -1330,8 +1271,6 @@ public sealed class RobotGateway : IAsyncDisposable
                 DummyAsciiProtocol.FormatSystemCommand(DummySystemCommand.Disable),
                 "safetyCommand",
                 response => response.Raw == "Disabled ok",
-                decoder,
-                readBuffer,
                 spec.SessionId,
                 spec.CommandId,
                 cancellationToken),
@@ -1339,7 +1278,7 @@ public sealed class RobotGateway : IAsyncDisposable
 
         try
         {
-            var enable = await QueryCoreAsync(transport, DummyReadQuery.Enable, decoder, readBuffer, spec.SessionId, spec.CommandId, cancellationToken).ConfigureAwait(false);
+            var enable = await QueryCoreAsync(transport, DummyReadQuery.Enable, spec.SessionId, spec.CommandId, cancellationToken).ConfigureAwait(false);
             evidence.Add(enable.Raw);
             if (enable.Enabled == false)
             {
@@ -1368,68 +1307,32 @@ public sealed class RobotGateway : IAsyncDisposable
     }
 
     private async Task<DummyResponse> SendAndWaitAsync(
-        IAsciiTransport transport,
+        DummySerialSession transport,
         string line,
         string parsedKind,
         Func<DummyResponse, bool> isExpected,
-        DummyAsciiLineDecoder decoder,
-        byte[] readBuffer,
         string sessionId,
         string commandId,
         CancellationToken cancellationToken)
     {
-        var correlationId = Guid.NewGuid().ToString("N");
-        await WriteLineAsync(transport, line, parsedKind, sessionId, cancellationToken, correlationId, commandId).ConfigureAwait(false);
-        using var commandCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        commandCancellation.CancelAfter(options.CommandTimeout);
-        try
-        {
-            while (true)
-            {
-                var count = await transport.ReadAsync(readBuffer, commandCancellation.Token).ConfigureAwait(false);
-                if (count == 0)
-                {
-                    throw new EndOfStreamException("Serial transport closed while reading command response");
-                }
-
-                DummyResponse? expected = null;
-                foreach (var record in decoder.Append(readBuffer.AsSpan(0, count)))
-                {
-                    if (record.Kind == DummyDecodedRecordKind.Discarded)
-                    {
-                        RecordProtocolError(record.Reason ?? "discarded", record.Value, sessionId, correlationId);
-                        continue;
-                    }
-
-                    var response = DummyAsciiProtocol.ParseResponseLine(record.Value);
-                    var engineeringCorrelationId = ObserveEngineeringMotionResponse(response);
-                    RecordProtocolFrame(ProtocolDirection.Rx, response.Raw, response.ContractKind, sessionId, engineeringCorrelationId ?? correlationId);
-                    ApplyObservedResponse(response);
-                    if (response.Kind == DummyResponseKind.Error && engineeringCorrelationId is null)
-                    {
-                        throw new GatewayProtocolException($"Device returned error: {response.ErrorCode}");
-                    }
-
-                    if (expected is null && isExpected(response))
-                    {
-                        expected = response;
-                    }
-                }
-
-                if (expected is not null)
-                {
-                    return expected;
-                }
-            }
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            throw new GatewayQueryTimeoutException(line);
-        }
+        var priority = parsedKind.StartsWith("safety", StringComparison.Ordinal)
+            ? SerialWorkPriority.Safety
+            : SerialWorkPriority.Interactive;
+        return await transport.TransactAsync(
+            $"command:{commandId}:{Guid.NewGuid():N}",
+            line,
+            parsedKind,
+            sessionId,
+            isExpected,
+            priority,
+            options.CommandTimeout,
+            options.CommandTimeout,
+            cancellationToken,
+            commandId: commandId).ConfigureAwait(false);
     }
 
     private async Task WriteLineAsync(
-        IAsciiTransport transport,
+        DummySerialSession transport,
         string line,
         string parsedKind,
         string sessionId,
@@ -1437,13 +1340,28 @@ public sealed class RobotGateway : IAsyncDisposable
         string? correlationId = null,
         string? commandId = null)
     {
-        var encoded = Encoding.ASCII.GetBytes(line + DummyAsciiProtocol.LineEnding);
-        await transport.WriteAsync(encoded, cancellationToken).ConfigureAwait(false);
-        if (commandId is not null)
+        var priority = parsedKind.StartsWith("safety", StringComparison.Ordinal)
+            ? SerialWorkPriority.Safety
+            : SerialWorkPriority.Interactive;
+        var ticket = transport.QueueUnobserved(
+            $"write:{commandId ?? "unowned"}:{Guid.NewGuid():N}",
+            line,
+            parsedKind,
+            sessionId,
+            priority,
+            options.CommandTimeout,
+            correlationId,
+            commandId);
+        if (!ticket.Accepted)
         {
-            RecordCommandTransmission(commandId, line);
+            throw new GatewayConflictException(ticket.RejectionReason ?? "Serial write queue rejected the request");
         }
-        RecordProtocolFrame(ProtocolDirection.Tx, line, parsedKind, sessionId, correlationId ?? Guid.NewGuid().ToString("N"));
+
+        var completion = await ticket.Completion!.WaitAsync(cancellationToken).ConfigureAwait(false);
+        if (completion.Outcome != SerialWriteOutcome.Written)
+        {
+            throw new IOException(completion.Detail ?? $"Serial write ended as {completion.Outcome}");
+        }
     }
 
     private static async Task TrySafetyStepAsync(Func<Task<DummyResponse>> operation, List<string> evidence)
@@ -1506,19 +1424,6 @@ public sealed class RobotGateway : IAsyncDisposable
         return null;
     }
 
-    private static bool IsExpectedDirectResponse(DummyDirectCommand command, DummyResponse response) =>
-        command.Kind switch
-        {
-            DummyDirectCommandKind.QueryJointPositions => response.Kind == DummyResponseKind.JointPositions,
-            DummyDirectCommandKind.QueryMode => response.Kind is DummyResponseKind.Mode or DummyResponseKind.UnsupportedMode,
-            DummyDirectCommandKind.QueryEnable => response.Kind == DummyResponseKind.Enable,
-            DummyDirectCommandKind.Enable => response.Raw == "Started ok",
-            DummyDirectCommandKind.Stop => response.Raw == "Stopped ok",
-            DummyDirectCommandKind.Disable => response.Raw == "Disabled ok",
-            DummyDirectCommandKind.SetMode => response.Kind == DummyResponseKind.ModeAck && response.Mode == command.Mode,
-            _ => false
-        };
-
     private static string DirectParsedKind(DummyDirectCommandKind kind) => kind switch
     {
         DummyDirectCommandKind.QueryJointPositions or DummyDirectCommandKind.QueryMode or DummyDirectCommandKind.QueryEnable => "engineeringQuery",
@@ -1567,6 +1472,112 @@ public sealed class RobotGateway : IAsyncDisposable
             message,
             timeProvider.GetUtcNow(),
             deviceReply);
+
+    private static string DirectFingerprint(DirectCommandRequest request, string normalizedLine)
+    {
+        var canonical = string.Join('|', request.SessionId, request.ProfileId, normalizedLine);
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
+    }
+
+    private DirectCommandResult UpdateDirectCommandResult(
+        string requestId,
+        DirectCommandStatus status,
+        CommandEvidence evidence,
+        string message,
+        string? deviceReply = null)
+    {
+        DirectCommandResult result;
+        lock (commandStateGate)
+        {
+            if (!directCommandEntries.TryGetValue(requestId, out var entry))
+            {
+                return new(
+                    requestId,
+                    GetSession().SessionId,
+                    status,
+                    evidence,
+                    string.Empty,
+                    message,
+                    timeProvider.GetUtcNow(),
+                    deviceReply);
+            }
+
+            result = entry.Result with
+            {
+                Status = status,
+                Evidence = evidence,
+                Message = message,
+                TimestampUtc = timeProvider.GetUtcNow(),
+                DeviceReply = deviceReply
+            };
+            entry.Result = result;
+            if (IsTerminalDirectStatus(status))
+            {
+                entry.Completion.TrySetResult(result);
+            }
+            TrimDirectCommandHistoryLocked();
+        }
+
+        EnqueueEvent(new DirectCommandResultEvent(result));
+        return result;
+    }
+
+    private async Task ObserveDirectWriteCompletionAsync(string requestId, Task<SerialWriteCompletion> completionTask)
+    {
+        try
+        {
+            var completion = await completionTask.ConfigureAwait(false);
+            if (completion.Outcome == SerialWriteOutcome.Written)
+            {
+                // The physical write observer publishes Sent before the scheduler
+                // completes the ticket. No additional transition is needed here.
+                return;
+            }
+
+            var (status, message) = completion.Outcome switch
+            {
+                SerialWriteOutcome.Expired => (DirectCommandStatus.Expired, "请求在有界队列内过期，未写入 transport"),
+                SerialWriteOutcome.Superseded => (DirectCommandStatus.Superseded, "请求被更高优先级安全任务淘汰，未写入 transport"),
+                SerialWriteOutcome.Cancelled => (DirectCommandStatus.Cancelled, "串口会话关闭，排队请求已取消"),
+                SerialWriteOutcome.Failed => (DirectCommandStatus.Failed, "串口物理写入失败；设备状态未知"),
+                _ => (DirectCommandStatus.Failed, "串口请求进入未知终态")
+            };
+            UpdateDirectCommandResult(
+                requestId,
+                status,
+                CommandEvidence.GatewayAccepted,
+                message,
+                completion.Detail);
+        }
+        catch (Exception exception)
+        {
+            UpdateDirectCommandResult(
+                requestId,
+                DirectCommandStatus.Failed,
+                CommandEvidence.GatewayAccepted,
+                "串口写入结果观察失败",
+                SafeExceptionMessage(exception));
+        }
+    }
+
+    private static bool IsTerminalDirectStatus(DirectCommandStatus status) =>
+        status is not DirectCommandStatus.Queued;
+
+    private void TrimDirectCommandHistoryLocked()
+    {
+        while (directCommandEntries.Count > options.CommandHistoryCapacity && directCommandOrder.Count > 0)
+        {
+            var candidateId = directCommandOrder.Peek();
+            if (!directCommandEntries.TryGetValue(candidateId, out var candidate)
+                || !candidate.Completion.Task.IsCompleted)
+            {
+                break;
+            }
+
+            directCommandOrder.Dequeue();
+            directCommandEntries.Remove(candidateId);
+        }
+    }
 
     private static string NormalizeDirectIdentifier(string? value, string fallback)
     {
@@ -1688,24 +1699,20 @@ public sealed class RobotGateway : IAsyncDisposable
 
     private void CancelCommandsForDisconnect()
     {
-        CancellationTokenSource? directCancellation;
         lock (commandStateGate)
         {
             foreach (var entry in commandEntries.Values.Where(item => !item.Completion.Task.IsCompleted))
             {
                 entry.ExecutionCancellation.Cancel();
             }
-            directCancellation = activeDirectCommandCancellation;
         }
-        directCancellation?.Cancel();
     }
 
     private bool HasRunningCommand()
     {
         lock (commandStateGate)
         {
-            return activeDirectCommandCancellation is not null
-                || commandEntries.Values.Any(entry => !entry.Completion.Task.IsCompleted);
+            return commandEntries.Values.Any(entry => !entry.Completion.Task.IsCompleted);
         }
     }
 
@@ -1718,9 +1725,9 @@ public sealed class RobotGateway : IAsyncDisposable
                 .Select(entry => entry.Runner)
                 .Where(task => task is not null && !task.IsCompleted)
                 .Cast<Task>()
-                .Concat(activeDirectCommandCompletion is { Task.IsCompleted: false } direct
-                    ? [direct.Task]
-                    : [])
+                .Concat(directCommandEntries.Values
+                    .Select(entry => entry.Completion.Task)
+                    .Where(task => !task.IsCompleted))
                 .ToArray();
         }
 
@@ -1728,42 +1735,6 @@ public sealed class RobotGateway : IAsyncDisposable
         {
             await Task.WhenAll(tasks).ConfigureAwait(false);
         }
-    }
-
-    private void CancelActiveDirectCommand()
-    {
-        CancellationTokenSource? cancellation;
-        lock (commandStateGate)
-        {
-            cancellation = activeDirectCommandCancellation;
-        }
-        cancellation?.Cancel();
-    }
-
-    private void MarkDirectCommandUnconfirmed(DummyDirectCommandKind kind)
-    {
-        if (kind is DummyDirectCommandKind.QueryJointPositions
-            or DummyDirectCommandKind.QueryMode
-            or DummyDirectCommandKind.QueryEnable)
-        {
-            MarkFeedbackStale();
-            return;
-        }
-
-        Interlocked.Exchange(ref commandInterlockLatched, 1);
-        var current = GetSession();
-        if (current.ConnectionState != ConnectionState.Connected) return;
-        UpdateSession(current with
-        {
-            MotorState = kind is DummyDirectCommandKind.Enable
-                or DummyDirectCommandKind.Stop
-                or DummyDirectCommandKind.Disable
-                ? MotorState.Unknown
-                : current.MotorState,
-            ControlMode = kind == DummyDirectCommandKind.SetMode ? null : current.ControlMode,
-            TimestampUtc = timeProvider.GetUtcNow(),
-            Validity = Validity.Stale
-        });
     }
 
     private void ResetSessionEvidence()
@@ -1776,6 +1747,8 @@ public sealed class RobotGateway : IAsyncDisposable
         {
             commandEntries.Clear();
             commandOrder.Clear();
+            directCommandEntries.Clear();
+            directCommandOrder.Clear();
             exclusiveCommandId = null;
             engineeringMotionResponseCorrelationId = null;
             engineeringMotionRequestId = null;
@@ -1910,10 +1883,8 @@ public sealed class RobotGateway : IAsyncDisposable
     private static async Task<CommandResult> AwaitCommandAsync(Task<CommandResult> task, CancellationToken cancellationToken) =>
         await task.WaitAsync(cancellationToken).ConfigureAwait(false);
 
-    private async Task PollAsync(IAsciiTransport transport, string sessionId, CancellationToken cancellationToken)
+    private async Task PollAsync(DummySerialSession transport, string sessionId, CancellationToken cancellationToken)
     {
-        var decoder = new DummyAsciiLineDecoder();
-        var readBuffer = new byte[options.ReadBufferBytes];
         var consecutiveTimeouts = 0;
         var statusRefreshRequired = true;
         var nextStatusQuery = DummyReadQuery.Mode;
@@ -1930,7 +1901,7 @@ public sealed class RobotGateway : IAsyncDisposable
                 var cycleStartedTimestamp = timeProvider.GetTimestamp();
                 try
                 {
-                    var positions = await QueryAsync(transport, DummyReadQuery.JointPositions, decoder, readBuffer, sessionId, cancellationToken).ConfigureAwait(false);
+                    var positions = await QueryAsync(transport, DummyReadQuery.JointPositions, sessionId, cancellationToken).ConfigureAwait(false);
                     if (positions.Kind != DummyResponseKind.JointPositions)
                     {
                         throw new GatewayProtocolException("Joint polling returned an incompatible response type");
@@ -1942,8 +1913,6 @@ public sealed class RobotGateway : IAsyncDisposable
                         var status = await QueryAsync(
                             transport,
                             nextStatusQuery,
-                            decoder,
-                            readBuffer,
                             sessionId,
                             cancellationToken).ConfigureAwait(false);
                         if (nextStatusQuery == DummyReadQuery.Mode)
@@ -2017,6 +1986,17 @@ public sealed class RobotGateway : IAsyncDisposable
                         throw;
                     }
                 }
+                catch (DummyResponseFencePreemptedException)
+                {
+                    // A P0 safety transaction deliberately displaced this P2
+                    // telemetry waiter. The scheduler and transport remain
+                    // healthy; the next loop may poll again after safety releases
+                    // its response fence.
+                    statusRefreshRequired = true;
+                    pendingMode = null;
+                    pendingEnable = null;
+                    nextStatusQuery = DummyReadQuery.Mode;
+                }
 
                 await DelayForRemainingIntervalAsync(
                     cycleStartedTimestamp,
@@ -2031,49 +2011,15 @@ public sealed class RobotGateway : IAsyncDisposable
         {
             await HandlePollingFaultAsync(transport, sessionId, exception).ConfigureAwait(false);
         }
-        finally
-        {
-            var incomplete = decoder.Finish();
-            if (incomplete is not null)
-            {
-                RecordProtocolError(incomplete.Reason ?? "incomplete", incomplete.Value, sessionId);
-            }
-        }
     }
 
-    private async Task<DummyResponse> QueryAsync(
-        IAsciiTransport transport,
+    private Task<DummyResponse> QueryAsync(
+        DummySerialSession transport,
         DummyReadQuery query,
-        DummyAsciiLineDecoder decoder,
-        byte[] readBuffer,
         string sessionId,
         CancellationToken cancellationToken,
-        string? commandId = null)
-    {
-        while (true)
-        {
-            while (Volatile.Read(ref commandDemand) > 0)
-            {
-                await Task.Delay(TimeSpan.FromMilliseconds(5), timeProvider, cancellationToken).ConfigureAwait(false);
-            }
-
-            await serialIoGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-            if (Volatile.Read(ref commandDemand) == 0)
-            {
-                try
-                {
-                    return await QueryCoreAsync(transport, query, decoder, readBuffer, sessionId, commandId, cancellationToken).ConfigureAwait(false);
-                }
-                finally
-                {
-                    serialIoGate.Release();
-                }
-            }
-
-            serialIoGate.Release();
-            await Task.Yield();
-        }
-    }
+        string? commandId = null) =>
+        QueryCoreAsync(transport, query, sessionId, commandId, cancellationToken);
 
     private async Task DelayForRemainingIntervalAsync(
         long cycleStartedTimestamp,
@@ -2092,82 +2038,36 @@ public sealed class RobotGateway : IAsyncDisposable
     }
 
     private async Task<DummyResponse> QueryCoreAsync(
-        IAsciiTransport transport,
+        DummySerialSession transport,
         DummyReadQuery query,
-        DummyAsciiLineDecoder decoder,
-        byte[] readBuffer,
         string sessionId,
         string? commandId,
         CancellationToken cancellationToken)
     {
-        var correlationId = Guid.NewGuid().ToString("N");
         var line = DummyAsciiProtocol.FormatQuery(query);
-        var encoded = Encoding.ASCII.GetBytes(line + DummyAsciiProtocol.LineEnding);
-        await transport.WriteAsync(encoded, cancellationToken).ConfigureAwait(false);
-        if (commandId is not null)
-        {
-            RecordCommandTransmission(commandId, line);
-        }
-        RecordProtocolFrame(ProtocolDirection.Tx, line, "query", sessionId, correlationId);
-
-        using var queryCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        queryCancellation.CancelAfter(options.QueryTimeout);
-        try
-        {
-            while (true)
-            {
-                var count = await transport.ReadAsync(readBuffer, queryCancellation.Token).ConfigureAwait(false);
-                if (count == 0)
-                {
-                    throw new EndOfStreamException("Serial transport closed while reading");
-                }
-
-                DummyResponse? expected = null;
-                foreach (var record in decoder.Append(readBuffer.AsSpan(0, count)))
-                {
-                    if (record.Kind == DummyDecodedRecordKind.Discarded)
-                    {
-                        RecordProtocolError(record.Reason ?? "discarded", record.Value, sessionId, correlationId);
-                        continue;
-                    }
-
-                    var response = DummyAsciiProtocol.ParseResponseLine(record.Value);
-                    var engineeringCorrelationId = ObserveEngineeringMotionResponse(response);
-                    RecordProtocolFrame(ProtocolDirection.Rx, response.Raw, response.ContractKind, sessionId, engineeringCorrelationId ?? correlationId);
-                    ApplyObservedResponse(response);
-                    if (response.Kind == DummyResponseKind.Error && engineeringCorrelationId is null)
-                    {
-                        throw new GatewayProtocolException($"Device returned error: {response.ErrorCode}");
-                    }
-
-                    if (expected is null && DummyAsciiProtocol.IsExpectedResponse(query, response))
-                    {
-                        expected = response;
-                    }
-                }
-
-                if (expected is not null)
-                {
-                    return expected;
-                }
-            }
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            throw new GatewayQueryTimeoutException(line);
-        }
+        return await transport.TransactAsync(
+            $"query:{query}:{Guid.NewGuid():N}",
+            line,
+            "query",
+            sessionId,
+            response => DummyAsciiProtocol.IsExpectedResponse(query, response),
+            commandId is null ? SerialWorkPriority.Telemetry : SerialWorkPriority.Interactive,
+            options.CommandTimeout,
+            options.QueryTimeout,
+            cancellationToken,
+            commandId: commandId).ConfigureAwait(false);
     }
 
-    private async Task HandlePollingFaultAsync(IAsciiTransport transport, string sessionId, Exception exception)
+    private async Task HandlePollingFaultAsync(DummySerialSession transport, string sessionId, Exception exception)
     {
         var ownsTransport = false;
         await lifecycleGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
         try
         {
-            if (ReferenceEquals(activeTransport, transport))
+            if (ReferenceEquals(activeSerialSession, transport))
             {
                 ownsTransport = true;
-                activeTransport = null;
+                activeSerialSession = null;
                 pollingTask = null;
                 pollingCancellation?.Cancel();
                 pollingCancellation?.Dispose();
@@ -2194,7 +2094,7 @@ public sealed class RobotGateway : IAsyncDisposable
             transport.PortName,
             "Read-only polling stopped and the serial transport was released",
             exception));
-        await DisposeTransportAsync(transport).ConfigureAwait(false);
+        await transport.DisposeAsync().ConfigureAwait(false);
     }
 
     private void ApplyObservedResponse(DummyResponse response)
@@ -2318,7 +2218,7 @@ public sealed class RobotGateway : IAsyncDisposable
                 "engineering.motion.feedback_frozen_suspected",
                 GatewayDiagnosticSeverity.Warning,
                 GetSession().SessionId,
-                activeTransport?.PortName,
+                activeSerialSession?.PortName,
                 detail));
         }
         else if (feedbackResumed)
@@ -2327,7 +2227,7 @@ public sealed class RobotGateway : IAsyncDisposable
                 "engineering.motion.feedback_progress_resumed",
                 GatewayDiagnosticSeverity.Information,
                 GetSession().SessionId,
-                activeTransport?.PortName,
+                activeSerialSession?.PortName,
                 $"RequestId={requestId ?? "unknown"} Samples={sampleCount} MaxObservedMovementDeg={maximumObservedMovementDeg:F3}; measured joint motion is visible again"));
         }
 
@@ -2438,7 +2338,7 @@ public sealed class RobotGateway : IAsyncDisposable
                 "events.queue.closed",
                 GatewayDiagnosticSeverity.Warning,
                 GetSession().SessionId,
-                activeTransport?.PortName,
+                activeSerialSession?.PortName,
                 "Telemetry event could not be queued; REST snapshot remains authoritative"));
         }
     }
@@ -2463,7 +2363,7 @@ public sealed class RobotGateway : IAsyncDisposable
                     "events.publish.timeout",
                     GatewayDiagnosticSeverity.Error,
                     GetSession().SessionId,
-                    activeTransport?.PortName,
+                    activeSerialSession?.PortName,
                     $"Event publisher exceeded {options.EventPublishTimeout.TotalMilliseconds:F0} ms; live event pumping stopped to prevent unbounded task accumulation",
                     exception));
                 return;
@@ -2474,7 +2374,7 @@ public sealed class RobotGateway : IAsyncDisposable
                     "events.publish.failed",
                     GatewayDiagnosticSeverity.Warning,
                     GetSession().SessionId,
-                    activeTransport?.PortName,
+                    activeSerialSession?.PortName,
                     "Telemetry publishing failed; polling continues and REST snapshot remains authoritative",
                     exception));
             }
@@ -2496,6 +2396,9 @@ public sealed class RobotGateway : IAsyncDisposable
                 break;
             case CommandResultEvent commandResultEvent:
                 await eventSink.PublishCommandResultAsync(commandResultEvent.Value, cancellationToken).ConfigureAwait(false);
+                break;
+            case DirectCommandResultEvent directCommandResultEvent:
+                await eventSink.PublishDirectCommandResultAsync(directCommandResultEvent.Value, cancellationToken).ConfigureAwait(false);
                 break;
         }
     }
@@ -2587,6 +2490,7 @@ public sealed class RobotGateway : IAsyncDisposable
     private sealed record JointStateEvent(JointStateFrame Value) : GatewayEvent;
     private sealed record ProtocolFrameEvent(ProtocolFrame Value) : GatewayEvent;
     private sealed record CommandResultEvent(CommandResult Value) : GatewayEvent;
+    private sealed record DirectCommandResultEvent(DirectCommandResult Value) : GatewayEvent;
 
     private sealed record CommandSpec(
         string CommandId,
@@ -2623,5 +2527,17 @@ public sealed class RobotGateway : IAsyncDisposable
         public List<string> TransmittedPayloads { get; } = [];
         public bool TransmissionLogTruncated { get; set; }
         public Task? Runner { get; set; }
+    }
+
+    private sealed class DirectCommandEntry(
+        string fingerprint,
+        DummyDirectCommand command,
+        DirectCommandResult result,
+        TaskCompletionSource<DirectCommandResult> completion)
+    {
+        public string Fingerprint { get; } = fingerprint;
+        public DummyDirectCommand Command { get; } = command;
+        public DirectCommandResult Result { get; set; } = result;
+        public TaskCompletionSource<DirectCommandResult> Completion { get; } = completion;
     }
 }

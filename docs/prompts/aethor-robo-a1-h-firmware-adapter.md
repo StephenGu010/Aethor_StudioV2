@@ -20,7 +20,7 @@
 - 固件冻结 CRC、最大行长、请求幂等、boot/session、GET_INFO/CONFIG/STATE/JPOS/MOTORS、HEARTBEAT、TEL/EVT、STOP/DISABLE 与错误码；生成可由 TypeScript/C# 共用的 vectors。
 - ID 映射只接受 `1…7 → J1…J7`。测试任意子集、到达乱序、ID >7、身份冲突、反馈陈旧和完整七轴；异常值不得覆盖模型。
 - C# 继续是串口唯一 owner。Aethor adapter 使用持续 RX reader 与有界优先级 TX writer，写锁不能跨越响应等待；pending request 只按 request/boot/session 关联完成。
-- Dummy 和 Aethor 共享可复用的串口生命周期/日志基础设施，但 codec、会话状态、命令能力和反馈 DTO 不共享语义。不得修改 `RobotGatewayV1.3` 来迁就 Aethor。
+- Dummy 和 Aethor 共享可复用的串口生命周期/日志基础设施，但 codec、会话状态、命令能力和反馈 DTO 不共享语义。不得修改 `RobotGatewayV1.4` 的 Dummy 契约来迁就 Aethor。
 - 第一交付只开放只读 HELLO/查询/遥测投影；结构化使能、运动、STOP、动作编排在独立监督阶段前保持 capability false。
 - 端口断开、固件 reboot、sequence 倒退、reader/writer 取消和宿主关闭都必须有有界收束与资源释放测试。
 

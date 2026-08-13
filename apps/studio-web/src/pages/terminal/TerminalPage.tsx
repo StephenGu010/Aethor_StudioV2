@@ -38,14 +38,14 @@ export function TerminalPage({ gateway = robotGateway }: { gateway?: RobotGatewa
   const [hiddenFrameIds, setHiddenFrameIds] = useState<Set<string>>(() => new Set());
   const [command, setCommand] = useState<string>(profileUi.defaultCommand);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
-  const [sending, setSending] = useState(false);
-  const [directResult, setDirectResult] = useState<DirectCommandResult | null>(null);
+  const [admissionResults, setAdmissionResults] = useState<DirectCommandResult[]>([]);
   const logRef = useRef<HTMLDivElement>(null);
   const runtimeFrames = useGatewayRuntimeStore((state) => showJointPositionFrames
     ? state.protocolFrames
     : state.operatorProtocolFrames);
   const session = useGatewayRuntimeStore((state) => state.session);
   const jointState = useGatewayRuntimeStore((state) => state.jointState);
+  const runtimeDirectResults = useGatewayRuntimeStore((state) => state.directCommandHistory);
   const gatewayConfigured = isDummy && gateway.capabilities.readOnlyConnection;
   const captureFrames = !isDummy
     ? []
@@ -61,7 +61,7 @@ export function TerminalPage({ gateway = robotGateway }: { gateway?: RobotGatewa
   const validation = isDummy ? validateDummyCommand(command) : validateAethorCandidateCommand(command);
   const directReady = isDummy && gateway.capabilities.rawCommand;
   const sendDisabledReason = isDummy
-    ? getDirectSendDisabledReason({ gateway, session, jointState, command, validation, sending })
+    ? getDirectSendDisabledReason({ gateway, session, jointState, command, validation })
     : 'Aethor_robo 固件 CRC 向量与独立网关 adapter 尚未完成；当前只做候选协议本地校验';
   const visibleFrames = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -76,8 +76,7 @@ export function TerminalPage({ gateway = robotGateway }: { gateway?: RobotGatewa
   useEffect(() => {
     setHiddenFrameIds(new Set());
     setCommand(profileUi.defaultCommand);
-    setDirectResult(null);
-    setSending(false);
+    setAdmissionResults([]);
   }, [activeProfileId, gatewayConfigured, profileUi.defaultCommand, session.sessionId]);
 
   useEffect(() => {
@@ -106,30 +105,32 @@ export function TerminalPage({ gateway = robotGateway }: { gateway?: RobotGatewa
   };
 
   const sendDirect = async () => {
-    if (sendDisabledReason || sending) return;
-    setSending(true);
-    setDirectResult(null);
+    if (sendDisabledReason) return;
+    const requestId = crypto.randomUUID();
     try {
-      setDirectResult(await gateway.sendDirectCommand({
-        requestId: crypto.randomUUID(),
+      const result = await gateway.sendDirectCommand({
+        requestId,
         sessionId: session.sessionId,
         profileId: dummyProfile.profileId,
         line: command.trim()
-      }));
+      });
+      setAdmissionResults((current) => mergeRecentDirectResults(current, result));
     } catch (cause) {
-      setDirectResult({
-        requestId: 'transport-failure',
+      setAdmissionResults((current) => mergeRecentDirectResults(current, {
+        requestId,
         sessionId: session.sessionId,
         status: 'failed',
         evidence: 'none',
         normalizedLine: command.trim().slice(0, 255),
         message: `${cause instanceof Error ? cause.message : '直连命令请求失败'}；是否已写入不确定，请查看 TX 与实机后人工决定，系统不会自动重发`,
         timestampUtc: new Date().toISOString()
-      });
-    } finally {
-      setSending(false);
+      }));
     }
   };
+  const recentDirectResults = useMemo(
+    () => mergeRecentDirectResults(admissionResults, ...runtimeDirectResults).slice(-6).reverse(),
+    [admissionResults, runtimeDirectResults]
+  );
 
   return (
     <div className="workspacePage terminalPage">
@@ -191,11 +192,11 @@ export function TerminalPage({ gateway = robotGateway }: { gateway?: RobotGatewa
             <input
               aria-label={profileUi.inputLabel}
               value={command}
-              onChange={(event) => { setCommand(event.currentTarget.value); setDirectResult(null); }}
+              onChange={(event) => setCommand(event.currentTarget.value)}
               onKeyDown={(event) => { if (event.key === 'Enter' && !sendDisabledReason) void sendDirect(); }}
               spellCheck={false}
             />
-            <button type="button" disabled={Boolean(sendDisabledReason)} title={sendDisabledReason ?? '发送到当前 Dummy 会话'} onClick={() => void sendDirect()}><Send size={15} />{sending ? '发送中' : '发送'}</button>
+            <button type="button" disabled={Boolean(sendDisabledReason)} title={sendDisabledReason ?? '加入当前 Dummy 有界发送队列'} onClick={() => void sendDirect()}><Send size={15} />发送</button>
           </div>
           <div className={`validationLine ${validation.valid ? `risk-${validation.risk}` : 'invalid'}`}>
             <span className="statusDot" />
@@ -203,7 +204,7 @@ export function TerminalPage({ gateway = robotGateway }: { gateway?: RobotGatewa
             <span>{sendDisabledReason ?? validation.message}</span>
             <small>{directReady ? '实际 TX/RX 只来自 C# 网关' : '离线校验不会写入 TX/RX'}</small>
           </div>
-          {directResult && <div className={`directCommandResult status-${directResult.status}`} role="status"><strong>{directResult.status.toUpperCase()}</strong><span>{directResult.message}</span>{directResult.deviceReply && <code>{directResult.deviceReply}</code>}</div>}
+          {recentDirectResults.length > 0 && <div className="directCommandResults" aria-label="最近直连请求状态">{recentDirectResults.map((result) => <div className={`directCommandResult status-${result.status}`} role="status" key={result.requestId}><strong>{result.status.toUpperCase()}</strong><code>{result.normalizedLine}</code><span>{result.message}</span></div>)}</div>}
         </div>
       </section>
 
@@ -257,15 +258,13 @@ const aethorPendingCaptureState = {
   tone: 'muted'
 } as const;
 
-function getDirectSendDisabledReason({ gateway, session, jointState, command, validation, sending }: {
+function getDirectSendDisabledReason({ gateway, session, jointState, command, validation }: {
   gateway: RobotGatewayV1;
   session: ReturnType<typeof useGatewayRuntimeStore.getState>['session'];
   jointState: ReturnType<typeof useGatewayRuntimeStore.getState>['jointState'];
   command: string;
   validation: ReturnType<typeof validateDummyCommand>;
-  sending: boolean;
 }) {
-  if (sending) return '已有直连命令正在发送';
   if (!validation.valid) return validation.message;
   const line = command.trim();
   if (line === '!HOME' || line === '!RESET') return 'HOME/RESET 会阻塞当前固件命令线程，调试版保持拒绝';
@@ -289,6 +288,17 @@ function getDirectSendDisabledReason({ gateway, session, jointState, command, va
     if (!hasMeasuredJointFrame) return '当前 Dummy 会话尚未取得六轴实测反馈';
   }
   return null;
+}
+
+function mergeRecentDirectResults(
+  current: DirectCommandResult[],
+  ...incoming: DirectCommandResult[]
+) {
+  const byId = new Map(current.map((result) => [result.requestId, result]));
+  for (const result of incoming) byId.set(result.requestId, result);
+  return [...byId.values()]
+    .sort((left, right) => Date.parse(left.timestampUtc) - Date.parse(right.timestampUtc))
+    .slice(-12);
 }
 
 function formatTimestamp(timestamp: string) {

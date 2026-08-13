@@ -844,14 +844,18 @@
 .validationLine.invalid strong,
 .validationLine.invalid .statusDot { color: var(--red); background: var(--red); }
 .validationLine small { color: #555d64; }
-.directCommandResult { display: grid; min-width: 0; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 34px; padding: 5px 13px 8px; color: #a1a8ad; font-size: var(--font-size-micro); }
+.directCommandResults { max-height: 150px; overflow: auto; border-top: 1px solid var(--line-subtle); }
+.directCommandResult { display: grid; min-width: 0; grid-template-columns: 76px minmax(110px, 0.55fr) minmax(0, 1fr); align-items: center; gap: 8px; min-height: 30px; padding: 5px 13px; color: #a1a8ad; font-size: var(--font-size-micro); }
 .directCommandResult strong { color: var(--green); font: var(--font-size-micro) var(--font-mono); }
 .directCommandResult.status-sent strong { color: #83b8d8; }
+.directCommandResult.status-queued strong { color: var(--yellow); }
 .directCommandResult span,
 .directCommandResult code { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .directCommandResult code { max-width: 220px; color: #899198; }
 .directCommandResult.status-rejected strong,
-.directCommandResult.status-timedOut strong,
+.directCommandResult.status-expired strong,
+.directCommandResult.status-superseded strong,
+.directCommandResult.status-cancelled strong,
 .directCommandResult.status-failed strong { color: var(--red); }
 .terminalSide { min-height: 0; overflow: auto; }
 .sideSection { padding: 15px; border-bottom: 1px solid var(--line-subtle); }

@@ -14,6 +14,7 @@ public static class RobotGatewayHubEvents
     public const string JointStateFrame = "jointStateFrame";
     public const string ProtocolFrame = "protocolFrame";
     public const string CommandResult = "commandResult";
+    public const string DirectCommandResult = "directCommandResult";
 }
 
 public sealed class SignalRGatewayEventSink(IHubContext<RobotGatewayHub> hubContext) : IRobotGatewayEventSink
@@ -29,6 +30,9 @@ public sealed class SignalRGatewayEventSink(IHubContext<RobotGatewayHub> hubCont
 
     public ValueTask PublishCommandResultAsync(CommandResult result, CancellationToken cancellationToken) =>
         new(hubContext.Clients.All.SendAsync(RobotGatewayHubEvents.CommandResult, result, cancellationToken));
+
+    public ValueTask PublishDirectCommandResultAsync(DirectCommandResult result, CancellationToken cancellationToken) =>
+        new(hubContext.Clients.All.SendAsync(RobotGatewayHubEvents.DirectCommandResult, result, cancellationToken));
 }
 
 public sealed class LoggerGatewayDiagnostics(ILogger<LoggerGatewayDiagnostics> logger) : IGatewayDiagnostics

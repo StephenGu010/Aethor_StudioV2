@@ -1,6 +1,7 @@
 import type {
   CommandAuditRecord,
   CommandResult,
+  DirectCommandResult,
   JointStateFrame,
   ProtocolFrame,
   RobotGatewayCapabilitiesV1,
@@ -24,6 +25,7 @@ interface GatewayRuntimeState {
   protocolFrames: ProtocolFrame[];
   operatorProtocolFrames: ProtocolFrame[];
   commandHistory: CommandAuditRecord[];
+  directCommandHistory: DirectCommandResult[];
   commandAuditStatus: CommandAuditStatus;
   commandAuditError: string | null;
   lastCommandResult: CommandResult | null;
@@ -46,6 +48,8 @@ interface GatewayRuntimeState {
   beginCommandAuditRefresh: () => void;
   failCommandAuditRefresh: (message: string) => void;
   replaceCommandHistory: (history: CommandAuditRecord[]) => void;
+  replaceDirectCommandHistory: (history: DirectCommandResult[]) => void;
+  upsertDirectCommandResult: (result: DirectCommandResult) => void;
   setLastCommandResult: (result: CommandResult | null) => void;
   setTransportWarning: (warning: string | null) => void;
   setActivePortName: (portName: string | null) => void;
@@ -68,6 +72,7 @@ const initialRuntime = () => ({
   protocolFrames: [] as ProtocolFrame[],
   operatorProtocolFrames: [] as ProtocolFrame[],
   commandHistory: [] as CommandAuditRecord[],
+  directCommandHistory: [] as DirectCommandResult[],
   commandAuditStatus: 'unavailable' as CommandAuditStatus,
   commandAuditError: null,
   lastCommandResult: null,
@@ -103,6 +108,7 @@ export const useGatewayRuntimeStore = create<GatewayRuntimeState>((set) => ({
           protocolFrames: [],
           operatorProtocolFrames: [],
           commandHistory: [],
+          directCommandHistory: [],
           commandAuditStatus: 'unavailable',
           commandAuditError: null,
           activePortName
@@ -153,6 +159,14 @@ export const useGatewayRuntimeStore = create<GatewayRuntimeState>((set) => ({
       confirmedStopTimestampUtc: safetyState.confirmedStopTimestampUtc
     };
   }),
+  replaceDirectCommandHistory: (directCommandHistory) => set({
+    directCommandHistory: mergeDirectCommandHistory([], directCommandHistory)
+  }),
+  upsertDirectCommandResult: (result) => set((state) => (
+    result.sessionId === state.session.sessionId
+      ? { directCommandHistory: mergeDirectCommandHistory(state.directCommandHistory, [result]) }
+      : {}
+  )),
   setLastCommandResult: (lastCommandResult) => set((state) => (
     lastCommandResult === null
       ? { lastCommandResult }
@@ -255,4 +269,15 @@ function shouldReplaceLastResult(current: CommandResult | null, incoming: Comman
   const incomingTimestamp = Date.parse(incoming.timestampUtc);
   return Number.isFinite(incomingTimestamp)
     && (!Number.isFinite(currentTimestamp) || incomingTimestamp >= currentTimestamp);
+}
+
+function mergeDirectCommandHistory(
+  current: DirectCommandResult[],
+  incoming: DirectCommandResult[]
+) {
+  const byId = new Map(current.map((result) => [result.requestId, result]));
+  for (const result of incoming) byId.set(result.requestId, result);
+  return [...byId.values()]
+    .sort((left, right) => Date.parse(left.timestampUtc) - Date.parse(right.timestampUtc))
+    .slice(-128);
 }

@@ -1,4 +1,4 @@
-import type { CommandAuditRecord, ProtocolFrame, RobotGatewayCapabilitiesV1 } from '@aethor/contracts';
+import type { CommandAuditRecord, CommandEvidence, DirectCommandResult, DirectCommandStatus, ProtocolFrame, RobotGatewayCapabilitiesV1 } from '@aethor/contracts';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { dummyProfile } from '../profile/dummyProfile';
 import { useRobotSessionStore } from './useRobotSessionStore';
@@ -128,6 +128,27 @@ describe('gateway runtime store', () => {
       commandAuditStatus: 'ready',
       commandAuditError: null
     });
+  });
+
+  it('keeps independent direct requests and replaces queue admission with terminal write state', () => {
+    const store = useGatewayRuntimeStore.getState();
+    store.setSession({
+      sessionId: 'session-direct', profileId: 'dummy-6dof', connectionState: 'connected',
+      motorState: 'disabled', controlMode: 2, timestampUtc: '2026-08-13T00:00:00.000Z',
+      source: 'measured', validity: 'valid'
+    });
+    store.replaceDirectCommandHistory([
+      directResult('request-a', 'queued', 'gatewayAccepted'),
+      directResult('request-b', 'queued', 'gatewayAccepted')
+    ]);
+    useGatewayRuntimeStore.getState().upsertDirectCommandResult(
+      directResult('request-a', 'sent', 'transportWritten')
+    );
+
+    expect(useGatewayRuntimeStore.getState().directCommandHistory).toMatchObject([
+      { requestId: 'request-b', status: 'queued' },
+      { requestId: 'request-a', status: 'sent' }
+    ]);
   });
 
   it('tracks command audit recovery independently from transport state', () => {
@@ -321,9 +342,29 @@ function frame(index: number): ProtocolFrame {
   };
 }
 
+function directResult(
+  requestId: string,
+  status: DirectCommandStatus,
+  evidence: CommandEvidence
+): DirectCommandResult {
+  return {
+    requestId,
+    sessionId: 'session-direct',
+    status,
+    evidence,
+    normalizedLine: '#GETMODE',
+    message: status,
+    timestampUtc: status === 'sent'
+      ? '2026-08-13T00:00:02.000Z'
+      : requestId === 'request-a'
+        ? '2026-08-13T00:00:00.000Z'
+        : '2026-08-13T00:00:01.000Z'
+  };
+}
+
 function gatewayCapabilities(): RobotGatewayCapabilitiesV1 {
   return {
-    contractVersion: '1.3',
+    contractVersion: '1.4',
     protocolAdapterId: 'dummy-ascii-v1',
     serialEnumeration: true,
     readOnlyConnection: true,

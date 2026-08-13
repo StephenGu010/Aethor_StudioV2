@@ -73,7 +73,7 @@ describe('HttpRobotGateway boundary', () => {
 
   it('keeps commands disabled until capability negotiation explicitly enables them', async () => {
     const fetcher = vi.fn(async () => new Response(JSON.stringify({
-      contractVersion: '1.3', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
+      contractVersion: '1.4', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
       readOnlyConnection: true, liveTelemetry: true, hardwareCommands: true, directCommand: false,
       commandPolicy: 'supervised', allowedQueries: ['#GETJPOS', '#GETMODE', '#GETENABLE'],
       supportedCommands: ['enable', 'stopAndDisable', 'home', 'reset', 'setMode'],
@@ -91,7 +91,7 @@ describe('HttpRobotGateway boundary', () => {
 
   it('rejects internally inconsistent capability negotiation without enabling commands', async () => {
     const fetcher = vi.fn(async () => new Response(JSON.stringify({
-      contractVersion: '1.3', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
+      contractVersion: '1.4', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
       readOnlyConnection: true, liveTelemetry: true, hardwareCommands: true, directCommand: false,
       commandPolicy: 'supervised', allowedQueries: ['#GETJPOS', '#GETMODE', '#GETENABLE'],
       supportedCommands: ['jointGroup'], jointGroupSpeedLimitDegS: null, jointGroupCompletion: null,
@@ -106,16 +106,15 @@ describe('HttpRobotGateway boundary', () => {
   it('negotiates engineering direct capability and posts a single validated line', async () => {
     const responses = [
       {
-        contractVersion: '1.3', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
+        contractVersion: '1.4', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
         readOnlyConnection: true, liveTelemetry: true, hardwareCommands: true, directCommand: true,
         commandPolicy: 'engineering', allowedQueries: ['#GETJPOS', '#GETMODE', '#GETENABLE'],
         supportedCommands: ['enable', 'stopAndDisable', 'setMode'], jointGroupSpeedLimitDegS: null,
         jointGroupCompletion: null, engineeringJointSpeedMaxDegS: 100
       },
       {
-        requestId: 'direct-1', sessionId: 'session-1', status: 'replied', evidence: 'feedbackConfirmed',
-        normalizedLine: '#GETJPOS', message: 'reply', timestampUtc: '2026-08-10T00:00:00.000Z',
-        deviceReply: 'ok 0 0 0 0 0 0'
+        requestId: 'direct-1', sessionId: 'session-1', status: 'queued', evidence: 'gatewayAccepted',
+        normalizedLine: '#GETJPOS', message: 'queued', timestampUtc: '2026-08-10T00:00:00.000Z'
       }
     ];
     const fetcher = vi.fn(async () => new Response(JSON.stringify(responses.shift()), {
@@ -127,7 +126,7 @@ describe('HttpRobotGateway boundary', () => {
     await gateway.getCapabilities();
     await expect(gateway.sendDirectCommand({
       requestId: 'direct-1', sessionId: 'session-1', profileId: 'dummy-6dof', line: '#GETJPOS'
-    })).resolves.toMatchObject({ status: 'replied', deviceReply: 'ok 0 0 0 0 0 0' });
+    })).resolves.toMatchObject({ status: 'queued', evidence: 'gatewayAccepted' });
 
     expect(gateway.capabilities).toMatchObject({ commandPolicy: 'engineering', rawCommand: true, engineeringJointSpeedMaxDegS: 100 });
     expect(vi.mocked(fetcher).mock.calls[1]?.[0]).toBe('http://127.0.0.1:5127/api/v1/engineering/direct-command');
@@ -136,7 +135,7 @@ describe('HttpRobotGateway boundary', () => {
   it('uses the normal bounded HTTP window for a write-only engineering joint request', async () => {
     const responses = [
       {
-        contractVersion: '1.3', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
+        contractVersion: '1.4', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
         readOnlyConnection: true, liveTelemetry: true, hardwareCommands: true, directCommand: true,
         commandPolicy: 'engineering', allowedQueries: ['#GETJPOS', '#GETMODE', '#GETENABLE'],
         supportedCommands: ['enable', 'stopAndDisable', 'setMode'], jointGroupSpeedLimitDegS: null,
@@ -201,6 +200,24 @@ describe('HttpRobotGateway boundary', () => {
     await expect(invalidGateway.getCommandHistory()).rejects.toMatchObject({ status: 502 });
   });
 
+  it('restores bounded direct history with queued and terminal write states', async () => {
+    const history = [
+      {
+        requestId: 'direct-1', sessionId: 'session-1', status: 'queued', evidence: 'gatewayAccepted',
+        normalizedLine: '#GETMODE', message: 'queued', timestampUtc: '2026-08-13T00:00:00.000Z', deviceReply: null
+      },
+      {
+        requestId: 'direct-2', sessionId: 'session-1', status: 'sent', evidence: 'transportWritten',
+        normalizedLine: '#GETENABLE', message: 'written', timestampUtc: '2026-08-13T00:00:01.000Z', deviceReply: null
+      }
+    ];
+    const fetcher = vi.fn(async () => new Response(JSON.stringify(history), { status: 200 })) as unknown as typeof fetch;
+    const gateway = new HttpRobotGateway({ baseUrl: 'http://127.0.0.1:5127', sessionToken: token }, fetcher);
+
+    await expect(gateway.getDirectCommandHistory()).resolves.toEqual(history);
+    expect(vi.mocked(fetcher).mock.calls[0]?.[0]).toBe('http://127.0.0.1:5127/api/v1/engineering/direct-commands?limit=50');
+  });
+
   it('sends only structured command DTOs to typed endpoints', async () => {
     const result = {
       commandId: 'cmd-1', sessionId: 'session-1', commandKind: 'enable', status: 'completed',
@@ -255,6 +272,32 @@ describe('HttpRobotGateway boundary', () => {
 
     await closeTelemetry();
     expect(connection.stop).toHaveBeenCalledOnce();
+  });
+
+  it('delivers direct command result transitions from SignalR', async () => {
+    const handlers = new Map<string, (value: unknown) => void>();
+    const connection = {
+      on: vi.fn((name: string, handler: (value: unknown) => void) => handlers.set(name, handler)),
+      onreconnecting: vi.fn(),
+      onreconnected: vi.fn(),
+      onclose: vi.fn(),
+      start: vi.fn(async () => {}),
+      stop: vi.fn(async () => {})
+    };
+    const gateway = new HttpRobotGateway(
+      { baseUrl: 'http://127.0.0.1:5127', sessionToken: token },
+      globalThis.fetch.bind(globalThis),
+      () => connection as never
+    );
+    const onDirectCommandResult = vi.fn();
+    const close = await gateway.openTelemetry({ onDirectCommandResult });
+
+    handlers.get('directCommandResult')?.({
+      requestId: 'direct-1', sessionId: 'session-1', status: 'sent', evidence: 'transportWritten',
+      normalizedLine: '#GETMODE', message: 'written', timestampUtc: '2026-08-13T00:00:01.000Z', deviceReply: null
+    });
+    expect(onDirectCommandResult).toHaveBeenCalledWith(expect.objectContaining({ requestId: 'direct-1', status: 'sent' }));
+    await close();
   });
 
   it('falls back to an explicitly unavailable showcase source for missing or unsafe config', () => {

@@ -65,6 +65,10 @@ export class StaticShowcaseSource implements RobotGatewayV1 {
     return [];
   }
 
+  async getDirectCommandHistory() {
+    return [];
+  }
+
   async enable(command: SimpleRobotCommand): Promise<CommandResult> {
     return unsupported(command, 'enable');
   }

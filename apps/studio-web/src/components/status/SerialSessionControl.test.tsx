@@ -148,6 +148,7 @@ function fakeGateway(overrides: Partial<RobotGatewayV1> = {}): RobotGatewayV1 {
     getJointState: async (): Promise<JointStateFrame> => ({ ...showcaseJointFrame, source: 'unavailable', validity: 'unavailable' }),
     getProtocolFrames: async () => [],
     getCommandHistory: async () => [],
+    getDirectCommandHistory: async () => [],
     enable: async () => { throw new Error('not used'); },
     stopAndDisable: async () => { throw new Error('not used'); },
     home: async () => { throw new Error('not used'); },

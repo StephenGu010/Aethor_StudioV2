@@ -133,7 +133,7 @@ describe('StatusHeader software stop safety', () => {
 });
 
 const supervisedCapabilities: RobotGatewayCapabilitiesV1 = {
-  contractVersion: '1.3',
+  contractVersion: '1.4',
   protocolAdapterId: 'dummy-ascii-v1',
   serialEnumeration: true,
   readOnlyConnection: true,

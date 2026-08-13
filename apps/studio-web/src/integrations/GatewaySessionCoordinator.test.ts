@@ -69,6 +69,37 @@ describe('GatewaySessionCoordinator safety recovery', () => {
     await waitFor(() => expect(closeTelemetry).toHaveBeenCalledOnce());
   });
 
+  it('restores direct history and applies SignalR terminal transitions by request id', async () => {
+    let telemetryListener: RobotGatewayTelemetryListener | undefined;
+    const queued = {
+      requestId: 'direct-1', sessionId: 'session-1', status: 'queued' as const,
+      evidence: 'gatewayAccepted' as const, normalizedLine: '#GETMODE', message: 'queued',
+      timestampUtc: '2026-08-13T00:00:00.000Z'
+    };
+    const gateway = coordinatorGateway(coordinatorSession(), {
+      getDirectCommandHistory: async () => [queued],
+      openTelemetry: async (listener) => {
+        telemetryListener = listener;
+        return async () => {};
+      }
+    });
+
+    const rendered = render(createElement(GatewaySessionCoordinator, { gateway }));
+    await waitFor(() => expect(useGatewayRuntimeStore.getState().directCommandHistory).toEqual([queued]));
+    act(() => telemetryListener?.onDirectCommandResult?.({
+      ...queued,
+      status: 'sent',
+      evidence: 'transportWritten',
+      message: 'written',
+      timestampUtc: '2026-08-13T00:00:01.000Z'
+    }));
+
+    expect(useGatewayRuntimeStore.getState().directCommandHistory).toMatchObject([
+      { requestId: 'direct-1', status: 'sent', evidence: 'transportWritten' }
+    ]);
+    rendered.unmount();
+  });
+
   it('keeps telemetry alive but marks command authority unsafe when audit recovery fails', async () => {
     const session = {
       sessionId: 'session-1', profileId: 'dummy-6dof' as const, connectionState: 'connected' as const,
@@ -86,7 +117,7 @@ describe('GatewaySessionCoordinator safety recovery', () => {
 
     await waitFor(() => expect(useGatewayRuntimeStore.getState().commandAuditStatus).toBe('error'));
     expect(useGatewayRuntimeStore.getState()).toMatchObject({
-      capabilities: { contractVersion: '1.3' },
+      capabilities: { contractVersion: '1.4' },
       session: { sessionId: 'session-1', connectionState: 'connected' },
       commandAuditError: 'audit endpoint unavailable'
     });
@@ -312,7 +343,7 @@ function coordinatorGateway(
       jointGroupSpeedLimitDegS: null, jointGroupCompletion: null, engineeringJointSpeedMaxDegS: null
     },
     getCapabilities: async () => ({
-      contractVersion: '1.3', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
+      contractVersion: '1.4', protocolAdapterId: 'dummy-ascii-v1', serialEnumeration: true,
       readOnlyConnection: true, liveTelemetry: true, hardwareCommands: false, directCommand: false, commandPolicy: 'disabled',
       allowedQueries: ['#GETJPOS', '#GETMODE', '#GETENABLE'], supportedCommands: [],
       jointGroupSpeedLimitDegS: null, jointGroupCompletion: null, engineeringJointSpeedMaxDegS: null
@@ -321,6 +352,7 @@ function coordinatorGateway(
     getJointState: async () => ({ ...showcaseJointFrame, sequence: 1, source: 'measured', validity: 'valid' }),
     getProtocolFrames: async () => [],
     getCommandHistory: overrides.getCommandHistory ?? (async () => []),
+    getDirectCommandHistory: async () => [],
     listSerialPorts: async () => [],
     connect: async () => session,
     disconnect: async () => session,

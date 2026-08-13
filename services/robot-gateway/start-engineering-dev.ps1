@@ -84,7 +84,7 @@ for ($attempt = 0; $attempt -lt 40; $attempt++) {
 if (-not $capabilities) { throw 'Engineering gateway did not become ready. Inspect artifacts/dev/gateway-engineering.stderr.log.' }
 
 $session = Invoke-RestMethod -Uri "$expectedGatewayUrl/api/v1/session" -Headers $headers -TimeoutSec 2
-if ($capabilities.contractVersion -ne '1.3' -or $capabilities.commandPolicy -ne 'engineering' -or -not $capabilities.directCommand) {
+if ($capabilities.contractVersion -ne '1.4' -or $capabilities.commandPolicy -ne 'engineering' -or -not $capabilities.directCommand) {
     throw 'Gateway started without the required RobotGatewayV1.3 engineering direct capability.'
 }
 if ($session.connectionState -ne 'offline') {

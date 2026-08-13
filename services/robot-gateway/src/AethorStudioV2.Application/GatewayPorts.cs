@@ -28,6 +28,7 @@ public interface IRobotGatewayEventSink
     ValueTask PublishJointStateAsync(JointStateFrame frame, CancellationToken cancellationToken);
     ValueTask PublishProtocolFrameAsync(ProtocolFrame frame, CancellationToken cancellationToken);
     ValueTask PublishCommandResultAsync(CommandResult result, CancellationToken cancellationToken);
+    ValueTask PublishDirectCommandResultAsync(DirectCommandResult result, CancellationToken cancellationToken);
 }
 
 public interface IActionProgramCommandPort
@@ -74,6 +75,9 @@ public sealed class NullGatewayEventSink : IRobotGatewayEventSink
         ValueTask.CompletedTask;
 
     public ValueTask PublishCommandResultAsync(CommandResult result, CancellationToken cancellationToken) =>
+        ValueTask.CompletedTask;
+
+    public ValueTask PublishDirectCommandResultAsync(DirectCommandResult result, CancellationToken cancellationToken) =>
         ValueTask.CompletedTask;
 }
 

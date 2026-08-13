@@ -81,7 +81,7 @@ README 与代码冲突时，以固定提交代码和后续监督台架证据为�
 - `error ...`：设备错误，保留首 token 作为 code、完整行作为诊断证据。
 - `ok`：通用设备 ACK。模式 1/3 中，当前参考固件在 `IsMoving()` 结束后发送，因此 engineering 可写作“固件报告本条运动结束”，证据仍是 `deviceAck`，不是独立实测到位；模式 2 中固件立即发送，只表示可中断目标已受理，不能写作到位。
 
-engineering 关节组采用人工确认：payload 写入 transport 后立即返回 `sent + transportWritten` 并释放串口/命令所有权，不等待队列号、`ok` 或到位。迟到的 `0..15`、`ok` 与 `error CMD FIFO FULL` 只进入协议/诊断日志，不反向改变结果，也不阻止下一次人工下发。`transportWritten` 不能解释为设备接收、入队、运动开始或到位；正式 supervised 关节组仍必须使用反馈收敛完成策略。
+engineering direct 采用人工确认：HTTP 校验并入队后返回 `queued + gatewayAccepted`，物理 writer 成功后另行发布 `sent + transportWritten`。请求不等待队列号、`ok` 或到位，也不持有响应 waiter；迟到的 `0..15`、`ok` 与 `error CMD FIFO FULL` 只进入协议/诊断日志，不反向改变结果或阻止下一次人工下发。`transportWritten` 不能解释为设备接收、入队、运动开始或到位；正式 supervised 关节组仍必须使用反馈收敛完成策略。
 
 engineering 网关还会区分“持续收到位置回包”和“位置值确实在变化”。每次人工关节组写入都会以写入前最新实测角为基准重新开始观察；当观察时间至少 500 ms、样本不少于 8 帧、六轴最大变化不超过 0.02°，且当前位置与目标的最大误差仍不少于 0.5°时，关节反馈标为 `stale`，并仅记录一次 `feedbackFrozen` 协议错误帧和 `engineering.motion.feedback_frozen_suspected` 诊断。后续任一关节变化超过 0.02°即恢复 `valid` 并记录 `engineering.motion.feedback_progress_resumed`。此机制不锁定命令、不停止 25 ms 查询、不自动重发，也不把“冻结”解释为实机静止。
 - 未知/非 ASCII/数值错误/超长/不完整行：保留为可诊断分类，不更新可信状态。
