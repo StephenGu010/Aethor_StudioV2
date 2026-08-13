@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-仓库已经包含可运行的 React/Vite 前端、共享 TypeScript/JSON Schema 契约、Dummy 与 Aethor_robo 两个内置 Profile、Dummy 专属 .NET 10 网关，以及 Phase 8A 的 WinForms/WebView2 桌面壳。Aethor_robo A0 模型与双七轴本地控制台、A1-U0 候选电机帧与 ID 诊断、A1-U1 有界串口双工软件门与共用终端入口已完成；Aethor 运行时仍未进入生产网关、动作执行或真实硬件状态层。Phase 5 Gate B 运动未执行；Phase 6A 已实现 Dummy 离线动作编辑器，6B-S 已实现无生产接线的 C# 执行内核，6B-H 硬件接线未开始。Phase 7A 已实现 Dummy 有界实时示波/协议观测，7B 真实网关长测未开始；Phase 8B 的安装签名、DPI 与正式发布门尚未完成。当前代码统一为：
+仓库已经包含可运行的 React/Vite 前端、共享 TypeScript/JSON Schema 契约、Dummy 与 Aethor_robo 两个内置 Profile、Dummy 专属 .NET 10 网关，以及 Phase 8A 的 WinForms/WebView2 桌面壳。Aethor_robo A0 模型与双七轴本地控制台、A1-U0 候选电机帧与 ID 诊断、A1-U1/U2 有界双工基础、A1-T0 数字孪生实时内核和 A1-H0 主机协议 codec 已完成；Aethor 请求会话运行时仍未进入生产网关、动作执行或真实硬件状态层。Phase 5 Gate B 运动未执行；Phase 6A 已实现 Dummy 离线动作编辑器，6B-S 已实现无生产接线的 C# 执行内核，6B-H 硬件接线未开始。Phase 7A 已实现 Dummy 有界实时示波/协议观测，7B 真实网关长测未开始；Phase 8B 的安装签名、DPI 与正式发布门尚未完成。当前代码统一为：
 
 ```text
 apps/
@@ -134,7 +134,7 @@ Dummy 的 `RobotGatewayV1` 有两个实现，相关页面不直接依赖 HTTP、
 
 浏览器开发模式只有在 `VITE_AETHOR_GATEWAY_URL` 和 `VITE_AETHOR_GATEWAY_SESSION_TOKEN` 同时有效时才创建 `HttpRobotGateway`；否则显式回退为 `BACKEND ABSENT`。有效 Desktop bootstrap（包括显式 `gateway=null`）是唯一权威配置，不能被 `.env.local` 或构建变量覆盖；production/e2e bundle 强制清空两项 Vite 网关值，Windows 打包还会扫描并拒绝开发 URL 或令牌进入产物。
 
-Application 的 `SerialDuplexScheduler` 已在 A1-U2 接入 Dummy 生产网关：持续 RX reader、有界优先级 TX writer、RX 背压、P0 安全预留/低优先级淘汰、P1/P2/P3 公平调度、排队时效和关闭 transport 解锁均由同一运行时负责。协议 parser 与 response correlation 留在 `DummySerialSession`；旧 `serialIoGate` 和第二 reader 已删除。Aethor 后续仍需独立 codec，并以 request ID/boot/session 关联响应而不拥有 writer。
+Application 的 `SerialDuplexScheduler` 已在 A1-U2 接入 Dummy 生产网关：持续 RX reader、有界优先级 TX writer、RX 背压、P0 安全预留/低优先级淘汰、P1/P2/P3 公平调度、排队时效和关闭 transport 解锁均由同一运行时负责。协议 parser 与 response correlation 留在 `DummySerialSession`；旧 `serialIoGate` 和第二 reader 已删除。A1-H0 的 `AethorArmAsciiProtocol` 是无状态 Domain codec，尚未注册 DI 或接触 transport；后续 Aethor session adapter 复用调度器机制，并以 request ID/boot/session 关联响应而不拥有 writer。
 
 串口目录与会话动作属于临时运行态，由 `useGatewayRuntimeStore` 唯一持有。顶部入口和设备页通过 `refreshSerialPortCatalog` 合并同一 gateway 上的并发枚举；显式连接/断开通过 `serialSessionOperations` 合并相同意图并拒绝冲突意图，两个入口不能各自拥有第二套 busy 状态或直接发起物理会话请求。UUID `operationId` 贯穿前端 `AETHOR_PROBE_V1` 与网关：目录使用 Event 1006/1007/1002，会话使用 Event 1008/1009/1010；只记录终态、耗时、数量/连接状态和失败分类，不记录令牌、端口身份或请求正文。完整约定见 [诊断与日志探针](runbooks/diagnostics.md)。
 

@@ -34,7 +34,7 @@ Dummy A1-U2 已将所有生产读写一次性迁移到 `DummySerialSession + Ser
 
 ## 后续顺序
 
-1. Aethor 固件 commit、CRC/parser vectors 冻结后，实现独立 codec 与 pending request registry。
+1. A1-H0 已完成无状态 Aethor TypeScript/C# codec 与主机侧 CRC/parser vectors；固件 commit 和固件侧向量冻结后实现 pending request/session registry，不再新增第二套 codec。
 2. Aethor adapter 复用调度器资源所有权，但保持协议、session 与响应状态独立。
 3. 只有 Aethor 生产 adapter 的软件门完整通过后，才编写并执行新的监督实机 runbook。
 

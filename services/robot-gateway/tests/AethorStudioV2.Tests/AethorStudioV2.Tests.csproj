@@ -18,6 +18,7 @@
     <ProjectReference Include="../../src/AethorStudioV2.Api/AethorStudioV2.Api.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="../../../../shared/contracts/conformance/aethor-arm-ascii-v1.vectors.json" Link="Conformance/aethor-arm-ascii-v1.vectors.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../../../shared/contracts/conformance/dummy-ascii-v1.vectors.json" Link="Conformance/dummy-ascii-v1.vectors.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../../../shared/contracts/gateway-contracts-v1.schema.json" Link="Conformance/gateway-contracts-v1.schema.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../preflight-readonly.ps1" Link="Operations/preflight-readonly.ps1" CopyToOutputDirectory="PreserveNewest" />

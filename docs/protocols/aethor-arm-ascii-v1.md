@@ -4,7 +4,7 @@
 
 本文是 `Aethor_robo` 单条七轴机械臂与 Aethor Studio V2 之间的候选协议事实源，协议 ID 为 `aethor-arm-ascii-v1`。它服务左臂或右臂中的一条七轴链；双臂由独立的控制器/臂身份区分，不能依靠串口到达顺序推断。
 
-当前状态为 `DRAFT / SOFTWARE CONTRACT VERIFIED`：JSON Schema、TypeScript 类型、ID 映射和控制台降级显示已有软件测试，但固件 parser、CRC 测试向量、串口 adapter 和实机反馈尚未实现。内置 Profile 的 adapter 仍是 `aethor-robo-pending`，全部硬件 capability 继续为 false。
+当前状态为 `DRAFT / HOST CODEC SOFTWARE VERIFIED`：JSON Schema、TypeScript 类型、ID 映射、TypeScript/C# 独立 codec、CRC/帧跨语言向量和控制台降级显示已有软件测试。固件 parser、固件侧向量、请求会话 adapter 和实机反馈尚未实现；内置 Profile 的 adapter 仍是 `aethor-robo-pending`，全部硬件 capability 继续为 false。
 
 本协议不兼容 Dummy 的 `!START`、`#GETJPOS` 和 `>` 命令。两种机器人可以共享上位机的串口生命周期、日志和终端 UI，但必须使用不同 codec 与状态机。
 
@@ -31,6 +31,8 @@ TEL  <frame_seq> <stream_type> [key=value ...] *<CRC16>
 ```
 
 `request_id` 为 `1..4294967295` 的无符号十进制数，`0` 保留。J1–J7 数组固定七项；角度使用 `deg`，角速度使用 `deg/s`，时间 `t_us` 是 MCU 启动后的单调微秒。数字不得为 `NaN`、`Inf` 或科学计数法，重复键按 `BAD_FRAME` 拒绝。
+
+主机侧 codec 的语言无关事实源是 `shared/contracts/conformance/aethor-arm-ascii-v1.vectors.json`。CRC 以行业标准校验串 `123456789 → 29B1` 作为独立锚点；TypeScript 和 C# 分别重算全部向量，不能互相调用实现。wire parser 要求单个 ASCII 空格分隔、大写 4 位 CRC、字段名 `snake_case`、字段值不含空格/`*`/`=`，重复字段拒绝。接收行只接受 LF 或紧邻 LF 的 CRLF；孤立 CR、控制字符、非 ASCII、超过 512 bytes 和未结束尾帧均以有界诊断丢弃。
 
 `ACK` 只表示状态改变命令被接管，`DONE` 才是其最终结果；`RSP` 用于查询，`TEL` 用于可丢旧保新的遥测。上位机不得把 transport 写入、ACK 或通用状态文本解释为实机到位。
 
@@ -138,7 +140,7 @@ C# 服务是串口的唯一所有者，采用一个持续 RX reader 和一个有
 - 请求超时不自动用新 ID 重放运动；先查询状态，结果仍未知时由操作者停止和恢复；
 - 串口终端的辅助模式必须经过 Aethor codec 校验，raw 模式仍只提交一次 transport write，不等待回包占住发送队列。
 
-该模型与当前 Dummy adapter 分开实现；不能复制 Dummy 无标签 response fence 的关联方式。A1-U2 已在 Dummy 生产路径验证共用双工调度基础设施，但 Aethor 仍需独立 codec、request ID correlation 和 session adapter；这些能力尚未实现。
+该模型与当前 Dummy adapter 分开实现；不能复制 Dummy 无标签 response fence 的关联方式。A1-U2 已在 Dummy 生产路径验证共用双工调度基础设施，A1-H0 已提供无状态 Aethor TypeScript/C# codec；Aethor 仍需 request ID correlation、boot/session 状态机和生产 adapter，这些运行时能力尚未实现。
 
 ## 错误与恢复
 
@@ -151,7 +153,7 @@ C# 服务是串口的唯一所有者，采用一个持续 RX reader 和一个有
 进入真实网关前还需关闭以下门：
 
 1. 固件仓库提交、CubeMX/FreeRTOS 任务所有权与 DM3520 映射可追溯；
-2. CRC、parser、重复请求、帧回绕和错误码跨语言测试向量冻结；
+2. 主机侧 CRC、formatter、parser 与基础错误向量已在 A1-H0 冻结；仍需固件消费同一向量，并补齐重复请求、帧回绕、会话和业务错误码证据；
 3. UART/CAN 负载下 50 Hz 完整快照、反馈年龄和 TX 拥塞行为实测；
 4. 单电机、任意子集、乱序 ID、ID >7、冲突 ID 和全七轴发现验收；
 5. STOP/DISABLE、看门狗、MIT/POS_VEL、同步到达与梯度速度完成独立监督验收；

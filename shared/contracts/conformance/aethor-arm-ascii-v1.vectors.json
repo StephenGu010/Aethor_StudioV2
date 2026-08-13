@@ -1,0 +1,95 @@
+{
+  "schemaVersion": "1.0",
+  "protocolId": "aethor-arm-ascii-v1",
+  "status": "software-codec-conformance",
+  "crcCases": [
+    { "body": "123456789", "expectedCrc": "29B1" },
+    { "body": "REQ 1 HELLO client=aethor-studio-v2 protocol=1", "expectedCrc": "1D7E" },
+    { "body": "REQ 2 GET_JPOS", "expectedCrc": "83EC" },
+    { "body": "REQ 3 SET_STREAM rate_hz=50 fields=jpos,jvel,state,motor", "expectedCrc": "6AE2" },
+    { "body": "REQ 4 STOP behavior=controlled", "expectedCrc": "C832" }
+  ],
+  "requestCases": [
+    {
+      "name": "hello",
+      "requestId": 1,
+      "operation": "HELLO",
+      "fields": [["client", "aethor-studio-v2"], ["protocol", "1"]],
+      "expectedLine": "REQ 1 HELLO client=aethor-studio-v2 protocol=1 *1D7E"
+    },
+    {
+      "name": "joint snapshot query",
+      "requestId": 2,
+      "operation": "GET_JPOS",
+      "fields": [],
+      "expectedLine": "REQ 2 GET_JPOS *83EC"
+    },
+    {
+      "name": "stream configuration",
+      "requestId": 3,
+      "operation": "SET_STREAM",
+      "fields": [["rate_hz", "50"], ["fields", "jpos,jvel,state,motor"]],
+      "expectedLine": "REQ 3 SET_STREAM rate_hz=50 fields=jpos,jvel,state,motor *6AE2"
+    },
+    {
+      "name": "controlled stop",
+      "requestId": 4,
+      "operation": "STOP",
+      "fields": [["behavior", "controlled"]],
+      "expectedLine": "REQ 4 STOP behavior=controlled *C832"
+    }
+  ],
+  "frameCases": [
+    {
+      "line": "REQ 2 GET_JPOS *83EC",
+      "expectedKind": "REQ",
+      "expectedSequence": 2,
+      "expectedSubject": "GET_JPOS"
+    },
+    {
+      "line": "RSP 1 ok product=aethor-robo controller=arm-controller-01 arm=left-arm session=77 boot_id=12 dof=7 protocol=aethor-arm-ascii-v1 *D6ED",
+      "expectedKind": "RSP",
+      "expectedSequence": 1,
+      "expectedSubject": "ok"
+    },
+    {
+      "line": "TEL 4294967295 JOINT_STATE t_us=183920040 q_deg=0,-15.012,0,0.004,20.001,0,4.995 present_mask=0x5B valid_mask=0x5B conflict_mask=0x00 unexpected_ids=none *9A9B",
+      "expectedKind": "TEL",
+      "expectedSequence": 4294967295,
+      "expectedSubject": "JOINT_STATE"
+    },
+    {
+      "line": "ERR 0 BAD_CRC *2657",
+      "expectedKind": "ERR",
+      "expectedSequence": 0,
+      "expectedSubject": "BAD_CRC"
+    },
+    {
+      "line": "ACK 4 accepted motion_id=4 *3B63",
+      "expectedKind": "ACK",
+      "expectedSequence": 4,
+      "expectedSubject": "accepted"
+    },
+    {
+      "line": "DONE 4 COMPLETED elapsed_ms=2918 max_error_deg=0.18 *30B7",
+      "expectedKind": "DONE",
+      "expectedSequence": 4,
+      "expectedSubject": "COMPLETED"
+    },
+    {
+      "line": "EVT 901 ARM_STATE state=FAULT cause=MOTOR_FEEDBACK_TIMEOUT joint=3 *CEDE",
+      "expectedKind": "EVT",
+      "expectedSequence": 901,
+      "expectedSubject": "ARM_STATE"
+    }
+  ],
+  "invalidCases": [
+    { "line": "REQ 2 GET_JPOS *0000", "expectedCode": "BAD_CRC" },
+    { "line": "REQ  2 GET_JPOS *6F32", "expectedCode": "BAD_FRAME" },
+    { "line": "REQ 5 GET_STATE key=1 key=2 *818D", "expectedCode": "BAD_FRAME" },
+    { "line": "REQ 6 REBOOT *5F0C", "expectedCode": "UNKNOWN_OPERATION" },
+    { "line": "REQ 0 GET_JPOS *5D66", "expectedCode": "SEQUENCE_OUT_OF_RANGE" },
+    { "line": "REQ 7 GET_STATE key=a=b *FB13", "expectedCode": "BAD_FRAME" },
+    { "line": "REQ 2 GET_JPOS *83ec", "expectedCode": "BAD_FRAME" }
+  ]
+}

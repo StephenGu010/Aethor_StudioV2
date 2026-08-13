@@ -1,5 +1,12 @@
 # 变更记录
 
+## 2026-08-13 - A1-H0 Aethor_robo 主机协议 codec 软件门（DONE）
+
+- 将受固件阻塞的 A1-H 拆为 H0/H1：H0 完成不接串口的主机无状态 codec，H1 保留固件证据、request/session adapter 和只读实机接入。
+- 新增 TypeScript 与独立 C# `aethor-arm-ascii-v1` 实现，共同消费语言无关 CRC/REQ/frame/invalid vectors；以 CCITT-FALSE 标准 `123456789 → 29B1` 锚定算法，覆盖字段唯一性、uint32、7 类帧、512-byte、碎包/粘包/CRLF 和异常字节。
+- Aethor 终端快捷命令现生成真实 CRC，并分别显示 CRC/格式诊断与 adapter 禁用原因；修正 `SET_STREAM` 字段。页面仍不连接、不发送，也不消费 Dummy 会话。
+- 最终软件证据为 contracts 124 + frontend 241 + gateway 129 + desktop 118 + legal inventory 6，共 618/618；C# codec 定向 7/7。strict TypeScript、2658-module production Web、Gateway/Desktop Release 0 warning/0 error 与三档 Playwright 63/63 均通过。终端实页三档无横向溢出、裁切或 console 告警；隔离入口确认零串口打开、零硬件命令。
+
 ## 2026-08-13 - A1-T0 Aethor_robo 数字孪生实时内核（DONE）
 
 - 新增协议无关的 `AethorTwinFrameCoordinator` 和唯一 `ingestAethorTwinMotorFrame` 入口。每条机械臂最多保留一条最新待处理帧，20 ms 窗口内左右臂原子提交一次，把固件候选 50–100 Hz 遥测与 React/Three.js 模型更新限制在最多 50 Hz。

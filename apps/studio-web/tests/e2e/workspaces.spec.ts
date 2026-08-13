@@ -94,7 +94,10 @@ test.describe('Aethor Studio V2 workspaces', () => {
     await expect(page.getByText('Aethor_robo · URDF READY')).toBeVisible({ timeout: WORKSPACE_READY_TIMEOUT_MS });
     await page.goto('/terminal');
     await expect(page.getByText('AETHOR ADAPTER · PENDING')).toBeVisible();
-    await expect(page.getByLabel('Aethor Arm 候选协议命令')).toHaveValue('REQ 1 HELLO *<CRC16>');
+    await expect(page.getByLabel('Aethor Arm 候选协议命令')).toHaveValue(
+      'REQ 1 HELLO client=aethor-studio-v2 protocol=1 *1D7E'
+    );
+    await expect(page.getByText('HANDSHAKE · CRC VERIFIED')).toBeVisible();
     await expect(page.getByRole('button', { name: '发送' })).toBeDisabled();
     await expect(page.locator('.terminalLog')).not.toContainText('#GETJPOS');
 

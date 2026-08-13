@@ -10,10 +10,12 @@
 - `action-program-v1.md`：点位、来源、显式保存、兼容性与未来执行边界。
 - `desktop-bridge-v1.md`：WebView2 原生窗口能力契约。
 - `src/types.ts`、`src/actionProgram.ts`、`src/aethorArmV1.ts`：与 wire/file Schema 对应的 TypeScript 类型；前端不再保留副本。
+- `src/aethorArmAsciiV1.ts`：Aethor Arm ASCII v1 的无状态 CRC、REQ formatter、wire parser 和有界行解码器；不拥有串口、会话或请求等待。
 - `src/dummyAsciiV1.ts`：Dummy formatter、白名单、response parser 和有界行解码器。
 - `src/commandStateMachine.ts`、`sessionStateMachine.ts`：纯状态转换规则。
 - `src/transport.ts`、`src/testing.ts`：transport port 与只用于测试的有界 fake。
 - `conformance/dummy-ascii-v1.vectors.json`：TypeScript 与 C# 共用的协议向量。
+- `conformance/aethor-arm-ascii-v1.vectors.json`：Aethor 主机 codec 的语言无关 CRC/REQ/frame/invalid 向量；固件尚未证明消费该文件。
 
 ## 跨语言一致性
 

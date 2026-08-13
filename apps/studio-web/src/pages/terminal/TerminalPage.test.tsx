@@ -26,10 +26,28 @@ describe('TerminalPage offline behavior', () => {
 
     expect(screen.getByText('Aethor_robo 指令')).toBeVisible();
     expect(screen.getByText('AETHOR ADAPTER · PENDING')).toBeVisible();
-    expect(screen.getByLabelText('Aethor Arm 候选协议命令')).toHaveValue('REQ 1 HELLO *<CRC16>');
+    expect(screen.getByLabelText('Aethor Arm 候选协议命令')).toHaveValue(
+      'REQ 1 HELLO client=aethor-studio-v2 protocol=1 *1D7E'
+    );
+    expect(screen.getByText('HANDSHAKE · CRC VERIFIED')).toBeVisible();
+    expect(screen.getByText('CRC VERIFIED · request 1 · HELLO')).toBeVisible();
     expect(screen.getByRole('button', { name: '发送' })).toBeDisabled();
     expect(container.querySelector('.terminalLog')?.textContent).not.toContain('#GETJPOS');
     expect(screen.queryByText('Dummy 指令')).not.toBeInTheDocument();
+  });
+
+  it('shows the CRC failure instead of hiding it behind the pending adapter state', () => {
+    useActiveRobotProfileStore.setState({ activeProfileId: aethorRoboProfile.profileId });
+    render(<TerminalPage />);
+
+    fireEvent.change(screen.getByLabelText('Aethor Arm 候选协议命令'), {
+      target: { value: 'REQ 2 GET_JPOS *0000' }
+    });
+
+    expect(screen.getByText('INVALID')).toBeVisible();
+    expect(screen.getByText('CRC-16/CCITT-FALSE 校验失败')).toBeVisible();
+    expect(screen.getByText(/独立网关 adapter 尚未接线/)).toBeVisible();
+    expect(screen.getByRole('button', { name: '发送' })).toBeDisabled();
   });
 
   it('keeps real sending disabled and validates locally without adding a frame', () => {

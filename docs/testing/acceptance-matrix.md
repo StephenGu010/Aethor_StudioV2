@@ -21,6 +21,7 @@
 | Aethor_robo 双工软件门（A1-U1） | 唯一 reader、串行 writer、P0–P3 优先级/公平、急停预留、满载替代、队列时效、重复任务、RX 背压、拔线与不合作 I/O 关闭、终端 Profile 隔离 | 禁止访问串口 | 调度器软件门独立通过；普通发送不能耗尽急停容量，后台任务不会饿死，过期任务不落 transport，故障或关闭释放所有 ticket 与句柄；Aethor TX 固定禁用 |
 | Dummy 双工生产迁移（A1-U2） | 单 reader/decoder、response fence、P0 抢占、direct 连续入队、queued→sent/失败类结果、REST/SignalR 恢复、结构化命令兼容、关闭资源收束 | 禁止访问串口 | `RobotGateway` 不再直接读写或持有 `serialIoGate`；缺回复的 direct 不占响应 waiter、不禁用后续发送；结构化无标签响应仍只归属一个事务；断开取消未写队列并清空 session 历史；全量回归通过 |
 | Aethor_robo 数字孪生实时内核（A1-T0） | 100 Hz 突发、左右臂并发、同 boot 乱序、boot 回流、身份串线、逐轴增量新鲜度、目标隔离、断流灰显和诊断指标 | 禁止访问串口 | 每臂最多一条待提交帧，20 ms 窗口只触发一次原子模型提交；旧帧在 React 前拒绝；逐轴总年龄达到 250 ms 后末姿态保留但来源撤销；目标数组引用和值均不被反馈写入 |
+| Aethor_robo 主机协议 codec（A1-H0） | CCITT-FALSE 标准校验串、TS/C# 共享 vectors、REQ formatter、7 类输出帧、CRC/字段/序号错误、任意字节切分/粘包、CRLF、控制字符、512-byte 边界、终端本地校验与三档视口 | 禁止访问串口 | `123456789 → 29B1`；两种语言独立实现对同一结果一致；超长/非 ASCII/孤立 CR/未结束尾帧有界丢弃；终端生成真实 CRC 并显示具体错误，发送固定禁用；不注册生产 adapter |
 
 ## 实机安全门
 

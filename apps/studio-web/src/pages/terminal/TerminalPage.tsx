@@ -2,7 +2,7 @@ import { Clipboard, Download, Eye, EyeOff, Filter, Search, Send, ShieldAlert, Tr
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { SourceTag } from '../../components/ui/SourceTag';
 import type { ConnectionState, DataSource, DirectCommandResult, ProtocolFrame, Validity } from '@aethor/contracts';
-import { validateAethorCandidateCommand } from '../../domain/aethorCandidateCommand';
+import { formatAethorCandidateRequest, validateAethorCandidateCommand } from '../../domain/aethorCandidateCommand';
 import { validateDummyCommand } from '../../domain/dummyCommand';
 import { buildProtocolLogText } from '../../domain/protocolExport';
 import { showcaseProtocolFrames } from '../../fixtures/showcase';
@@ -16,15 +16,15 @@ import { isRoutineJointPositionFrame, useGatewayRuntimeStore } from '../../store
 type DirectionFilter = 'all' | ProtocolFrame['direction'];
 const dummyQuickCommands = ['#GETJPOS', '#GETMODE', '#GETENABLE', '#CMDMODE 1', '#CMDMODE 2', '#CMDMODE 3', '!START', '!STOP', '!DISABLE'];
 const aethorQuickCommands = [
-  'REQ 1 HELLO *<CRC16>',
-  'REQ 2 GET_INFO *<CRC16>',
-  'REQ 3 GET_CONFIG *<CRC16>',
-  'REQ 4 GET_STATE *<CRC16>',
-  'REQ 5 GET_JPOS *<CRC16>',
-  'REQ 6 GET_MOTORS *<CRC16>',
-  'REQ 7 SET_STREAM hz=50 *<CRC16>',
-  'REQ 8 STOP behavior=controlled *<CRC16>',
-  'REQ 9 DISABLE *<CRC16>'
+  formatAethorCandidateRequest({ requestId: 1, operation: 'HELLO', fields: [['client', 'aethor-studio-v2'], ['protocol', '1']] }),
+  formatAethorCandidateRequest({ requestId: 2, operation: 'GET_INFO' }),
+  formatAethorCandidateRequest({ requestId: 3, operation: 'GET_CONFIG' }),
+  formatAethorCandidateRequest({ requestId: 4, operation: 'GET_STATE' }),
+  formatAethorCandidateRequest({ requestId: 5, operation: 'GET_JPOS' }),
+  formatAethorCandidateRequest({ requestId: 6, operation: 'GET_MOTORS' }),
+  formatAethorCandidateRequest({ requestId: 7, operation: 'SET_STREAM', fields: [['rate_hz', '50'], ['fields', 'jpos,jvel,state,motor']] }),
+  formatAethorCandidateRequest({ requestId: 8, operation: 'STOP', fields: [['behavior', 'controlled']] }),
+  formatAethorCandidateRequest({ requestId: 9, operation: 'DISABLE' })
 ];
 
 export function TerminalPage({ gateway = robotGateway }: { gateway?: RobotGatewayV1 }) {
@@ -62,7 +62,7 @@ export function TerminalPage({ gateway = robotGateway }: { gateway?: RobotGatewa
   const directReady = isDummy && gateway.capabilities.rawCommand;
   const sendDisabledReason = isDummy
     ? getDirectSendDisabledReason({ gateway, session, jointState, command, validation })
-    : 'Aethor_robo 固件 CRC 向量与独立网关 adapter 尚未完成；当前只做候选协议本地校验';
+    : 'Aethor_robo 独立网关 adapter 尚未接线；当前只做软件 codec 与 CRC 本地校验';
   const visibleFrames = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return captureFrames.filter((frame) =>
@@ -200,9 +200,11 @@ export function TerminalPage({ gateway = robotGateway }: { gateway?: RobotGatewa
           </div>
           <div className={`validationLine ${validation.valid ? `risk-${validation.risk}` : 'invalid'}`}>
             <span className="statusDot" />
-            <strong>{validation.valid ? `${validation.kind} · FORMAT VALID` : 'INVALID'}</strong>
-            <span>{sendDisabledReason ?? validation.message}</span>
-            <small>{directReady ? '实际 TX/RX 只来自 C# 网关' : '离线校验不会写入 TX/RX'}</small>
+            <strong>{validation.valid ? `${validation.kind} · ${isDummy ? 'FORMAT VALID' : 'CRC VERIFIED'}` : 'INVALID'}</strong>
+            <span>{!validation.valid || !isDummy ? validation.message : sendDisabledReason ?? validation.message}</span>
+            <small>{!isDummy && sendDisabledReason
+              ? `${sendDisabledReason} · 离线校验不会写入 TX/RX`
+              : directReady ? '实际 TX/RX 只来自 C# 网关' : '离线校验不会写入 TX/RX'}</small>
           </div>
           {recentDirectResults.length > 0 && <div className="directCommandResults" aria-label="最近直连请求状态">{recentDirectResults.map((result) => <div className={`directCommandResult status-${result.status}`} role="status" key={result.requestId}><strong>{result.status.toUpperCase()}</strong><code>{result.normalizedLine}</code><span>{result.message}</span></div>)}</div>}
         </div>
@@ -242,13 +244,13 @@ const aethorTerminalUi = {
   title: 'Aethor_robo 指令',
   protocolLabel: 'AETHOR ARM ASCII V1 · DRAFT',
   inputLabel: 'Aethor Arm 候选协议命令',
-  defaultCommand: 'REQ 1 HELLO *<CRC16>',
+  defaultCommand: aethorQuickCommands[0]!,
   inactiveState: 'ADAPTER PENDING',
   quickSource: 'AETHOR ARM V1 · DRAFT',
   quickCommands: aethorQuickCommands,
-  boundaryDescription: '当前只校验候选 REQ 包络和 operation 白名单。CRC 测试向量、固件 parser 与独立 C# adapter 冻结后，快捷命令才会生成可发送帧。',
+  boundaryDescription: '快捷命令由共享 Aethor codec 生成 CRC；手工输入同时校验请求号、operation、字段和 CRC。固件 parser 与独立 C# 会话 adapter 到位前仍不发送。',
   safetyState: 'SERIAL ADAPTER PENDING',
-  safetyDescription: '不会借用 Dummy codec 或会话；当前输入不会打开串口，也不会生成 TX/RX 记录。'
+  safetyDescription: '不会借用 Dummy codec 或会话；软件校验通过不代表固件已兼容，当前输入不会打开串口或生成 TX/RX 记录。'
 } as const;
 
 const aethorPendingCaptureState = {

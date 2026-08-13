@@ -32,19 +32,21 @@
 | A1-U1 双工运行时软件门 | DONE | 建立唯一持续 reader、有界优先 writer、背压/关闭探针与双 Profile 终端入口 | `SerialDuplexScheduler` 与 fake transport 测试已落盘；Aethor 终端只做候选校验且 TX 禁用；生产 DI 未接线 | 定向并发/容量/拔线测试、前端 Profile 隔离、两档实页无溢出；零串口路径 |
 | A1-U2 Dummy 生产迁移 | DONE | 用新运行时替换 Dummy `serialIoGate`，使 direct terminal 有界入队后立即返回 | `DummySerialSession` 已成为唯一 reader/decoder owner；direct 按 request ID 产生 queued→sent/失败类状态，结构化问答保留 response fence | 零双 reader、P0 抢占、连续终端发送、结构化响应/审计兼容和全量回归通过 |
 | A1-T0 数字孪生实时内核 | DONE | 在固件 adapter 前完成双臂高频遥测到 Three.js 的有界投影 | 单一 ingest 接缝；每臂最新帧优先；双臂原子提交；50 Hz 模型提交上限；逐关节 250 ms 显示新鲜度；入口/模型/合并/拒绝指标 | 100 帧突发只产生一次模型提交；旧序号、旧 boot 和会话身份串线被拒绝；目标草稿不被反馈覆盖；断流保留末姿态并灰显 |
-| A1-H 固件与跨语言适配 | BLOCKED | 实现固件 parser/CRC/快照、C# codec 与真实串口联调 | Keil/CubeMX/FreeRTOS 固件仍在外部开发，仓库没有可执行 adapter | 固件 commit、CRC vectors、fake transport、只读监督实机验收全部通过 |
+| A1-H0 主机协议 codec 软件门 | DONE | 在不接串口的前提下冻结主机侧 ASCII/CRC/行解码和跨语言向量 | 共享 TypeScript codec、独立 C# Domain codec、CCITT-FALSE 向量、512-byte 解码器和终端 CRC 校验已落盘；无 DI/adapter/TX | 标准 `123456789 → 29B1`、TS/C# 同向量、碎包/粘包/CRLF/非法字段/超长输入和三档终端 UI 通过 |
+| A1-H1 固件证据与只读会话适配 | BLOCKED | 取得固件实现证据，接入 request/session/boot 关联与只读遥测 | Keil/CubeMX/FreeRTOS 固件仍在外部开发；主机 codec 可用，但没有 pending registry、生产 DI、REST/SignalR 或真实 adapter | 固件 commit 与固件侧 vectors 可追溯；fake transport 会话、50 Hz 观测、重启/断开释放和只读监督实机验收通过 |
 | A2 只读网关与观测 | NOT STARTED | 人工连接、双臂反馈、协议日志和有界示波 | 没有串口/传输/反馈契约 | fake transport、loopback/token、只读监督 runbook 和实机授权验收通过 |
 | A3 安全控制与动作编排 | NOT STARTED | 独立双臂整组下发、停止、到位确认和版本化动作程序 | 当前文档与 6B-S 执行内核均只支持 Dummy 六轴 | 可信限位/速度/完成/停止语义、逐臂命令仲裁、监督低风险实机门全部关闭 |
 
 ## A0 完成结果
 
 - `aethor-robo-dual-7dof` 的规范化 URDF、23 个 STL、双七轴分组和逐资产 SHA-256 溯源门已落盘；来源包缺少完整 BSD 条款的限制继续保留，不把完整性验证冒充为分发授权。
-- 当前退出门为 contracts 93 + frontend 184 + gateway 82 + desktop 79 + legal inventory 1，共 439/439；strict TypeScript、Web 2639 modules、隔离 gateway Release 与 desktop Release 构建通过，0 warning/0 error；三档生产 E2E 63/63 通过。
+- 当前退出门为 contracts 124 + frontend 241 + gateway 129 + desktop 118 + legal inventory 6，共 618/618；strict TypeScript、Web 2658 modules、隔离 gateway Release 与 desktop Release 构建通过，0 warning/0 error；三档生产 E2E 63/63 通过。
 - E2E 覆盖双 Profile 隔离、左右七轴本地编辑、零硬件路径、三档无关键溢出、同源资产一次恢复、23 份 geometry 共享、按需帧收敛及重复挂载资源释放。本轮没有新启动或访问网关，没有枚举或打开串口，也没有发送硬件命令；既有未知 COM4 会话保持原样。
 - A1-U0 已完成上位机候选契约：任意子集/顺序按 ID 1–7 映射，重复和范围外 ID 保留诊断，完整发现快照中的缺失链从首个不确定关节起灰显。该入口尚未接入运行时网关，不会产生连接、反馈、使能、停止或下发能力。
 - A1-U2 已完成 Dummy 生产迁移：`DummySerialSession + SerialDuplexScheduler` 统一拥有物理读写，旧 `serialIoGate` 已删除。`/terminal` 可连续提交多个 direct 请求，HTTP 入队与物理写入分阶段显示；结构化响应、审计、P0 抢占和资源关闭保持独立证据。Aethor TX 仍固定禁用。
 - A1-T0 已把 adapter 到 React/Three.js 之间的实时内核落盘：左右臂各只保留最新待提交帧，20 ms 窗口内原子更新一次；入口按 controller/arm/boot/sequence 隔离，逐关节在总年龄达到 250 ms 时保留最后角度并转为 stale。该阈值只属于显示层，不是硬件使能判据。
-- A1-H 继续因固件、CRC/parser 测试向量和独立 C# adapter 缺失保持 `BLOCKED`；因此 A1 总体仍为 `IN PROGRESS`，不能把软件注入测试当作真实反馈。
+- A1-H0 已完成主机软件 codec 门：TypeScript 与 C# 独立实现共同消费语言无关向量，严格校验 CRC、请求号、operation、字段唯一性和 512-byte 行边界；Aethor 终端快捷命令生成真实 CRC，但发送仍禁用。
+- A1-H1 继续因固件提交、固件侧 vectors、pending request/session adapter 和真实串口证据缺失保持 `BLOCKED`；因此 A1 总体仍为 `IN PROGRESS`，不能把主机 codec 通过解释成固件兼容或真实反馈。
 
 ## Phase 4 验收结果
 
