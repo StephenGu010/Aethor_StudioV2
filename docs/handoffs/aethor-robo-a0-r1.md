@@ -36,13 +36,15 @@
 - `pnpm typecheck`：contracts 与 studio-web strict TypeScript 通过。
 - `pnpm build`：Web 2658 modules、31 个静态 Profile 项复制成功；Gateway/Desktop Release 均 0 warning / 0 error。
 - Playwright：三档共 63/63；资源请求 17/17，诊断 23 geometry / 22 material，重复挂载不累积资源。
+- 桌面同步：从本阶段已提交 HEAD 构建 `artifacts/windows-a0-r1/AethorStudioV2-0.1.0-win-x64/`。包内为 17 个 STL、0 个 wheel 文件，URDF 哈希与 Profile 一致；engineering offline smoke 校验 691 项 manifest / 692 个实际文件，session 保持 offline，`serialPortOpened=false / hardwareCommandSent=false`，Gateway 正常退出。桌面 `Aethor Studio V2.lnk` 已指向该包。
 
 ## 仍需注意
 
 - `satellite_base_link.STL` 的 CAD 组件清单含六个 wheel-shell 名称，轮壳外形已烘焙进底座。当前只保证“没有独立动量轮关节/mesh”；若视觉上也不能出现轮壳，需要 CAD 侧重新导出底座。
 - 来源目录仍只有 BSD 声明，没有完整许可证条款；公开分发前继续补齐许可文本。
 - 这次变更不新增 Aethor_robo adapter 或硬件能力。A1-H1 仍需固件提交、固件向量和只读 session adapter。
-- 桌面包必须在本提交之后重建，确保 WebView2 静态资源包含 17 STL 版本。
+- 新包使用 `-AllowDirty`，因为仓库里保留了用户未跟踪的 `tmp/` 采证文件；manifest 仍固定记录本阶段提交，资格仅为 `development-dirty`，不能当正式发布候选。构建未删除、暂存或打包 `tmp/`。
+- 更新快捷方式时旧桌面实例仍在运行，未强制结束。需先正常关闭旧窗口，再从桌面快捷方式启动，单实例机制才会加载新包。
 
 ## 下一步入口
 

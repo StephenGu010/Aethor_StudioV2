@@ -8,6 +8,10 @@ gateway lifecycle. It is not a production installer or a signed release.
 - `Current profile` switches the complete workspace between the Dummy six-axis
   manipulator and the model-only Aethor_robo spacecraft. Aethor_robo then uses
   its own left/right seven-axis arm selector; no Dummy runtime state is reused.
+- The packaged Aethor_robo Profile uses the deployed chassis/dual-arm model:
+  17 links, 16 joints and 17 STL assets. Its existing fourteen arm-joint names,
+  groups, axes and protocol indices remain stable; the six independent
+  momentum-wheel links, joints and meshes are not packaged.
 - The shell creates an ephemeral session token and a random loopback gateway
   port. The token is never written to the package, URL, local storage, or logs.
 - The injected desktop gateway is authoritative over developer environment
