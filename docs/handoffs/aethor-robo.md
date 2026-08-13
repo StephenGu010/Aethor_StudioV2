@@ -4,7 +4,7 @@
 
 | 项 | 值 |
 |---|---|
-| Track | A1-U2 Dummy 生产双工迁移与连续终端发送 |
+| Track | A1-T0 Aethor_robo 数字孪生实时内核 |
 | 状态 | `DONE` |
 | A1 总体 | `IN PROGRESS`；A1-H 固件/跨语言 adapter 为 `BLOCKED` |
 | 日期 | 2026-08-13 |
@@ -22,13 +22,14 @@
 - 串联机械臂从第一个不确定关节起到末端使用独立灰色实体材质，清理时恢复原材质；目标幽灵模型不受影响。材质纳入 Three.js 资源计数，没有改变默认 29 geometry / 22 material 基线。
 - 新增候选协议 `docs/protocols/aethor-arm-ascii-v1.md`，记录电机发现 mask、请求关联、遥测、停止、动作编排和未来持续 RX + 有界优先级 TX 的串口所有权设计。
 - A1-U2 已将该运行时接入 Dummy 生产网关：唯一 reader/decoder、优先级 writer、结构化 response fence 和无回复 direct 队列共同运行；`/terminal` 可连续发送并按 request ID 展示 queued/sent/失败类结果。Aethor 分支仍只做候选模板校验，发送固定禁用。完整证据见独立 A1-U2 交接。
+- A1-T0 已在未来 adapter 接缝之后增加每臂最新帧优先、20 ms 双臂原子提交和逐关节 250 ms 显示新鲜度；控制台展示入口/模型 Hz、合并与拒绝计数。Aethor 生产 adapter 和真实串口仍未实现。
 - 更新路线图、架构、产品边界、Profile、契约索引、验收矩阵、变更记录和 A1-H 执行提示词。外部固件 PRD 已同步到 0.3.0-draft，但不属于本 Git 仓库。
 
 ## 当前没有实现
 
 - Profile adapter 仍为 `aethor-robo-pending`，硬件 capability 全部为 false。
 - 没有 Aethor C# codec、pending request registry、REST/SignalR 投影或真实串口入口。共用持续 RX/优先 TX 调度器已在 Dummy 生产路径验证，但不能算作 Aethor adapter。
-- 控制台的 `applyMotorFrame` 目前只是经过测试的 adapter 接缝；生产运行时没有调用者，不能解释为已获得实机反馈。
+- 控制台的 `ingestAethorTwinMotorFrame` 是经过测试的 adapter 接缝；生产运行时仍没有调用者，不能解释为已获得实机反馈。
 - 读取、使能、停止、七轴组下发和 Aethor 动作执行仍禁用。MIT/POS_VEL、真实限位/速度、同步到达和梯度速度尚无实机证据。
 - 串口终端外壳已支持 Aethor 候选校验；真实 TX/RX、连接和设备状态仍只属于 Dummy runtime。Dummy 已迁移到新双工调度器，Aethor 不得复用 Dummy codec。
 

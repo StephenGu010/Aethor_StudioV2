@@ -135,7 +135,7 @@ function AethorRoboConsole() {
           <div className="sceneLegend">
             <div><span className="legendLine solid" /> SOLID · MODEL POSE</div>
             <div><span className="legendLine ghost" /> GHOST · TARGET</div>
-            <div><SourceTag source="showcase" /></div>
+            <AethorSceneSourceTag />
           </div>
           {selectedJoint && <JointManipulatorHud joint={selectedJoint} />}
           {modelState === 'error' && sceneCapability.supported && (
@@ -529,6 +529,10 @@ function ModelDiagnostics({ modelState, capability }: {
     getSceneResourceSnapshot,
     getSceneResourceSnapshot
   );
+  const metrics = useAethorRoboConsoleStore((state) => state.telemetryMetrics);
+  const snapshots = useAethorRoboConsoleStore((state) => state.motorSnapshots);
+  const latestFrameSeq = Math.max(-1, ...Object.values(snapshots)
+    .map((snapshot) => snapshot.frameSeq ?? -1));
   return (
     <dl className="diagnosticList" data-testid="scene-resource-diagnostics">
       <div><dt>PROFILE</dt><dd>{aethorRoboProfile.profileId}</dd></div>
@@ -542,6 +546,9 @@ function ModelDiagnostics({ modelState, capability }: {
       <div><dt>MODEL ROOTS</dt><dd>{resources.modelRoots}</dd></div>
       <div><dt>GEOMETRY / MATERIAL</dt><dd>{resources.geometries} / {resources.materials}</dd></div>
       <div><dt>DRAG SESSION</dt><dd>{resources.dragSessions}</dd></div>
+      <div><dt>TELEMETRY IN / MODEL</dt><dd>{metrics.ingressRateHz} / {metrics.modelUpdateRateHz} Hz</dd></div>
+      <div><dt>FRAME / COALESCED</dt><dd>{latestFrameSeq < 0 ? '—' : latestFrameSeq} / {metrics.coalescedFrameCount}</dd></div>
+      <div><dt>REJECTED FRAMES</dt><dd>{metrics.rejectedFrameCount}</dd></div>
       <div><dt>PROTOCOL</dt><dd>PENDING / OFFLINE</dd></div>
       <div><dt>EFFORT / VELOCITY</dt><dd>UNVERIFIED</dd></div>
     </dl>
@@ -579,33 +586,50 @@ function DualArmSummary({ actual, target, motorSnapshots }: {
 
 function AethorFeedbackHud() {
   const snapshots = useAethorRoboConsoleStore((state) => state.motorSnapshots);
+  const metrics = useAethorRoboConsoleStore((state) => state.telemetryMetrics);
   const groupStatus = (groupId: string) => {
     const snapshot = snapshots[groupId];
     if (!snapshot) return 'NO DATA';
     const present = snapshot.joints.filter((joint) => joint.availability === 'present').length;
-    return `${present}/7 OBSERVED`;
+    const stale = snapshot.joints.filter((joint) => joint.availability === 'stale').length;
+    if (present > 0) return `${present}/7 FRESH`;
+    if (stale > 0) return `${stale}/7 STALE`;
+    return '0/7 VALID';
   };
   const hasObservedFrame = Object.keys(snapshots).length > 0;
+  const hasFreshFeedback = Object.values(snapshots)
+    .some((snapshot) => snapshot.joints.some((joint) => joint.availability === 'present'));
   return (
     <div className="feedbackHud">
-      <div><small>MODEL STATE</small><strong>{hasObservedFrame ? 'COMMISSIONING' : 'LOCAL PREVIEW'}</strong></div>
+      <div><small>MODEL STATE</small><strong>{hasFreshFeedback ? 'MEASURED' : hasObservedFrame ? 'MEASURED STALE' : 'LOCAL PREVIEW'}</strong></div>
       <div><span>LEFT</span><strong>{groupStatus('left-arm')}</strong></div>
       <div><span>RIGHT</span><strong>{groupStatus('right-arm')}</strong></div>
-      <div><span>FRAME</span><strong>BASE / Z-UP</strong></div>
+      <div><span>UPDATE</span><strong>{hasFreshFeedback ? `${metrics.modelUpdateRateHz} Hz · #${metrics.appliedFrameCount}` : 'NO FRESH DATA'}</strong></div>
     </div>
   );
+}
+
+function AethorSceneSourceTag() {
+  const hasFreshFeedback = useAethorRoboConsoleStore(
+    (state) => Object.values(state.motorSnapshots)
+      .some((snapshot) => snapshot.joints.some((joint) => joint.availability === 'present'))
+  );
+  return <div><SourceTag source={hasFreshFeedback ? 'measured' : 'unavailable'} /></div>;
 }
 
 function MotorDiscoveryBanner({ snapshot }: { snapshot: AethorArmMotorSnapshot | undefined }) {
   if (!snapshot) return null;
   const present = snapshot.joints.filter((joint) => joint.availability === 'present').length;
+  const stale = snapshot.joints.filter((joint) => joint.availability === 'stale').length;
   const issues = [
     snapshot.duplicateMotorIds.length > 0 ? `ID ${snapshot.duplicateMotorIds.join(', ')} conflict` : null,
-    snapshot.unexpectedMotorIds.length > 0 ? `ID ${snapshot.unexpectedMotorIds.join(', ')} out of range` : null
+    snapshot.unexpectedMotorIds.length > 0 ? `ID ${snapshot.unexpectedMotorIds.join(', ')} out of range` : null,
+    stale > 0 ? `${stale} feedback stale` : null
   ].filter((issue): issue is string => Boolean(issue));
+  const freshLabel = present > 0 ? `${present}/7 motors fresh` : `${stale}/7 motors stale`;
   return (
     <div className={`motorDiscoveryBanner${issues.length > 0 ? ' warning' : ''}`} role={issues.length > 0 ? 'alert' : 'status'}>
-      <strong>{present}/7 motors observed</strong>
+      <strong>{freshLabel}</strong>
       <span>{issues.length > 0 ? issues.join(' · ') : 'Motor IDs mapped directly to joints'}</span>
     </div>
   );

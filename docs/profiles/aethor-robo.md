@@ -31,7 +31,8 @@
 |---|---|---|
 | 整机 URDF/STL 加载 | SOFTWARE VERIFIED | Vite 复制 23 个 STL；Schema/URDF 映射与逐资产 SHA-256 溯源门通过；visual/collision 每个 URL 只解析一份共享 geometry |
 | 左/右七轴本地 FK 预览 | SOFTWARE VERIFIED | 独立 14 轴 store；拖动、滑块、数值、键盘只改变幽灵模型；支持整机/左臂/右臂显式取景 |
-| 电机发现帧与 ID 投影 | SOFTWARE VERIFIED | `AethorArmMotorFrameV1` 接受任意子集/顺序；ID 1–7 直接映射 J1–J7，重复/范围外 ID 诊断，缺失链灰显；目前仅有测试注入入口 |
+| 电机发现帧与 ID 投影 | SOFTWARE VERIFIED | `AethorArmMotorFrameV1` 接受任意子集/顺序；ID 1–7 直接映射 J1–J7，重复/范围外 ID 诊断，缺失链灰显；A1-T0 已提供单一 ingest 入口，生产 adapter 尚未实现 |
+| 数字孪生实时投影 | SOFTWARE VERIFIED | 每臂最新帧优先、双臂原子提交、模型更新上限 50 Hz；controller/arm/boot/sequence 隔离；单轴显示年龄达到 250 ms 后保留末姿态并灰显 |
 | 串口、反馈、使能、停止、模式 | BLOCKED | 固件和规范指令集未完成 |
 | 关节组硬件下发 | BLOCKED | 无可信限位、速度、完成确认和停止语义 |
 | Aethor_robo 动作编排 | NOT STARTED | 当前 `ActionProgramV1` 只支持 Dummy 六轴 |
@@ -47,4 +48,4 @@ Aethor_robo URDF 的 visual/collision 会引用同一组 23 个大 STL。场景�
 
 ## 并行阶段
 
-进度以 [路线图](../roadmap.md) 的 A0–A3 表为准：A0 模型与双臂控制台、A1-U0 上位机候选契约已完成；A1-H 等待固件和跨语言 adapter；A2 为只读网关；A3 为安全控制和动作编排。每个共享阶段的 handoff 都要记录对本 Profile 的影响。
+进度以 [路线图](../roadmap.md) 的 A0–A3 表为准：A0 模型与双臂控制台、A1-U0 候选契约、A1-U1/U2 双工基础和 A1-T0 数字孪生实时内核已完成；A1-H 等待固件和跨语言 adapter；A2 为只读网关；A3 为安全控制和动作编排。每个共享阶段的 handoff 都要记录对本 Profile 的影响。

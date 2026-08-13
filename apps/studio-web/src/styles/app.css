@@ -1281,8 +1281,8 @@
   .sendGroupButton { min-height: 34px; margin-top: 5px; }
   .twinBottom { grid-template-columns: minmax(290px, .8fr) minmax(390px, 1fr) minmax(260px, .75fr); }
   .jointTableWrap .dataTable th,
-  .jointTableWrap .dataTable td { height: 28px; }
-  .eventRow { min-height: 39px; }
+  .jointTableWrap .dataTable td { height: 24px; padding-top: 0; padding-bottom: 0; }
+  .eventRow { min-height: 38px; }
   .protocolRow { grid-template-columns: 154px 39px minmax(120px, 1fr) 105px 65px; }
   .terminalToolbar .searchField { width: min(220px, 18vw); }
   .terminalToolbar .copyFeedback { display: none; }

@@ -17,4 +17,6 @@
 11. [Aethor_robo A1-U2：Dummy 运行时迁移（已完成）](aethor-robo-a1-u2-dummy-runtime-migration.md)
 12. [Aethor_robo A1-H：固件证据与跨语言适配](aethor-robo-a1-h-firmware-adapter.md)
 
+A1-T0 数字孪生实时内核已按 [阶段交接](../handoffs/aethor-robo-a1-t0.md) 完成；后续 adapter 必须复用其 ingest 接缝，不再新增页面级串口解析。
+
 开始阶段 N 前，必须同时阅读 [路线图](../roadmap.md)、[产品与安全边界](../product-boundaries.md)、[验收矩阵](../testing/acceptance-matrix.md)、相关权威协议/Schema，以及 `docs/handoffs/phase-(N-1).md`。完成后从 [handoff 模板](../handoffs/template.md) 生成该阶段实际交接文档。

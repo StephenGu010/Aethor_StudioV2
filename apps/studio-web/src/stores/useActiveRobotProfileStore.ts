@@ -3,6 +3,7 @@ import { aethorRoboProfile } from '../profile/aethorRoboProfile';
 import { dummyProfile } from '../profile/dummyProfile';
 import { isRobotProfileId, type RobotProfileId } from '../profile/profileCatalog';
 import { readDesktopBootstrap } from '../integrations/desktopBridge';
+import { resetAethorTwinTelemetryRuntime } from '../integrations/aethorTwinTelemetryRuntime';
 import { useAethorRoboConsoleStore } from './useAethorRoboConsoleStore';
 import { useGatewayRuntimeStore } from './useGatewayRuntimeStore';
 import { useRobotSessionStore } from './useRobotSessionStore';
@@ -31,6 +32,7 @@ export const useActiveRobotProfileStore = create<ActiveRobotProfileState>((set, 
     // Profile changes are safety boundaries: hidden target intent and expert access
     // must never survive into a different robot context.
     useRobotSessionStore.getState().resetSession(dummyProfile.profileId);
+    resetAethorTwinTelemetryRuntime();
     useAethorRoboConsoleStore.getState().resetPreview();
     useGatewayRuntimeStore.getState().resetRuntime();
     set({ activeProfileId: nextProfileId });

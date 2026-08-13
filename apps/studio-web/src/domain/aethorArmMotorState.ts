@@ -20,6 +20,7 @@ export interface AethorArmJointState {
   protocolIndex: number;
   availability: AethorArmJointAvailability;
   feedbackAgeMs: number | null;
+  lastObservedAtMs: number | null;
 }
 
 export interface AethorArmMotorSnapshot {
@@ -27,6 +28,7 @@ export interface AethorArmMotorSnapshot {
   armId: string | null;
   frameSeq: number | null;
   receivedAtUtc: string | null;
+  committedAtMs: number | null;
   actualPositionsDeg: readonly number[];
   joints: readonly AethorArmJointState[];
   duplicateMotorIds: readonly number[];
@@ -46,13 +48,15 @@ export function createAethorArmMotorSnapshot(
     armId: null,
     frameSeq: null,
     receivedAtUtc: null,
+    committedAtMs: null,
     actualPositionsDeg: normalizePositions(profile.model.dof, initialPositionsDeg),
     joints: joints.map((joint, index) => ({
       motorId: AETHOR_ARM_MOTOR_IDS[index]!,
       jointId: joint.jointId,
       protocolIndex: joint.protocolIndex,
       availability: 'notObserved',
-      feedbackAgeMs: null
+      feedbackAgeMs: null,
+      lastObservedAtMs: null
     })),
     duplicateMotorIds: [],
     unexpectedMotorIds: [],
@@ -64,7 +68,8 @@ export function createAethorArmMotorSnapshot(
 export function applyAethorArmMotorFrame(
   profile: RobotProfileManifestV1,
   previous: AethorArmMotorSnapshot,
-  frame: AethorArmMotorFrameV1
+  frame: AethorArmMotorFrameV1,
+  committedAtMs: number | null = null
 ): AethorArmMotorSnapshot {
   const groupId = frame.jointGroupId;
   const groupJoints = getSevenAxisGroupJoints(profile, groupId);
@@ -95,12 +100,14 @@ export function applyAethorArmMotorFrame(
     const motorId = AETHOR_ARM_MOTOR_IDS[index]!;
     const samples = samplesById.get(motorId) ?? [];
     if (duplicateSet.has(motorId)) {
+      const prior = previous.joints.find((candidate) => candidate.motorId === motorId);
       return {
         motorId,
         jointId: joint.jointId,
         protocolIndex: joint.protocolIndex,
         availability: 'conflict',
-        feedbackAgeMs: minimumFiniteAge(samples)
+        feedbackAgeMs: minimumFiniteAge(samples),
+        lastObservedAtMs: prior?.lastObservedAtMs ?? null
       };
     }
     const sample = samples[0];
@@ -111,7 +118,8 @@ export function applyAethorArmMotorFrame(
         jointId: joint.jointId,
         protocolIndex: joint.protocolIndex,
         availability: frame.snapshotComplete ? 'missing' : (prior?.availability ?? 'notObserved'),
-        feedbackAgeMs: frame.snapshotComplete ? null : (prior?.feedbackAgeMs ?? null)
+        feedbackAgeMs: frame.snapshotComplete ? null : (prior?.feedbackAgeMs ?? null),
+        lastObservedAtMs: frame.snapshotComplete ? null : (prior?.lastObservedAtMs ?? null)
       };
     }
     const valid = sample.valid
@@ -126,7 +134,8 @@ export function applyAethorArmMotorFrame(
       availability: valid ? 'present' : 'stale',
       feedbackAgeMs: Number.isFinite(sample.feedbackAgeMs) && sample.feedbackAgeMs >= 0
         ? sample.feedbackAgeMs
-        : null
+        : null,
+      lastObservedAtMs: valid ? committedAtMs : null
     };
   });
 
@@ -140,12 +149,48 @@ export function applyAethorArmMotorFrame(
     armId: frame.armId,
     frameSeq: frame.frameSeq,
     receivedAtUtc: frame.receivedAtUtc,
+    committedAtMs,
     actualPositionsDeg,
     joints,
     duplicateMotorIds,
     unexpectedMotorIds,
     degradedJointIds,
     ignoredFrameCount: previous.ignoredFrameCount
+  };
+}
+
+/**
+ * Invalidates the displayed feedback after ingress stops. The last measured
+ * pose is retained for diagnosis, but it is no longer presented as fresh.
+ */
+export function expireAethorArmMotorSnapshot(
+  snapshot: AethorArmMotorSnapshot,
+  nowMs: number,
+  staleAfterMs: number
+): AethorArmMotorSnapshot {
+  if (snapshot.committedAtMs === null
+    || !Number.isFinite(nowMs)) {
+    return snapshot;
+  }
+  let changed = false;
+  const joints = snapshot.joints.map((joint) => {
+    if (joint.availability !== 'present') return joint;
+    const elapsedMs = joint.lastObservedAtMs === null
+      ? nowMs - snapshot.committedAtMs!
+      : nowMs - joint.lastObservedAtMs;
+    const feedbackAgeMs = (joint.feedbackAgeMs ?? 0) + Math.max(0, elapsedMs);
+    if (feedbackAgeMs < staleAfterMs) return joint;
+    changed = true;
+    return { ...joint, availability: 'stale' as const, feedbackAgeMs };
+  });
+  if (!changed) return snapshot;
+  const firstUncertainIndex = joints.findIndex((joint) => joint.availability !== 'present');
+  return {
+    ...snapshot,
+    joints,
+    degradedJointIds: firstUncertainIndex < 0
+      ? []
+      : joints.slice(firstUncertainIndex).map((joint) => joint.jointId)
   };
 }
 

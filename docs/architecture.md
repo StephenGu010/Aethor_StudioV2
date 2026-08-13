@@ -58,7 +58,9 @@ studio-web ──> shared/contracts
 robot-gateway ───────┘ ──> SerialPort ──> Dummy firmware
 
 Aethor_robo console ──> profile + local 14-joint draft
-                    ├──> AethorArmMotorFrameV1 domain projection (test seam)
+                    ├──> AethorArmMotorFrameV1 ingest
+                    │      └── latest-per-arm coordinator (20 ms / ≤50 commits/s)
+                    │             └── atomic dual-arm projection + per-joint freshness
                     └─X─> runtime gateway / SerialPort
 
 studio-desktop ──> DesktopBridgeV1 ──> studio-web
@@ -70,7 +72,8 @@ studio-desktop ──> DesktopBridgeV1 ──> studio-web
 - 桌面壳只负责窗口生命周期、进程启动、会话令牌、应用数据路径和能力声明，不拥有机器人业务状态；网关仍是串口与命令唯一所有者。
 - Profile 是设备描述和资源来源，不能承载运行时连接状态。
 - `shared/contracts` 不拥有串口；其中的 transport 只是端口，fake 只用于无硬件测试。Phase 4 的 C# adapter 才拥有真实 SerialPort 生命周期。
-- Aethor 的 `AethorArmMotorFrameV1` 是未来 adapter 到 UI 的信任边界，不是第二个串口入口。Schema 保留无序子集、重复和范围外 ID；前端领域层按 ID 1–7 更新对应关节，并隔离冲突值。同一 `bootId` 下倒序帧不覆盖新状态，`bootId` 改变后重新建立序列基准。
+- Aethor 的 `AethorArmMotorFrameV1` 是未来 adapter 到 UI 的信任边界，不是第二个串口入口。Schema 保留无序子集、重复和范围外 ID；`ingestAethorTwinMotorFrame` 先按左右臂各保留一条最新待处理帧，在 20 ms 提交窗口中把双臂原子写入一次 Zustand，模型提交上限为 50 Hz。入口拒绝同一会话内的 controller/arm 身份切换、旧序号、旧 boot 回流和不兼容帧；Profile 切换/会话重置后才接受新身份。
+- 领域层按 ID 1–7 更新对应关节并隔离冲突值。每个关节保留自己的最后观察时刻与设备 `feedbackAgeMs`；总年龄达到 250 ms 后保留最后角度但转为 `stale`，实体链灰显，来源标签撤销为 `UNAVAILABLE`。这是前端显示新鲜度，不参与未来固件/网关控制授权。
 
 ## 桌面宿主与进程边界
 
@@ -101,7 +104,7 @@ studio-desktop ──> DesktopBridgeV1 ──> studio-web
 | 有界遥测历史 | runtime store → `LiveSignalHistory` | 当前 measured session；18 路、每路最多 4800 点/120 秒，session identity/offline 改变即清空，同 session 重连保留可信历史 |
 | Dummy 目标关节角 | `useRobotSessionStore` draft | 当前前端会话；新硬件 session 首个可信实测帧可一次性建立目标基准，用户编辑优先；只供预览/受门控整组命令，不由后续反馈覆盖 |
 | Aethor_robo 双臂目标角 | `useAethorRoboConsoleStore` draft | 当前前端会话；14 轴本地预览，与 Dummy 状态和网关完全隔离 |
-| Aethor_robo commissioning 帧/实体姿态 | `useAethorRoboConsoleStore` ephemeral projection | 当前只有测试注入入口；按左右臂和 motor ID 更新，不覆盖目标草稿；断开/重启语义将在 A1-H adapter 中接线 |
+| Aethor_robo commissioning 帧/实体姿态 | `AethorTwinFrameCoordinator` → `useAethorRoboConsoleStore` | adapter 只提交版本化帧；最新帧合并、双臂原子提交和显示新鲜度已经实现，不覆盖目标草稿；生产调用方仍等待 A1-H adapter |
 | 动作文档草稿、选择和预览标记 | `useActionProgramStore` ephemeral state | 当前编辑会话；不持久化 |
 | 页面、筛选、选中信号 | URL | 可分享导航状态 |
 | 工具窗布局、显示偏好 | Versioned local storage | 本机用户 |

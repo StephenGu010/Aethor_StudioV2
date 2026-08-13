@@ -4,6 +4,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { aethorRoboProfile } from '../../profile/aethorRoboProfile';
 import { dummyProfile } from '../../profile/dummyProfile';
 import { useActiveRobotProfileStore } from '../../stores/useActiveRobotProfileStore';
+import {
+  flushAethorTwinTelemetryForTest,
+  ingestAethorTwinMotorFrame,
+  resetAethorTwinTelemetryRuntime
+} from '../../integrations/aethorTwinTelemetryRuntime';
 import { useAethorRoboConsoleStore } from '../../stores/useAethorRoboConsoleStore';
 import { useGatewayRuntimeStore } from '../../stores/useGatewayRuntimeStore';
 import { useRobotSessionStore } from '../../stores/useRobotSessionStore';
@@ -30,6 +35,7 @@ vi.mock('../../components/visualization/RobotScene', () => ({
 describe('Aethor_robo dual-arm console', () => {
   beforeEach(() => {
     useActiveRobotProfileStore.setState({ activeProfileId: aethorRoboProfile.profileId });
+    resetAethorTwinTelemetryRuntime();
     useAethorRoboConsoleStore.getState().resetPreview();
     sceneCapture.props = null;
     sceneCapture.renderCount = 0;
@@ -62,7 +68,8 @@ describe('Aethor_robo dual-arm console', () => {
   });
 
   it('maps unordered motor IDs to joints and surfaces missing, duplicate, and out-of-range IDs', async () => {
-    act(() => useAethorRoboConsoleStore.getState().applyMotorFrame({
+    act(() => {
+      ingestAethorTwinMotorFrame({
       contractVersion: '1.0',
       profileId: 'aethor-robo-dual-7dof',
       jointGroupId: 'left-arm',
@@ -79,7 +86,9 @@ describe('Aethor_robo dual-arm console', () => {
         { motorId: 8, positionDeg: 80, feedbackAgeMs: 2, valid: true },
         { motorId: 2, positionDeg: 21, feedbackAgeMs: 2, valid: true }
       ]
-    }));
+      });
+      flushAethorTwinTelemetryForTest();
+    });
 
     render(<Tooltip.Provider><ConsolePage /></Tooltip.Provider>);
     await screen.findByTestId('robot-scene');
@@ -87,11 +96,48 @@ describe('Aethor_robo dual-arm console', () => {
     expect(sceneCapture.props?.actualPositionsDeg[2]).toBe(31.5);
     expect(sceneCapture.props?.actualPositionsDeg[6]).toBe(72.5);
     expect(sceneCapture.props?.degradedActualJointIds).toEqual(['j1', 'j2', 'j3', 'j4', 'j5', 'j6', 'j7']);
-    expect(screen.getByText('2/7 motors observed')).toBeInTheDocument();
+    expect(screen.getByText('2/7 motors fresh')).toBeInTheDocument();
     expect(screen.getByText('ID 2 conflict · ID 8 out of range')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '选择 L-J2 关节' }).closest('.jointRow')).toHaveAttribute('data-availability', 'conflict');
     expect(screen.getByRole('button', { name: '选择 L-J3 关节' }).closest('.jointRow')).toHaveAttribute('data-availability', 'present');
     expect(screen.getByRole('button', { name: '选择 L-J4 关节' }).closest('.jointRow')).toHaveAttribute('data-availability', 'missing');
+  });
+
+  it('keeps the last measured pose but revokes the source label after telemetry stalls', async () => {
+    useAethorRoboConsoleStore.getState().applyMotorFrames([{
+      contractVersion: '1.0',
+      profileId: 'aethor-robo-dual-7dof',
+      jointGroupId: 'left-arm',
+      controllerId: 'commissioning-controller',
+      armId: 'left',
+      bootId: 'boot-a',
+      frameSeq: 7,
+      receivedAtUtc: '2026-08-13T08:00:00.000Z',
+      snapshotComplete: false,
+      motors: [{ motorId: 1, positionDeg: 18, feedbackAgeMs: 1, valid: true }]
+    }], {
+      receivedFrameCount: 1,
+      appliedFrameCount: 1,
+      coalescedFrameCount: 0,
+      rejectedFrameCount: 0,
+      renderCommitCount: 1,
+      ingressRateHz: 1,
+      modelUpdateRateHz: 1,
+      lastIngressAtMs: 1_000,
+      lastCommitAtMs: 1_000
+    }, 1_000);
+
+    const { container } = render(<Tooltip.Provider><ConsolePage /></Tooltip.Provider>);
+    await screen.findByTestId('robot-scene');
+    expect(container.querySelector('.sceneLegend .sourceTag')).toHaveTextContent('MEASURED');
+    expect(sceneCapture.props?.actualPositionsDeg[0]).toBe(18);
+
+    act(() => useAethorRoboConsoleStore.getState().expireMotorTelemetry(1_249, 250));
+
+    expect(container.querySelector('.sceneLegend .sourceTag')).toHaveTextContent('UNAVAILABLE');
+    expect(screen.getByText('MEASURED STALE')).toBeInTheDocument();
+    expect(sceneCapture.props?.actualPositionsDeg[0]).toBe(18);
+    expect(sceneCapture.props?.degradedActualJointIds).toEqual(['j1', 'j2', 'j3', 'j4', 'j5', 'j6', 'j7']);
   });
 
   it('switches the visible control group when a joint is selected in the 3D model', async () => {

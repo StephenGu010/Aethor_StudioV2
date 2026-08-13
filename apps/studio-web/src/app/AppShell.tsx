@@ -4,6 +4,7 @@ import { Sidebar } from '../components/navigation/Sidebar';
 import { GlobalSafetyAlert } from '../components/status/GlobalSafetyAlert';
 import { StatusHeader } from '../components/status/StatusHeader';
 import { GatewaySessionCoordinator } from '../integrations/GatewaySessionCoordinator';
+import { AethorTwinTelemetryCoordinator } from '../integrations/AethorTwinTelemetryCoordinator';
 import { dummyProfile } from '../profile/dummyProfile';
 import { useActiveRobotProfileStore } from '../stores/useActiveRobotProfileStore';
 import { useGatewayRuntimeStore } from '../stores/useGatewayRuntimeStore';
@@ -24,6 +25,7 @@ export function AppShell() {
     <div className="desktopSurface">
       <DesktopChrome />
       {isDummyActive && <GatewaySessionCoordinator />}
+      {!isDummyActive && <AethorTwinTelemetryCoordinator />}
       <div className="appFrame">
         <Sidebar />
         <div className={`appWorkspace${hasRuntimeNotice ? ' hasRuntimeNotice' : ''}`}>

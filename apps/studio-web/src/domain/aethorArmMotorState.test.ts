@@ -3,6 +3,7 @@ import { aethorRoboProfile } from '../profile/aethorRoboProfile';
 import {
   applyAethorArmMotorFrame,
   createAethorArmMotorSnapshot,
+  expireAethorArmMotorSnapshot,
   type AethorArmMotorFrameV1
 } from './aethorArmMotorState';
 
@@ -79,6 +80,43 @@ describe('Aethor arm motor-id mapping', () => {
 
     expect(incremental.joints[0]?.availability).toBe('present');
     expect(incremental.actualPositionsDeg.slice(0, 2)).toEqual([10, 20]);
+  });
+
+  it('retains the last position while expiring present feedback after a stall', () => {
+    const applied = applyAethorArmMotorFrame(
+      aethorRoboProfile,
+      createAethorArmMotorSnapshot(aethorRoboProfile, 'left-arm', initial),
+      frame([{ motorId: 1, positionDeg: 27, feedbackAgeMs: 1, valid: true }]),
+      1_000
+    );
+
+    expect(expireAethorArmMotorSnapshot(applied, 1_248, 250)).toBe(applied);
+    const expired = expireAethorArmMotorSnapshot(applied, 1_249, 250);
+    expect(expired.actualPositionsDeg[0]).toBe(27);
+    expect(expired.joints[0]?.availability).toBe('stale');
+    expect(expired.degradedJointIds).toEqual(expired.joints.map((joint) => joint.jointId));
+  });
+
+  it('expires an old joint even while incremental frames keep another joint fresh', () => {
+    const first = applyAethorArmMotorFrame(
+      aethorRoboProfile,
+      createAethorArmMotorSnapshot(aethorRoboProfile, 'left-arm', initial),
+      frame([{ motorId: 1, positionDeg: 10, feedbackAgeMs: 1, valid: true }], { snapshotComplete: false }),
+      1_000
+    );
+    const second = applyAethorArmMotorFrame(
+      aethorRoboProfile,
+      first,
+      frame([{ motorId: 2, positionDeg: 20, feedbackAgeMs: 1, valid: true }], {
+        frameSeq: 2,
+        snapshotComplete: false
+      }),
+      1_240
+    );
+
+    const expired = expireAethorArmMotorSnapshot(second, 1_251, 250);
+    expect(expired.joints[0]?.availability).toBe('stale');
+    expect(expired.joints[1]?.availability).toBe('present');
   });
 });
 

@@ -1,5 +1,13 @@
 # 变更记录
 
+## 2026-08-13 - A1-T0 Aethor_robo 数字孪生实时内核（DONE）
+
+- 新增协议无关的 `AethorTwinFrameCoordinator` 和唯一 `ingestAethorTwinMotorFrame` 入口。每条机械臂最多保留一条最新待处理帧，20 ms 窗口内左右臂原子提交一次，把固件候选 50–100 Hz 遥测与 React/Three.js 模型更新限制在最多 50 Hz。
+- 在 React 状态前拒绝同 boot 倒序/重复帧、退休 boot 回流、同一会话 controller/arm 身份串线和不兼容帧；Profile 切换会同步清空协调器与模型会话，下一会话重新建立身份和序号基准。
+- 每个关节独立记录最后观察时刻和设备反馈年龄。总年龄达到 250 ms 后保留最后实测角度、撤销 `MEASURED` 来源并把不可信串联链灰显；持续收到其他轴的增量帧不会错误延长旧轴新鲜度。
+- 控制台诊断新增遥测入口 Hz、模型提交 Hz、最新序号、合并与拒绝计数；实体姿态、幽灵目标继续隔离。当前生产 adapter 仍未实现，默认页面仍为 `UNAVAILABLE / LOCAL PREVIEW`，不会声明已连接。
+- 验证证据：contracts 98 + frontend 240 + gateway 122 + desktop 118 + legal 6，共 584/584；strict TypeScript、2657-module production Web 和三档 Playwright 63/63 通过。浏览器实页复核三档无实际溢出、重叠或控制台告警，并修复 1366×768 底部最后一行被截断的问题；未枚举或打开串口，未发送硬件命令。
+
 ## 2026-08-13 - A1-U2 Dummy 生产双工迁移与连续终端发送（DONE）
 
 - Dummy 生产网关一次性迁移到 `DummySerialSession + SerialDuplexScheduler`：所有 RX 由唯一持续 reader/decoder 处理，所有 TX 由 P0–P3 有界 writer 处理；旧 `serialIoGate` 与直接 transport 读写路径已删除。
