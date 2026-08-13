@@ -7,7 +7,7 @@
 ## 双产品线边界
 
 - Dummy：一台六轴机械臂，继续沿用阶段 0–8；动作编排、示波和生产 C# 网关目前为 Dummy 专属。串口终端外壳已共用，但真实 TX/RX 仍只有 Dummy runtime。
-- Aethor_robo：一台空间机器人，控制对象只有左、右两个七轴机械臂；六个车轮只进入模型展示。固件与统一指令集未完成前，不接入 Dummy 网关，不声明连接、反馈、使能、停止或下发能力。
+- Aethor_robo：一台空间机器人，控制对象只有左、右两个七轴机械臂；当前 Profile 不包含独立动量轮链路。固件与统一指令集未完成前，不接入 Dummy 网关，不声明连接、反馈、使能、停止或下发能力。
 - 共享 UI、Profile Schema、Three.js 场景或桌面壳的阶段，handoff 必须同步 Aethor_robo 影响；协议和实机阶段必须明确写出“不适用”或独立验收状态，不能静默复制 Dummy 假设。
 
 | 阶段 | 状态 | 目标 | 核心交付物 | 退出门槛 |
@@ -26,7 +26,7 @@
 
 | 阶段 | 状态 | 目标 | 当前事实 | 退出门槛 |
 |---|---|---|---|---|
-| A0 模型接入与双臂控制台 | DONE | 规范化整机资源，并以左右两组七轴提供可选/可拖动本地 FK 预览 | 23 links、22 joints、23 STL 已迁移；逐资产 SHA-256 溯源门、全局 Dummy/Aethor_robo Profile 切换、geometry/幽灵材质去重、目标 collision 零绘制、差量关节更新、按需渲染、相机按需重算、14 个臂关节分组、整机/双臂取景和一次同源资产中断恢复已完成；`/console` 无硬件发送路径 | 439 项软件回归、三档 63/63 视觉/交互、空闲帧收敛与资源释放回归通过；模型和 handoff 落盘；阶段提交/远端一致 |
+| A0 模型接入与双臂控制台 | DONE | 规范化整机资源，并以左右两组七轴提供可选/可拖动本地 FK 预览 | A0-R1 已换入部署版模型：17 links、16 joints、17 STL；原 14 关节名、左右分组、协议索引、轴向与 Profile 零位保持稳定，独立动量轮链路排除；逐资产 SHA-256 溯源门、Profile 切换、共享 geometry、按需渲染、整机/双臂取景和资源恢复继续有效；`/console` 无硬件发送路径 | contracts 124 + frontend 243 软件回归、三档 63/63 视觉/交互与资源释放回归通过；模型档案和 handoff 落盘；阶段提交/远端一致 |
 | A1 固件与协议契约 | IN PROGRESS | 定义独立的七轴组命令、反馈、停止、能力和错误语义 | A1-U0 候选契约、A1-U1 双工调度软件门和 A1-U2 Dummy 生产迁移已完成；Aethor 固件和真实 adapter 尚未实现 | 固件提交与指令集可追溯；parser/formatter/vectors/状态机通过；不得复制 Dummy 协议 |
 | A1-U0 上位机候选契约 | DONE | 固化任意子集/顺序的 ID→关节投影、异常诊断和非阻塞串口所有权设计 | `AethorArmMotorFrameV1` Schema/类型、领域 reducer、缺失链灰显、候选协议与测试均已落盘；零串口路径 | contracts 98、frontend 222、strict typecheck/build 通过；默认仍为本地预览且命令禁用 |
 | A1-U1 双工运行时软件门 | DONE | 建立唯一持续 reader、有界优先 writer、背压/关闭探针与双 Profile 终端入口 | `SerialDuplexScheduler` 与 fake transport 测试已落盘；Aethor 终端只做候选校验且 TX 禁用；生产 DI 未接线 | 定向并发/容量/拔线测试、前端 Profile 隔离、两档实页无溢出；零串口路径 |
@@ -39,9 +39,9 @@
 
 ## A0 完成结果
 
-- `aethor-robo-dual-7dof` 的规范化 URDF、23 个 STL、双七轴分组和逐资产 SHA-256 溯源门已落盘；来源包缺少完整 BSD 条款的限制继续保留，不把完整性验证冒充为分发授权。
-- 当前退出门为 contracts 124 + frontend 241 + gateway 129 + desktop 118 + legal inventory 6，共 618/618；strict TypeScript、Web 2658 modules、隔离 gateway Release 与 desktop Release 构建通过，0 warning/0 error；三档生产 E2E 63/63 通过。
-- E2E 覆盖双 Profile 隔离、左右七轴本地编辑、零硬件路径、三档无关键溢出、同源资产一次恢复、23 份 geometry 共享、按需帧收敛及重复挂载资源释放。本轮没有新启动或访问网关，没有枚举或打开串口，也没有发送硬件命令；既有未知 COM4 会话保持原样。
+- `aethor-robo-dual-7dof` 已换入 `Aethor_Layout_deployed/` 的规范化 URDF 与 17 个本体/双臂 STL；双七轴分组、原 14 关节映射和逐资产 SHA-256 溯源门保持有效。六个独立动量轮 link/joint/mesh 已排除；来源目录仍缺完整 BSD 条款，不把完整性验证冒充为分发授权。
+- 当前退出门为 contracts 124 + frontend 243 + gateway 129 + desktop 118 + legal inventory 6，共 620/620；strict TypeScript、Web 2658 modules、隔离 gateway Release 与 desktop Release 构建通过，0 warning/0 error；三档生产 E2E 63/63 通过。
+- E2E 覆盖双 Profile 隔离、左右七轴本地编辑、零硬件路径、三档无关键溢出、同源资产一次恢复、17 份 geometry 共享、按需帧收敛及重复挂载资源释放。本轮没有新启动或访问网关，没有枚举或打开串口，也没有发送硬件命令；既有未知 COM4 会话保持原样。
 - A1-U0 已完成上位机候选契约：任意子集/顺序按 ID 1–7 映射，重复和范围外 ID 保留诊断，完整发现快照中的缺失链从首个不确定关节起灰显。该入口尚未接入运行时网关，不会产生连接、反馈、使能、停止或下发能力。
 - A1-U2 已完成 Dummy 生产迁移：`DummySerialSession + SerialDuplexScheduler` 统一拥有物理读写，旧 `serialIoGate` 已删除。`/terminal` 可连续提交多个 direct 请求，HTTP 入队与物理写入分阶段显示；结构化响应、审计、P0 抢占和资源关闭保持独立证据。Aethor TX 仍固定禁用。
 - A1-T0 已把 adapter 到 React/Three.js 之间的实时内核落盘：左右臂各只保留最新待提交帧，20 ms 窗口内原子更新一次；入口按 controller/arm/boot/sequence 隔离，逐关节在总年龄达到 250 ms 时保留最后角度并转为 stale。该阈值只属于显示层，不是硬件使能判据。

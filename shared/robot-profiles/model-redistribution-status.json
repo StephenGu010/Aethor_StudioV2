@@ -18,16 +18,16 @@
       "profileId": "aethor-robo-dual-7dof",
       "declaredLicense": "BSD (exact terms unverified)",
       "redistributionTermsComplete": false,
-      "unresolvedReason": "The user-supplied archive declares BSD but does not contain complete redistribution terms.",
+      "unresolvedReason": "The user-supplied deployment directory declares BSD but does not contain complete redistribution terms.",
       "evidence": [
         {
           "sourcePath": "BuiltIn/aethor-robo-dual-7dof/NOTICE.md",
-          "sourceSha256": "22d70d83566bc5e67786003a25e147d5881cec97a5583dde7b74fb102bb366c2",
+          "sourceSha256": "6f97414149c8fbbf55262353a516c5a0796eb311e7036b1148d8a9392a963c69",
           "packagedPath": "Legal/aethor-robo-dual-7dof-NOTICE.md"
         },
         {
           "sourcePath": "BuiltIn/aethor-robo-dual-7dof/provenance.json",
-          "sourceSha256": "dbebc7bb563a5e28dfaab0482a8728aac1b1d7e87fd7d0edcb26993a2f1e5a2c",
+          "sourceSha256": "0fd69bca662f57fd7a7ed1b142c10a1eb30bfc066d8e1da576763f98e8b385b6",
           "packagedPath": "Legal/aethor-robo-dual-7dof-provenance.json"
         }
       ]

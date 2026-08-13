@@ -7,7 +7,7 @@
 - 先检查 Git 状态、现有实现和上一阶段 handoff，不覆盖用户已有改动。
 - 固件与命令证据来自 `D:\Aethor_robot\dummy_ref` 提交 `5b9b602d8013799895c03f288e98ad72f38193be`。
 - URDF 源来自 `D:\Aethor_robot\dummy_moveit\dummy_moveit_description`；迁移后稳定 ID 为 `dummy-6dof`，显示名 `Dummy`，adapter ID `dummy-ascii-v1`。
-- Aethor_robo 源模型来自 `Layout11 EX1.zip`；迁移后稳定 ID 为 `aethor-robo-dual-7dof`，显示名 `Aethor_robo`，adapter ID 暂为 `aethor-robo-pending`。它只有本地双七轴预览，硬件 capability 全部为 false，六个车轮为模型专用。
+- Aethor_robo 当前源模型来自 `Aethor_Layout_deployed/`；迁移后稳定 ID 为 `aethor-robo-dual-7dof`，显示名 `Aethor_robo`，adapter ID 暂为 `aethor-robo-pending`。它只有本地双七轴预览，硬件 capability 全部为 false，独立动量轮 links/joints/meshes 已排除。
 - 当前硬件端口 COM4 不能因此被自动打开。任何实机动作都需用户现场授权和阶段安全门。
 
 ## 永久约束

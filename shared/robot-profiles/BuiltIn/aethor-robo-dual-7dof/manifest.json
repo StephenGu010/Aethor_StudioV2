@@ -2,7 +2,7 @@
   "schemaVersion": "1.0",
   "profileId": "aethor-robo-dual-7dof",
   "displayName": "Aethor_robo",
-  "description": "Space robot model with two independently previewable seven-axis arms; hardware and protocol are not yet available.",
+  "description": "Space robot model with two independently previewable seven-axis arms; independent momentum-wheel links are omitted and hardware control remains unavailable.",
   "protocolAdapterId": "aethor-robo-pending",
   "model": {
     "dof": 14,
@@ -43,7 +43,7 @@
     "rawTerminal": false
   },
   "source": {
-    "urdfSha256": "E77E0B6E25C451B6171F1B6F03F8CE50BC185AC2CB5F7118F4E5C43DA866EC37",
+    "urdfSha256": "90D002AEDBB448E606B77A3D297D80DFF20AE1387723140F849F47B620575E3F",
     "license": "BSD (declared; exact terms unverified)",
     "protocolReference": "pending-hardware-contract"
   }

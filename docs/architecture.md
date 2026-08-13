@@ -16,7 +16,7 @@ shared/
     verify-provenance.mjs    内置模型来源/规范化资产完整性门
     BuiltIn/dummy-6dof/     URDF、STL、manifest、来源与许可
     BuiltIn/aethor-robo-dual-7dof/
-                            双臂整机 URDF、23 个 STL、manifest、来源与许可说明
+                            本体/双臂 URDF、17 个 STL、manifest、来源与许可说明
 docs/
 ```
 
@@ -36,7 +36,7 @@ docs/
 
 - `robotModel.ts` 只按 Profile 声明的稳定关节名绑定 URDF joint；mesh 名称不参与关节推断。Dummy 使用 `joint_1…joint_6`，Aethor_robo 使用左右两组各七个关节。关节原点和局部轴来自 URDF 对象变换，本地预览范围来自已校验 manifest。
 - `JointManipulator.tsx` 将选中关节的局部轴变换到世界空间，在轴法向平面计算右手规则有符号角；视线接近平面时退化为屏幕切向投影。黄色旋转环拥有高优先级拾取，避免被重叠模型几何抢占事件。
-- Aethor_robo 模型点选、旋转环、滑块、数值框和键盘微调共享独立的 14 轴本地目标草稿；它不读取 `showcaseJointFrame`、Dummy runtime store 或 `RobotGatewayV1`。左右臂 tab 只切换当前七轴控制组，六个车轮保持模型专用。
+- Aethor_robo 模型点选、旋转环、滑块、数值框和键盘微调共享独立的 14 轴本地目标草稿；它不读取 `showcaseJointFrame`、Dummy runtime store 或 `RobotGatewayV1`。左右臂 tab 只切换当前七轴控制组；Profile 不加载独立动量轮链路。
 - 相机取景是 ConsolePage 的临时 UI 状态，只有 `all / left-arm / right-arm` 三种值。`RobotScene` 根据 Profile `jointGroups` 计算整机或目标机械臂的联合实际/幽灵包围盒；切换取景会同步当前七轴控制组，但不修改任何关节值。未知组回退整机，显式重置只重算当前取景。
 - 实体模型与目标模型是独立对象树；同一 STL 的 visual/collision 节点在单次模型生命周期内合并并发加载并共享一份只读 geometry，实体节点共享同一材质，目标树继续共享 geometry、但拥有可独立高亮的幽灵 material。失败条目立即从缓存移除，使有界网络重试启动一次真实新加载；缓存不跨模型生命周期持有资源。卸载时按唯一引用释放 geometry、material 和 texture，OrbitControls、renderer 所有权与活动拖动会话进入可见诊断计数。
 - `RobotScene` 是控制台页面内的二级动态分包，避免 Three.js/URDF 加载器进入页面主 chunk。WebGL 缺失、上下文丢失、URDF/mesh/映射失败均显示明确降级状态；R3F 使用 demand render，画布尺寸或设备 DPR 变化时按实际 CSS 面积重算栅格密度：balanced 上限 1.75/350 万 framebuffer pixels，constrained 上限 1.2/180 万，最低 DPR 1；布局尺寸与相机不变。低性能环境同时关闭抗锯齿和阴影。R3F `Canvas fallback` 会成为原生 `canvas` 的子节点，视觉隐藏时仍可能进入可访问性树，因此不承载错误语义；真实故障只由预检、外层错误边界和 `webglcontextlost` 状态负责，READY 画面不能同时暴露失败告警。
@@ -44,9 +44,9 @@ docs/
 - 初次加载 Profile 时，相机根据实际模型与目标模型的联合世界包围盒、画布宽高比和透视 FOV 计算取景，不写死某一机器人尺寸；窗口尺寸变化或显式“重置相机”会重新适配。场景不使用固定距离雾化，因为它会让大于 Dummy 尺寸的模型在正确取景后仍被背景雾完全遮蔽。联合包围盒只在模型就绪、整机/分组取景变化或显式重置时遍历重算；连续关节预览只应用差量关节姿态，不在每次输入时遍历整机或自动移动相机。
 - 参考网格从完整实体/幽灵模型的世界包围盒独立计算，不跟随左右臂局部取景缩小。网格中心覆盖整机 X/Z 足迹，边长为足迹的 2 倍且至少 6 m，分格数限制在 24–80；Y 平面位于完整模型最低点下方模型高度的 6%，并限制为 8–30 cm，不能穿过模型。
 - 内置 Profile 的 URDF/STL 都是同源只读静态资产。浏览器网络切换导致 status 0 / failed fetch 时，每个资源只允许一次立即重试；404、外部 URL、解析失败和第二次网络失败立即进入模型错误。该策略不适用于 REST、SignalR、串口或硬件命令。
-- Aethor_robo 的 `provenance.json` 固定来源 ZIP、原始/规范化 URDF 和 23 个源 STL→规范名称的 SHA-256 映射。`verify-provenance.mjs` 流式计算当前资产哈希，并要求 provenance、URDF 引用和磁盘 STL 集合完全一致；`test:web` 与 `build:web` 在 Vitest/Vite 前失败关闭。完整 BSD 条款仍缺失，因此哈希完整不代表获得分发授权。
+- Aethor_robo 的 `provenance.json` 固定 `Aethor_Layout_deployed/` 目录快照、原始/规范化 URDF 和 17 个保留源 STL→规范名称的 SHA-256 映射，并明确记录六个动量轮 link/joint/mesh 的排除规则。`verify-provenance.mjs` 流式计算当前资产哈希，并要求 provenance、URDF 引用和磁盘 STL 集合完全一致；`test:web` 与 `build:web` 在 Vitest/Vite 前失败关闭。完整 BSD 条款仍缺失，因此哈希完整不代表获得分发授权。
 - Playwright 使用 `vite preview` 验收当前源码的生产构建；`test:e2e` 先执行 Profile 溯源与 strict TypeScript，再使用固定无网关的 Vite `e2e` mode 构建，防止本机 `.env.local` 的开发网关 URL/令牌污染零硬件请求断言。直接复用旧 `dist` 或开发配置的结果不构成阶段证据。
-- Aethor_robo 的 visual/collision 节点按 URL 共享 23 份 geometry；实体模型共享材质，目标幽灵不绘制 collision，并按 14 个受控关节与一个基础组共享高亮材质。目标姿态只更新数值发生变化的关节。workbench store 由场景设置、窗口开关和具体窗口分别选择订阅，窗口坐标变化不能重渲染 3D 场景。
+- Aethor_robo 的 visual/collision 节点按 URL 共享 17 份 geometry；实体模型共享材质，目标幽灵不绘制 collision，并按 14 个受控关节与一个基础组共享高亮材质。包含操纵器时诊断基线为 23 geometry / 22 material。目标姿态只更新数值发生变化的关节。workbench store 由场景设置、窗口开关和具体窗口分别选择订阅，窗口坐标变化不能重渲染 3D 场景。
 
 ## 依赖方向
 

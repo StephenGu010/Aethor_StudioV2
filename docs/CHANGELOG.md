@@ -1,5 +1,13 @@
 # 变更记录
 
+## 2026-08-13 - A0-R1 Aethor_robo 部署模型替换（DONE）
+
+- 将 Aethor_robo 内置模型从旧 `Layout11 EX1.zip` 版本替换为用户提供的 `Aethor_Layout_deployed/` 目录快照。规范化结果为 17 links、16 joints、17 个 STL；来源快照、原始/规范化 URDF 和每个保留 STL 均记录 SHA-256。
+- 保持现有 14 关节映射不变：左右臂稳定 joint name、`j1…j14`、protocolIndex、axis、分组与 TCP 不变；两个 J1 继续使用 Profile 既有零位和 `0…2π` 预览约定。新增 URDF 回归覆盖结构、顺序、轴、限位与零位。
+- 从 URDF、模型树、诊断、设备页和打包资源中移除六个独立动量轮 link/joint/mesh。底座 STL 的 CAD 导出仍烘焙有 wheel-shell 外形，若需从视觉上彻底去除必须重新导出底座。
+- 溯源 Schema 升级为兼容目录快照的 v1.1，`pnpm profile:verify` 证明当前 1 个 URDF 与 17 个 STL 覆盖一致。视觉/资源基线更新为 17 份共享 mesh geometry、含操纵器 23 geometry / 22 material。
+- 验证结果为 contracts 124 + frontend 243 + gateway 129 + desktop 118 + legal inventory 6，共 620/620；strict TypeScript、2658-module production Web、Gateway/Desktop Release 0 warning/0 error 和三档 Playwright 63/63 全部通过。三档截图已目视检查后更新，无关键裁切、重叠或模型/参考平面穿插。隔离验证明确 `serialPortOpened=false / hardwareCommandSent=false`。
+
 ## 2026-08-13 - A1-H0 Aethor_robo 主机协议 codec 软件门（DONE）
 
 - 将受固件阻塞的 A1-H 拆为 H0/H1：H0 完成不接串口的主机无状态 codec，H1 保留固件证据、request/session adapter 和只读实机接入。

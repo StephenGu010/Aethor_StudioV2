@@ -36,8 +36,7 @@ test.describe('Aethor Studio V2 workspaces', () => {
       'meshes/left_arm_base_link.stl',
       'meshes/right_arm_base_link.stl',
       ...Array.from({ length: 7 }, (_, index) => `meshes/left_arm_link_${index + 1}.stl`),
-      ...Array.from({ length: 7 }, (_, index) => `meshes/right_arm_link_${index + 1}.stl`),
-      ...Array.from({ length: 6 }, (_, index) => `meshes/wheel_link_${index + 1}.stl`)
+      ...Array.from({ length: 7 }, (_, index) => `meshes/right_arm_link_${index + 1}.stl`)
     ];
     for (const assetPath of ['model/aethor_robo.urdf', ...meshPaths]) {
       const response = await request.get(`${assetRoot}/${assetPath}`);
@@ -63,14 +62,14 @@ test.describe('Aethor Studio V2 workspaces', () => {
 
     await page.goto('/console');
     await expect(page.getByText('Aethor_robo · URDF READY')).toBeVisible({ timeout: WORKSPACE_READY_TIMEOUT_MS });
-    expect(meshRequests).toHaveLength(23);
-    expect(new Set(meshRequests).size).toBe(23);
+    expect(meshRequests).toHaveLength(17);
+    expect(new Set(meshRequests).size).toBe(17);
 
     const diagnostics = page.getByRole('dialog', { name: '模型诊断' });
     await page.getByRole('button', { name: '诊断' }).click();
     await expect(diagnostics).toBeVisible();
     await expect(diagnostics.locator('dt', { hasText: 'GEOMETRY / MATERIAL' }).locator('..').locator('dd'))
-      .toHaveText('29 / 22');
+      .toHaveText('23 / 22');
   });
 
   test('switches the complete workspace context between Aethor_robo and Dummy', async ({ page }) => {
@@ -345,7 +344,7 @@ test.describe('Aethor Studio V2 workspaces', () => {
     await expect(diagnostics).toBeVisible();
     await expect(diagnostics.locator('dt', { hasText: 'RENDERER / CONTROLS' }).locator('..').locator('dd')).toHaveText('1 / 1');
     await expect(diagnostics.locator('dt', { hasText: 'MODEL ROOTS' }).locator('..').locator('dd')).toHaveText('2');
-    await expect(diagnostics.locator('dt', { hasText: 'GEOMETRY / MATERIAL' }).locator('..').locator('dd')).toHaveText('29 / 22');
+    await expect(diagnostics.locator('dt', { hasText: 'GEOMETRY / MATERIAL' }).locator('..').locator('dd')).toHaveText('23 / 22');
     await expect(diagnostics.locator('dt', { hasText: 'DRAG SESSION' }).locator('..').locator('dd')).toHaveText('0');
   });
 

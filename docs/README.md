@@ -33,6 +33,7 @@
 27. [Aethor_robo A1-U2 交接](handoffs/aethor-robo-a1-u2.md)：Dummy 生产双工迁移、连续终端发送和仍未实现的 Aethor adapter。
 28. [Aethor_robo A1-T0 交接](handoffs/aethor-robo-a1-t0.md)：双臂高频遥测合并、原子模型提交、逐关节显示新鲜度和 adapter 接缝。
 29. [Aethor_robo A1-H0 交接](handoffs/aethor-robo-a1-h0.md)：主机侧 TypeScript/C# codec、跨语言 CRC/帧向量和仍禁用的终端发送边界。
+30. [Aethor_robo A0-R1 部署模型替换交接](handoffs/aethor-robo-a0-r1.md)：新部署 URDF/STL、14 关节兼容映射、动量轮排除和三档视觉/资源验收。
 
 ## 状态约定
 

@@ -41,7 +41,7 @@ const RobotScene = lazy(() => import('../../components/visualization/RobotScene'
   .then((module) => ({ default: module.RobotScene })));
 
 const consoleEvents = [
-  { id: 'model', severity: 'info', title: 'Dual-arm model normalized', detail: '14 arm joints / 6 model-only wheel joints' },
+  { id: 'model', severity: 'info', title: 'Deployed dual-arm model normalized', detail: '14 arm joints / no auxiliary wheel chain' },
   { id: 'left', severity: 'info', title: 'Left arm mapping ready', detail: 'L-J1…L-J7 · local preview only' },
   { id: 'right', severity: 'info', title: 'Right arm mapping ready', detail: 'R-J1…R-J7 · local preview only' },
   { id: 'protocol', severity: 'warning', title: 'Commissioning contract staged', detail: 'Gateway and firmware adapter not connected' }
@@ -463,7 +463,6 @@ function ModelTree({ selectedJointId, onSelectedJointChange }: {
             ))}
           </TreeNode>
         ))}
-        <TreeNode icon={<Box size={14} />} label="wheel_link_1…6" meta="MODEL ONLY" />
       </TreeNode>
     </div>
   );
@@ -540,7 +539,6 @@ function ModelDiagnostics({ modelState, capability }: {
       <div><dt>URDF</dt><dd>{modelState.toUpperCase()}</dd></div>
       <div><dt>QUALITY</dt><dd>{capability.quality.toUpperCase()}</dd></div>
       <div><dt>CONTROL JOINTS</dt><dd>14 · 2 × 7-DOF</dd></div>
-      <div><dt>WHEEL JOINTS</dt><dd>6 · MODEL ONLY</dd></div>
       <div><dt>UP AXIS</dt><dd>Z</dd></div>
       <div><dt>RENDERER / CONTROLS</dt><dd>{resources.renderers} / {resources.controls}</dd></div>
       <div><dt>MODEL ROOTS</dt><dd>{resources.modelRoots}</dd></div>

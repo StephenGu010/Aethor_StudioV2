@@ -397,7 +397,7 @@ function AethorRoboDeviceModelPage({ bridge }: { bridge: DesktopBridgeV1 }) {
           <div className="sectionLeadStatus"><span className="statusDot ok" /><strong>MODEL VALID</strong><SourceTag source="showcase" /></div>
         </div>
         <div className="overviewGrid">
-          <InfoCard icon={<Waypoints />} label="MODEL" value="aethor_robo.urdf" detail="23 LINKS · 23 STL" />
+          <InfoCard icon={<Waypoints />} label="MODEL" value="aethor_robo.urdf" detail="17 LINKS · 17 STL" />
           <InfoCard icon={<Cpu />} label="PROTOCOL" value="PENDING" detail={aethorRoboProfile.protocolAdapterId} warning />
           <InfoCard icon={<HardDrive />} label="TRANSPORT" value="NOT DEFINED" detail="NO SERIAL OWNER" warning />
           <InfoCard icon={<ShieldCheck />} label="LICENSE" value="DECLARED BSD" detail="EXACT TERMS PENDING" warning />
@@ -417,7 +417,7 @@ function AethorRoboDeviceModelPage({ bridge }: { bridge: DesktopBridgeV1 }) {
           <StatusDatum label="RIGHT ARM" value="7-DOF MODEL" tone="neutral" />
           <StatusDatum label="FEEDBACK" value="UNAVAILABLE" tone="warning" />
           <StatusDatum label="COMMANDS" value="LOCKED" tone="warning" />
-          <StatusDatum label="WHEELS" value="MODEL ONLY" tone="neutral" />
+          <StatusDatum label="AUXILIARY" value="OMITTED" tone="neutral" />
           <StatusDatum label="ADAPTER" value="AETHOR-ROBO-PENDING" tone="neutral" wide />
         </div>
         <div className="operationGrid phaseFiveOperations">
@@ -437,7 +437,7 @@ function AethorRoboDeviceModelPage({ bridge }: { bridge: DesktopBridgeV1 }) {
             return <tr key={joint.jointId}><td>{joint.protocolIndex}</td><td>{group?.displayName ?? '—'}</td><th>{joint.displayName}</th><td><code>{joint.urdfJointName}</code></td><td>{joint.lowerDeg.toFixed(0)}°</td><td>{joint.upperDeg.toFixed(0)}°</td><td><span className="unknownValue">UNVERIFIED</span></td></tr>;
           })}</tbody>
         </table>
-        <div className="mappingFootnote"><CircleAlert size={14} /> 0–360° 仅保留来源 URDF 的本地 FK 预览范围，不是实机限位或安全包络；六个车轮不进入控制组。</div>
+        <div className="mappingFootnote"><CircleAlert size={14} /> 0–360° 仅用于当前 Profile 的本地 FK 预览，不是实机限位或安全包络；独立动量轮链路未包含在此模型中。</div>
       </section>
 
       <section className="sourceRecord panelSurface">

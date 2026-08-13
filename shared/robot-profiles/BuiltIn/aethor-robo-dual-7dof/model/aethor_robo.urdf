@@ -5,9 +5,9 @@
 <robot name="aethor_robo">
   <link name="satellite_base_link">
     <inertial>
-      <origin xyz="-0.0363903502636906 6.30770778620071E-07 -3.94503751323931E-05" rpy="0 0 0" />
-      <mass value="94.6839838101448" />
-      <inertia ixx="2.28171955983375" ixy="7.30524405107675E-08" ixz="4.4578594081382E-05" iyy="2.18705442896333" iyz="-5.65095166992247E-06" izz="2.18833119852709" />
+      <origin xyz="-0.0363903502634202 6.30770946956923E-07 -3.94503752859192E-05" rpy="0 0 0" />
+      <mass value="94.6839838100833" />
+      <inertia ixx="2.28171955983373" ixy="7.30524315023453E-08" ixz="4.45785940780951E-05" iyy="2.18705442896333" iyz="-5.65095166362686E-06" izz="2.18833119852708" />
     </inertial>
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
@@ -27,9 +27,9 @@
   </link>
   <link name="left_arm_base_link">
     <inertial>
-      <origin xyz="-4.25612692959709E-05 4.64416367684239E-05 0.00356211457484423" rpy="0 0 0" />
-      <mass value="0.279378451395946" />
-      <inertia ixx="5.65368406016928E-05" ixy="1.27169997378562E-07" ixz="3.10490561376963E-08" iyy="5.72603600357517E-05" iyz="-1.86755323396962E-07" izz="9.50846670007406E-05" />
+      <origin xyz="-4.25612693030417E-05 4.64416367806086E-05 0.0035621145748112" rpy="0 0 0" />
+      <mass value="0.279378451396139" />
+      <inertia ixx="5.65368406017319E-05" ixy="1.27169997395142E-07" ixz="3.10490561386516E-08" iyy="5.72603600357591E-05" iyz="-1.86755323399307E-07" izz="9.50846670007864E-05" />
     </inertial>
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
@@ -48,16 +48,16 @@
     </collision>
   </link>
   <joint name="left_arm_mount_joint" type="fixed">
-    <origin xyz="0.431 0.199 -0.071218" rpy="1.5708 0 3.1416" />
+    <origin xyz="0.431000000000001 0.199 -0.0712182540694777" rpy="1.5707963267949 0 3.14159265358979" />
     <parent link="satellite_base_link" />
     <child link="left_arm_base_link" />
     <axis xyz="0 0 0" />
   </joint>
   <link name="left_arm_link_1">
     <inertial>
-      <origin xyz="3.23679885290001E-05 0.0209451904875195 0.0640342061653085" rpy="0 0 0" />
-      <mass value="0.365875053527118" />
-      <inertia ixx="0.000111577255080189" ixy="-3.11210465439492E-08" ixz="-1.27374729557119E-07" iyy="0.00014716058689501" iyz="-1.34577515748649E-05" izz="0.000122173638334475" />
+      <origin xyz="3.23679885343986E-05 0.0209451904874975 0.064034206165322" rpy="0 0 0" />
+      <mass value="0.365875053527311" />
+      <inertia ixx="0.000111577255080228" ixy="-3.11210465449079E-08" ixz="-1.27374729573699E-07" iyy="0.000147160586895056" iyz="-1.34577515748672E-05" izz="0.000122173638334482" />
     </inertial>
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
@@ -84,9 +84,9 @@
   </joint>
   <link name="left_arm_link_2">
     <inertial>
-      <origin xyz="-6.84595938210686E-05 0.207957780955287 0.0264940120777227" rpy="0 0 0" />
-      <mass value="0.456775467385593" />
-      <inertia ixx="0.000794333450338326" ixy="3.77312697735742E-06" ixz="5.66140034116359E-07" iyy="0.000203000881635085" iyz="-4.23294067254775E-06" izz="0.000812851597655711" />
+      <origin xyz="-6.84595938166277E-05 0.207957780955304 0.0264940120777308" rpy="0 0 0" />
+      <mass value="0.456775467385786" />
+      <inertia ixx="0.000794333450338365" ixy="3.77312697735646E-06" ixz="5.66140034099778E-07" iyy="0.00020300088163513" iyz="-4.23294067255009E-06" izz="0.000812851597655718" />
     </inertial>
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
@@ -105,7 +105,7 @@
     </collision>
   </link>
   <joint name="left_arm_joint_2" type="revolute">
-    <origin xyz="0 0.0384 0.0722" rpy="1.5708 -1.5708 0" />
+    <origin xyz="0 0.0384 0.0722" rpy="1.5707963267949 -1.5707963267949 0" />
     <parent link="left_arm_link_1" />
     <child link="left_arm_link_2" />
     <axis xyz="0 0 1" />
@@ -113,9 +113,9 @@
   </joint>
   <link name="left_arm_link_3">
     <inertial>
-      <origin xyz="2.32069234903931E-05 0.015016161067293 0.344070603839283" rpy="0 0 0" />
-      <mass value="0.510338228721455" />
-      <inertia ixx="0.00224945021999418" ixy="-3.11325061308944E-08" ixz="-1.2729182033173E-07" iyy="0.0022850335628716" iyz="-1.34578172911312E-05" izz="0.000224442051667094" />
+      <origin xyz="2.32069234943344E-05 0.0150161610672795 0.344070603839322" rpy="0 0 0" />
+      <mass value="0.510338228721648" />
+      <inertia ixx="0.00224945021999422" ixy="-3.11325061318493E-08" ixz="-1.2729182034831E-07" iyy="0.00228503356287165" iyz="-1.34578172911335E-05" izz="0.000224442051667102" />
     </inertial>
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
@@ -134,7 +134,7 @@
     </collision>
   </link>
   <joint name="left_arm_joint_3" type="revolute">
-    <origin xyz="0 0.30833 0.028" rpy="1.5708 0 3.1416" />
+    <origin xyz="0 0.308325 0.0279999999999999" rpy="1.5707963267949 0 3.14159265358979" />
     <parent link="left_arm_link_2" />
     <child link="left_arm_link_3" />
     <axis xyz="0 0 -1" />
@@ -142,9 +142,9 @@
   </joint>
   <link name="left_arm_link_4">
     <inertial>
-      <origin xyz="-6.34589344693515E-05 0.207980202678685 0.0264982958983526" rpy="0 0 0" />
-      <mass value="0.456903524845923" />
-      <inertia ixx="0.000796071743982051" ixy="3.49679544264679E-06" ixz="5.46444359455371E-07" iyy="0.00020309563611839" iyz="-4.46662536064754E-06" izz="0.000814607121345641" />
+      <origin xyz="-6.34589344649661E-05 0.207980202678702 0.0264982958983607" rpy="0 0 0" />
+      <mass value="0.456903524846116" />
+      <inertia ixx="0.000796071743982091" ixy="3.49679544264584E-06" ixz="5.464443594388E-07" iyy="0.000203095636118436" iyz="-4.46662536064988E-06" izz="0.000814607121345649" />
     </inertial>
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
@@ -163,7 +163,7 @@
     </collision>
   </link>
   <joint name="left_arm_joint_4" type="revolute">
-    <origin xyz="0 0.0387 0.4322" rpy="-1.5708 0 0" />
+    <origin xyz="0 0.0387 0.4322" rpy="-1.5707963267949 0 0" />
     <parent link="left_arm_link_3" />
     <child link="left_arm_link_4" />
     <axis xyz="0 0 1" />
@@ -171,9 +171,9 @@
   </joint>
   <link name="left_arm_link_5">
     <inertial>
-      <origin xyz="-1.35002475254442E-07 0.00227233897586442 0.292609968028099" rpy="0 0 0" />
-      <mass value="0.289103221587114" />
-      <inertia ixx="0.00310643337800035" ixy="3.25338805002272E-10" ixz="1.27517126284021E-09" iyy="0.00312420475710872" iyz="-7.91370377992219E-06" izz="0.000188102031172834" />
+      <origin xyz="-1.3500247514342E-07 0.00227233897586442 0.292609968028099" rpy="0 0 0" />
+      <mass value="0.289103221587113" />
+      <inertia ixx="0.00310643337800035" ixy="3.25338805002235E-10" ixz="1.27517126284036E-09" iyy="0.00312420475710872" iyz="-7.91370377992219E-06" izz="0.000188102031172833" />
     </inertial>
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
@@ -192,7 +192,7 @@
     </collision>
   </link>
   <joint name="left_arm_joint_5" type="revolute">
-    <origin xyz="0 0.30833 0.028" rpy="1.5708 0 3.1416" />
+    <origin xyz="0 0.308325 0.0279999999999999" rpy="1.5707963267949 0 3.14159265358979" />
     <parent link="left_arm_link_4" />
     <child link="left_arm_link_5" />
     <axis xyz="0 0 -1" />
@@ -200,9 +200,9 @@
   </joint>
   <link name="left_arm_link_6">
     <inertial>
-      <origin xyz="-6.48345594673194E-05 -0.0940948378199164 -0.0270626845700911" rpy="0 0 0" />
-      <mass value="0.660923355971569" />
-      <inertia ixx="0.000359973773513561" ixy="-1.53267781087277E-06" ixz="-5.27658335044989E-07" iyy="0.000227230332786567" iyz="-1.202721695483E-05" izz="0.000396219659338464" />
+      <origin xyz="-6.4834559467486E-05 -0.0940948378199021 -0.0270626845701092" rpy="0 0 0" />
+      <mass value="0.660923355971955" />
+      <inertia ixx="0.000359973773513639" ixy="-1.53267781085523E-06" ixz="-5.27658335027451E-07" iyy="0.000227230332786621" iyz="-1.20272169548347E-05" izz="0.000396219659338518" />
     </inertial>
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
@@ -221,7 +221,7 @@
     </collision>
   </link>
   <joint name="left_arm_joint_6" type="revolute">
-    <origin xyz="0 0.028 0.482" rpy="1.5708 0 0" />
+    <origin xyz="0 0.0280000000000005 0.482" rpy="1.5707963267949 0 0" />
     <parent link="left_arm_link_5" />
     <child link="left_arm_link_6" />
     <axis xyz="0 0 -1" />
@@ -229,9 +229,9 @@
   </joint>
   <link name="left_arm_link_7">
     <inertial>
-      <origin xyz="-2.31891672530793E-09 1.38778750519153E-05 0.106797807033426" rpy="0 0 0" />
-      <mass value="0.889614130479029" />
-      <inertia ixx="0.000524922813785246" ixy="-6.66515255038147E-09" ixz="-2.21342143513148E-09" iyy="0.000524922944961739" iyz="2.09871302847273E-10" izz="9.02942483420288E-05" />
+      <origin xyz="-2.33593872023263E-09 1.38778602702949E-05 0.106797807039266" rpy="0 0 0" />
+      <mass value="0.88961412966904" />
+      <inertia ixx="0.000524922813717521" ixy="-6.66513483965585E-09" ixz="-2.2134641997868E-09" iyy="0.000524922944871535" iyz="2.09846346615735E-10" izz="9.02942483031493E-05" />
     </inertial>
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
@@ -250,7 +250,7 @@
     </collision>
   </link>
   <joint name="left_arm_joint_7" type="revolute">
-    <origin xyz="0 -0.21653 -0.0387" rpy="-1.5708 0 3.1416" />
+    <origin xyz="0 -0.216525 -0.0387000000000002" rpy="-1.5707963267949 0 3.14159265358979" />
     <parent link="left_arm_link_6" />
     <child link="left_arm_link_7" />
     <axis xyz="0 0 -1" />
@@ -258,9 +258,9 @@
   </joint>
   <link name="right_arm_base_link">
     <inertial>
-      <origin xyz="-4.25612527562291E-05 4.64416360980852E-05 0.00356211454300731" rpy="0 0 0" />
-      <mass value="0.279378451116301" />
-      <inertia ixx="5.65368406225317E-05" ixy="1.27169960192378E-07" ixz="3.10490033189175E-08" iyy="5.72603600478736E-05" iyz="-1.86755326835027E-07" izz="9.50846670446839E-05" />
+      <origin xyz="-4.2561252763279E-05 4.64416361102976E-05 0.00356211454297417" rpy="0 0 0" />
+      <mass value="0.279378451116494" />
+      <inertia ixx="5.65368406225708E-05" ixy="1.27169960208959E-07" ixz="3.10490033198729E-08" iyy="5.7260360047881E-05" iyz="-1.86755326837372E-07" izz="9.50846670447297E-05" />
     </inertial>
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
@@ -279,16 +279,16 @@
     </collision>
   </link>
   <joint name="right_arm_mount_joint" type="fixed">
-    <origin xyz="0.431 -0.199 -0.071218" rpy="1.5708 0 0" />
+    <origin xyz="0.431000000000001 -0.199 -0.0712182540694777" rpy="1.5707963267949 0 0" />
     <parent link="satellite_base_link" />
     <child link="right_arm_base_link" />
     <axis xyz="0 0 0" />
   </joint>
   <link name="right_arm_link_1">
     <inertial>
-      <origin xyz="3.23679918543957E-05 0.0209451904845525 0.0640342061687837" rpy="0 0 0" />
-      <mass value="0.365875053503755" />
-      <inertia ixx="0.00011157725511546" ixy="-3.11210550802707E-08" ixz="-1.27374728442168E-07" iyy="0.00014716058689003" iyz="-1.34577515829937E-05" izz="0.000122173638290941" />
+      <origin xyz="3.2367991859801E-05 0.0209451904845305 0.064034206168797" rpy="0 0 0" />
+      <mass value="0.365875053503948" />
+      <inertia ixx="0.0001115772551155" ixy="-3.11210550812205E-08" ixz="-1.27374728458747E-07" iyy="0.000147160586890076" iyz="-1.3457751582996E-05" izz="0.000122173638290948" />
     </inertial>
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
@@ -315,9 +315,9 @@
   </joint>
   <link name="right_arm_link_2">
     <inertial>
-      <origin xyz="6.84594030856966E-05 -0.207957777299195 0.0268940127488682" rpy="0 0 0" />
-      <mass value="0.456775477069743" />
-      <inertia ixx="0.00079433346699295" ixy="3.77312259073843E-06" ixz="-5.66134348063056E-07" iyy="0.000203000890050206" iyz="4.23294791343983E-06" izz="0.000812851597421766" />
+      <origin xyz="6.84594030814778E-05 -0.207957777299212 0.0268940127488763" rpy="0 0 0" />
+      <mass value="0.456775477069936" />
+      <inertia ixx="0.000794333466992989" ixy="3.77312259073748E-06" ixz="-5.66134348046475E-07" iyy="0.000203000890050251" iyz="4.23294791344218E-06" izz="0.000812851597421773" />
     </inertial>
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
@@ -336,7 +336,7 @@
     </collision>
   </link>
   <joint name="right_arm_joint_2" type="revolute">
-    <origin xyz="0 0.038 0.0722" rpy="1.5708 -1.5708 0" />
+    <origin xyz="0 0.038 0.0722" rpy="1.5707963267949 -1.5707963267949 0" />
     <parent link="right_arm_link_1" />
     <child link="right_arm_link_2" />
     <axis xyz="0 0 -1" />
@@ -344,9 +344,9 @@
   </joint>
   <link name="right_arm_link_3">
     <inertial>
-      <origin xyz="2.32069160954196E-05 0.0150161610833473 0.344070603868188" rpy="0 0 0" />
-      <mass value="0.510338228879153" />
-      <inertia ixx="0.00224945022001714" ixy="-3.1132467299171E-08" ixz="-1.27291793898051E-07" iyy="0.00228503356294276" iyz="-1.34578173053381E-05" izz="0.00022444205175745" />
+      <origin xyz="2.32069160991943E-05 0.0150161610833337 0.344070603868227" rpy="0 0 0" />
+      <mass value="0.510338228879347" />
+      <inertia ixx="0.00224945022001718" ixy="-3.11324673001249E-08" ixz="-1.27291793914631E-07" iyy="0.0022850335629428" iyz="-1.34578173053405E-05" izz="0.000224442051757458" />
     </inertial>
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
@@ -365,7 +365,7 @@
     </collision>
   </link>
   <joint name="right_arm_joint_3" type="revolute">
-    <origin xyz="0 -0.30833 0.0284" rpy="1.5708 0 0" />
+    <origin xyz="0 -0.308325 0.0284000000000002" rpy="1.5707963267949 0 0" />
     <parent link="right_arm_link_2" />
     <child link="right_arm_link_3" />
     <axis xyz="0 0 -1" />
@@ -373,9 +373,9 @@
   </joint>
   <link name="right_arm_link_4">
     <inertial>
-      <origin xyz="-6.3458934469518E-05 0.207980202678688 0.0271982958983525" rpy="0 0 0" />
-      <mass value="0.45690352484592" />
-      <inertia ixx="0.00079607174398206" ixy="3.49679544264826E-06" ixz="5.46444359455292E-07" iyy="0.000203095636118391" iyz="-4.46662536064598E-06" izz="0.000814607121345649" />
+      <origin xyz="-6.34589344649661E-05 0.207980202678705 0.0271982958983605" rpy="0 0 0" />
+      <mass value="0.456903524846113" />
+      <inertia ixx="0.000796071743982099" ixy="3.49679544264731E-06" ixz="5.46444359438711E-07" iyy="0.000203095636118437" iyz="-4.46662536064833E-06" izz="0.000814607121345656" />
     </inertial>
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
@@ -394,7 +394,7 @@
     </collision>
   </link>
   <joint name="right_arm_joint_4" type="revolute">
-    <origin xyz="0 0.038 0.4322" rpy="-1.5708 0 0" />
+    <origin xyz="0 0.0380000000000003 0.4322" rpy="-1.5707963267949 0 0" />
     <parent link="right_arm_link_3" />
     <child link="right_arm_link_4" />
     <axis xyz="0 0 -1" />
@@ -404,7 +404,7 @@
     <inertial>
       <origin xyz="-1.35002475087909E-07 0.00227233897586389 0.292609968028098" rpy="0 0 0" />
       <mass value="0.289103221587117" />
-      <inertia ixx="0.00310643337800038" ixy="3.25338804855486E-10" ixz="1.27517126262314E-09" iyy="0.00312420475710875" iyz="-7.91370377991806E-06" izz="0.000188102031172835" />
+      <inertia ixx="0.00310643337800038" ixy="3.2533880485609E-10" ixz="1.27517126262274E-09" iyy="0.00312420475710875" iyz="-7.91370377991806E-06" izz="0.000188102031172835" />
     </inertial>
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
@@ -423,7 +423,7 @@
     </collision>
   </link>
   <joint name="right_arm_joint_5" type="revolute">
-    <origin xyz="0 0.30833 0.0287" rpy="1.5708 0 3.1416" />
+    <origin xyz="0 0.308325 0.0286999999999997" rpy="1.5707963267949 0 3.14159265358979" />
     <parent link="right_arm_link_4" />
     <child link="right_arm_link_5" />
     <axis xyz="0 0 -1" />
@@ -431,9 +431,9 @@
   </joint>
   <link name="right_arm_link_6">
     <inertial>
-      <origin xyz="-6.48345536513051E-05 -0.0940948380286277 -0.0270626846350632" rpy="0 0 0" />
-      <mass value="0.660923355736345" />
-      <inertia ixx="0.000359973773543527" ixy="-1.53267779751642E-06" ixz="-5.27658329899155E-07" iyy="0.000227230332719395" iyz="-1.20272169550085E-05" izz="0.000396219659302527" />
+      <origin xyz="-6.48345536512496E-05 -0.0940948380286134 -0.0270626846350811" rpy="0 0 0" />
+      <mass value="0.660923355736731" />
+      <inertia ixx="0.000359973773543606" ixy="-1.53267779749888E-06" ixz="-5.2765832988162E-07" iyy="0.000227230332719448" iyz="-1.20272169550132E-05" izz="0.00039621965930258" />
     </inertial>
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
@@ -452,7 +452,7 @@
     </collision>
   </link>
   <joint name="right_arm_joint_6" type="revolute">
-    <origin xyz="0 0.028 0.482" rpy="1.5708 0 0" />
+    <origin xyz="0 0.0279999999999996 0.482" rpy="1.5707963267949 0 0" />
     <parent link="right_arm_link_5" />
     <child link="right_arm_link_6" />
     <axis xyz="0 0 -1" />
@@ -460,9 +460,9 @@
   </joint>
   <link name="right_arm_link_7">
     <inertial>
-      <origin xyz="-2.33580815800494E-09 1.38778768510595E-05 0.106797807104363" rpy="0 0 0" />
-      <mass value="0.889614117986897" />
-      <inertia ixx="0.000524922819775396" ixy="-6.66524573276845E-09" ixz="-2.21418842511158E-09" iyy="0.00052492295175483" iyz="2.1098118597984E-10" izz="9.02942481534672E-05" />
+      <origin xyz="-2.39552744307758E-09 1.38778366988723E-05 0.10679780707015" rpy="0 0 0" />
+      <mass value="0.889614113446627" />
+      <inertia ixx="0.000524922819253465" ixy="-6.6652675858677E-09" ixz="-2.2141188128908E-09" iyy="0.000524922951314093" iyz="2.10947448134688E-10" izz="9.02942481256968E-05" />
     </inertial>
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
@@ -481,178 +481,10 @@
     </collision>
   </link>
   <joint name="right_arm_joint_7" type="revolute">
-    <origin xyz="0 -0.21653 -0.0387" rpy="-1.5708 0 3.1416" />
+    <origin xyz="0 -0.216525 -0.0387000000000006" rpy="-1.5707963267949 0 3.14159265358979" />
     <parent link="right_arm_link_6" />
     <child link="right_arm_link_7" />
     <axis xyz="0 0 -1" />
     <limit lower="0" upper="6.2832" effort="0" velocity="0" />
-  </joint>
-  <link name="wheel_link_1">
-    <inertial>
-      <origin xyz="-1.38777878078145E-17 0 5.55111512312578E-17" rpy="0 0 0" />
-      <mass value="0.318622081589381" />
-      <inertia ixx="0.000273011635893904" ixy="-2.22903647618934E-20" ixz="-9.48676900924816E-20" iyy="0.000273011635893904" iyz="-3.57927557325219E-22" izz="0.000485735032323497" />
-    </inertial>
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="../meshes/wheel_link_1.stl" />
-      </geometry>
-      <material name="">
-        <color rgba="0.647058823529412 0.619607843137255 0.588235294117647 1" />
-      </material>
-    </visual>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="../meshes/wheel_link_1.stl" />
-      </geometry>
-    </collision>
-  </link>
-  <joint name="wheel_joint_1" type="continuous">
-    <origin xyz="-0.271 0.1349 0.1349" rpy="3.1416 0.7854 1.5708" />
-    <parent link="satellite_base_link" />
-    <child link="wheel_link_1" />
-    <axis xyz="0 0 -1" />
-  </joint>
-  <link name="wheel_link_2">
-    <inertial>
-      <origin xyz="0 2.77555756156289E-17 0" rpy="0 0 0" />
-      <mass value="0.31862208158938" />
-      <inertia ixx="0.000273011635893904" ixy="1.95212050559264E-19" ixz="-4.04763608043775E-22" iyy="0.000273011635893903" iyz="1.35525271560688E-19" izz="0.000485735032323496" />
-    </inertial>
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="../meshes/wheel_link_2.stl" />
-      </geometry>
-      <material name="">
-        <color rgba="0.647058823529412 0.619607843137255 0.588235294117647 1" />
-      </material>
-    </visual>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="../meshes/wheel_link_2.stl" />
-      </geometry>
-    </collision>
-  </link>
-  <joint name="wheel_joint_2" type="continuous">
-    <origin xyz="-0.271 -0.1349 0.1349" rpy="2.3562 0 -3.1416" />
-    <parent link="satellite_base_link" />
-    <child link="wheel_link_2" />
-    <axis xyz="0 0 -1" />
-  </joint>
-  <link name="wheel_link_3">
-    <inertial>
-      <origin xyz="0 -4.16333634234434E-17 -5.55111512312578E-17" rpy="0 0 0" />
-      <mass value="0.318622081589381" />
-      <inertia ixx="0.000273011635893903" ixy="1.25687749418341E-19" ixz="8.12220827563536E-20" iyy="0.000273011635893903" iyz="-4.06575814682064E-20" izz="0.000485735032323496" />
-    </inertial>
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="../meshes/wheel_link_3.stl" />
-      </geometry>
-      <material name="">
-        <color rgba="0.647058823529412 0.619607843137255 0.588235294117647 1" />
-      </material>
-    </visual>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="../meshes/wheel_link_3.stl" />
-      </geometry>
-    </collision>
-  </link>
-  <joint name="wheel_joint_3" type="continuous">
-    <origin xyz="-0.271 0.1349 -0.1349" rpy="0.7854 0 0" />
-    <parent link="satellite_base_link" />
-    <child link="wheel_link_3" />
-    <axis xyz="0 0 -1" />
-  </joint>
-  <link name="wheel_link_4">
-    <inertial>
-      <origin xyz="0 4.16333634234434E-17 2.77555756156289E-17" rpy="0 0 0" />
-      <mass value="0.31862208158938" />
-      <inertia ixx="0.000273011635893903" ixy="1.40377204896549E-20" ixz="3.04150610609188E-20" iyy="0.000273011635893903" iyz="-2.71050543121376E-20" izz="0.000485735032323496" />
-    </inertial>
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="../meshes/wheel_link_4.stl" />
-      </geometry>
-      <material name="">
-        <color rgba="0.647058823529412 0.619607843137255 0.588235294117647 1" />
-      </material>
-    </visual>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="../meshes/wheel_link_4.stl" />
-      </geometry>
-    </collision>
-  </link>
-  <joint name="wheel_joint_4" type="continuous">
-    <origin xyz="-0.271 -0.1349 -0.1349" rpy="0.7854 0 3.1416" />
-    <parent link="satellite_base_link" />
-    <child link="wheel_link_4" />
-    <axis xyz="0 0 -1" />
-  </joint>
-  <link name="wheel_link_5">
-    <inertial>
-      <origin xyz="-3.10469786232183E-18 0 -1.11022302462516E-16" rpy="0 0 0" />
-      <mass value="0.318622081589382" />
-      <inertia ixx="0.000273011635893904" ixy="2.5216407103223E-19" ixz="4.14018225878966E-20" iyy="0.000273011635893903" iyz="9.39600994468235E-21" izz="0.000485735032323497" />
-    </inertial>
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="../meshes/wheel_link_5.stl" />
-      </geometry>
-      <material name="">
-        <color rgba="0.647058823529412 0.619607843137255 0.588235294117647 1" />
-      </material>
-    </visual>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="../meshes/wheel_link_5.stl" />
-      </geometry>
-    </collision>
-  </link>
-  <joint name="wheel_joint_5" type="continuous">
-    <origin xyz="-0.245 0 0.135" rpy="1.5708 0 -1.5708" />
-    <parent link="satellite_base_link" />
-    <child link="wheel_link_5" />
-    <axis xyz="0 0 -1" />
-  </joint>
-  <link name="wheel_link_6">
-    <inertial>
-      <origin xyz="-2.11817291338488E-18 0 1.11022302462516E-16" rpy="0 0 0" />
-      <mass value="0.318622081589382" />
-      <inertia ixx="0.000273011635893904" ixy="2.51669701369259E-19" ixz="4.24853445066488E-20" iyy="0.000273011635893903" iyz="9.90695768576342E-21" izz="0.000485735032323497" />
-    </inertial>
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="../meshes/wheel_link_6.stl" />
-      </geometry>
-      <material name="">
-        <color rgba="0.647058823529412 0.619607843137255 0.588235294117647 1" />
-      </material>
-    </visual>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="../meshes/wheel_link_6.stl" />
-      </geometry>
-    </collision>
-  </link>
-  <joint name="wheel_joint_6" type="continuous">
-    <origin xyz="-0.245 0 -0.135" rpy="1.5708 0 -1.5708" />
-    <parent link="satellite_base_link" />
-    <child link="wheel_link_6" />
-    <axis xyz="0 0 -1" />
   </joint>
 </robot>

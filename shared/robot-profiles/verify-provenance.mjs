@@ -26,7 +26,7 @@ function requireSha256(profileId, value, field) {
   return hash;
 }
 
-function requireArchivePath(profileId, value, field, packagePath) {
+function requireSourcePath(profileId, value, field, packagePath, sourceField) {
   const archivePath = requireString(profileId, value, field).replaceAll('\\', '/');
   const segments = archivePath.split('/');
   if (
@@ -35,7 +35,7 @@ function requireArchivePath(profileId, value, field, packagePath) {
     || segments.some((segment) => segment === '' || segment === '.' || segment === '..')
     || !archivePath.startsWith(`${packagePath}/`)
   ) {
-    fail(profileId, `${field} must remain inside sourceArchive.packagePath.`);
+    fail(profileId, `${field} must remain inside ${sourceField}.packagePath.`);
   }
   return archivePath;
 }
@@ -103,33 +103,49 @@ async function verifyProfile(profileRoot, directoryName) {
   const manifest = await parseJson(directoryName, manifestPath, 'manifest.json');
   const profileId = requireString(directoryName, provenance.profileId, 'profileId');
 
-  if (provenance.schemaVersion !== '1.0') {
+  if (provenance.schemaVersion !== '1.0' && provenance.schemaVersion !== '1.1') {
     fail(profileId, `Unsupported provenance schemaVersion: ${String(provenance.schemaVersion)}.`);
   }
   if (profileId !== directoryName || manifest.profileId !== profileId) {
     fail(profileId, 'Directory, provenance, and manifest profile IDs must match.');
   }
-  requireString(profileId, provenance.sourceArchive?.fileName, 'sourceArchive.fileName');
-  requireSha256(profileId, provenance.sourceArchive?.sha256, 'sourceArchive.sha256');
-  requireString(profileId, provenance.sourceArchive?.licenseDeclaration, 'sourceArchive.licenseDeclaration');
-  const packagePath = requireString(profileId, provenance.sourceArchive?.packagePath, 'sourceArchive.packagePath');
-  const licenseAvailable = provenance.sourceArchive?.completeLicenseTermsAvailable;
+  const sourceField = provenance.schemaVersion === '1.1' ? 'sourceArtifact' : 'sourceArchive';
+  const sourceArtifact = provenance[sourceField];
+  if (provenance.schemaVersion === '1.1') {
+    if (sourceArtifact?.kind !== 'directory-snapshot') {
+      fail(profileId, 'sourceArtifact.kind must be directory-snapshot.');
+    }
+    requireString(profileId, sourceArtifact?.name, 'sourceArtifact.name');
+    requireString(profileId, sourceArtifact?.hashMethod, 'sourceArtifact.hashMethod');
+    if (!Number.isInteger(sourceArtifact?.fileCount) || sourceArtifact.fileCount <= 0) {
+      fail(profileId, 'sourceArtifact.fileCount must be a positive integer.');
+    }
+    if (!Number.isInteger(sourceArtifact?.totalBytes) || sourceArtifact.totalBytes <= 0) {
+      fail(profileId, 'sourceArtifact.totalBytes must be a positive integer.');
+    }
+  } else {
+    requireString(profileId, sourceArtifact?.fileName, 'sourceArchive.fileName');
+  }
+  requireSha256(profileId, sourceArtifact?.sha256, `${sourceField}.sha256`);
+  requireString(profileId, sourceArtifact?.licenseDeclaration, `${sourceField}.licenseDeclaration`);
+  const packagePath = requireString(profileId, sourceArtifact?.packagePath, `${sourceField}.packagePath`);
+  const licenseAvailable = sourceArtifact?.completeLicenseTermsAvailable;
   if (typeof licenseAvailable !== 'boolean') {
-    fail(profileId, 'sourceArchive.completeLicenseTermsAvailable must be a boolean.');
+    fail(profileId, `${sourceField}.completeLicenseTermsAvailable must be a boolean.`);
   }
   if (!licenseAvailable && !/(declared|unverified)/iu.test(String(manifest.source?.license))) {
     fail(profileId, 'An incomplete source license must remain explicit in manifest.source.license.');
   }
   if (licenseAvailable) {
-    const license = resolveProfilePath(profileId, profileRoot, provenance.sourceArchive?.licensePath, 'sourceArchive.licensePath');
-    const expectedLicenseHash = requireSha256(profileId, provenance.sourceArchive?.licenseSha256, 'sourceArchive.licenseSha256');
+    const license = resolveProfilePath(profileId, profileRoot, sourceArtifact?.licensePath, `${sourceField}.licensePath`);
+    const expectedLicenseHash = requireSha256(profileId, sourceArtifact?.licenseSha256, `${sourceField}.licenseSha256`);
     if (await sha256(license.resolved) !== expectedLicenseHash) {
-      fail(profileId, `${license.relativePath} does not match sourceArchive.licenseSha256.`);
+      fail(profileId, `${license.relativePath} does not match ${sourceField}.licenseSha256.`);
     }
   }
 
   const sourceUrdfHash = requireSha256(profileId, provenance.urdf?.sourceSha256, 'urdf.sourceSha256');
-  requireArchivePath(profileId, provenance.urdf?.sourcePath, 'urdf.sourcePath', packagePath);
+  requireSourcePath(profileId, provenance.urdf?.sourcePath, 'urdf.sourcePath', packagePath, sourceField);
   if (manifest.source?.urdfSha256 !== sourceUrdfHash) {
     fail(profileId, 'manifest.source.urdfSha256 does not match the recorded source URDF hash.');
   }
@@ -152,7 +168,7 @@ async function verifyProfile(profileRoot, directoryName) {
   const sourcePaths = new Set();
   for (const [index, mapping] of provenance.meshMappings.entries()) {
     const prefix = `meshMappings[${index}]`;
-    const sourcePath = requireArchivePath(profileId, mapping.sourcePath, `${prefix}.sourcePath`, packagePath);
+    const sourcePath = requireSourcePath(profileId, mapping.sourcePath, `${prefix}.sourcePath`, packagePath, sourceField);
     const normalized = resolveProfilePath(profileId, profileRoot, mapping.normalizedPath, `${prefix}.normalizedPath`);
     const sourceHash = requireSha256(profileId, mapping.sourceSha256, `${prefix}.sourceSha256`);
     const normalizedHash = requireSha256(profileId, mapping.normalizedSha256, `${prefix}.normalizedSha256`);

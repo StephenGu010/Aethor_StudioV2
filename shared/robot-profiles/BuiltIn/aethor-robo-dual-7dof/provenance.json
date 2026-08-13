@@ -1,179 +1,154 @@
 {
-  "schemaVersion": "1.0",
+  "schemaVersion": "1.1",
   "profileId": "aethor-robo-dual-7dof",
-  "sourceArchive": {
-    "fileName": "Layout11 EX1.zip",
-    "sha256": "DCF82D4CB7DEB05B19F40320054172ADA51213F0182DB228D7E78D171D9406C1",
-    "packagePath": "Layout11 EX1",
+  "sourceArtifact": {
+    "kind": "directory-snapshot",
+    "name": "Aethor_Layout_deployed",
+    "sha256": "B55D39CDC540424391C72D535BD8D1CA0054907BC9009DBCE10A94CD167C2E57",
+    "hashMethod": "Sort normalized relative paths ordinally; hash each file with SHA-256; hash UTF-8 records relativePath NUL uppercaseFileSha256 NUL byteLength LF",
+    "fileCount": 31,
+    "totalBytes": 125181249,
+    "packagePath": "Aethor_Layout_deployed",
     "licenseDeclaration": "BSD",
     "completeLicenseTermsAvailable": false
   },
   "urdf": {
-    "sourcePath": "Layout11 EX1/urdf/Layout11 EX1.urdf",
-    "sourceSha256": "E77E0B6E25C451B6171F1B6F03F8CE50BC185AC2CB5F7118F4E5C43DA866EC37",
+    "sourcePath": "Aethor_Layout_deployed/urdf/Layout11EX1.urdf",
+    "sourceSha256": "90D002AEDBB448E606B77A3D297D80DFF20AE1387723140F849F47B620575E3F",
     "normalizedPath": "model/aethor_robo.urdf",
-    "normalizedSha256": "0EC56041289B1C0C1F5F7382D3A82B25CED17716D561BDCCA87F2195C79984CA"
+    "normalizedSha256": "6F4DAC940EADBBC4D2019AF518C2C5369E622157E6EDE989ADF106AA7D53B7D7"
+  },
+  "normalization": {
+    "stableJointMapping": [
+      "left_arm_joint_1…7 -> j1…j7 / protocolIndex 0…6",
+      "right_arm_joint_1…7 -> j8…j14 / protocolIndex 7…13"
+    ],
+    "coordinateCompatibility": "Both arm J1 joints retain the established Profile zero convention (rpy 0 0 0, limits 0 to 6.2832 rad).",
+    "excludedSourceComponents": {
+      "reason": "The product Profile does not include independent momentum-wheel links.",
+      "links": ["wheel_Link1", "wheel_Link2", "wheel_Link3", "wheel_Link4", "wheel_Link5", "wheel_Link6"],
+      "joints": ["wheel_Joint1", "wheel_Joint2", "wheel_Joint3", "wheel_Joint4", "wheel_Joint5", "wheel_Joint6"],
+      "meshes": ["wheel_Link1.STL", "wheel_Link2.STL", "wheel_Link3.STL", "wheel_Link4.STL", "wheel_Link5.STL", "wheel_Link6.STL"]
+    }
   },
   "meshMappings": [
     {
-      "sourcePath": "Layout11 EX1/meshes/arm1_base_Link.STL",
-      "sourceSha256": "472468AB8B187DA0DA6319D3CDD69BD1E436B209D6031BE82EE348BFA91546D5",
+      "sourcePath": "Aethor_Layout_deployed/meshes/arm1_base_Link.STL",
+      "sourceSha256": "65B160045BBF38C4DCF862F6E480F69EC729683FCCEC3EAD593EA0CAA33C63AD",
       "normalizedPath": "meshes/left_arm_base_link.stl",
-      "normalizedSha256": "472468AB8B187DA0DA6319D3CDD69BD1E436B209D6031BE82EE348BFA91546D5",
+      "normalizedSha256": "65B160045BBF38C4DCF862F6E480F69EC729683FCCEC3EAD593EA0CAA33C63AD",
       "byteIdentical": true
     },
     {
-      "sourcePath": "Layout11 EX1/meshes/arm1_Link1.STL",
-      "sourceSha256": "0E69BFCDBA71130EF81DB214C251504D323002DD98758B4F1F4AB5775EB7B976",
+      "sourcePath": "Aethor_Layout_deployed/meshes/arm1_Link1.STL",
+      "sourceSha256": "FE066003A9D468678633468116118780D9E148A8FC83DF564927FE044868688D",
       "normalizedPath": "meshes/left_arm_link_1.stl",
-      "normalizedSha256": "0E69BFCDBA71130EF81DB214C251504D323002DD98758B4F1F4AB5775EB7B976",
+      "normalizedSha256": "FE066003A9D468678633468116118780D9E148A8FC83DF564927FE044868688D",
       "byteIdentical": true
     },
     {
-      "sourcePath": "Layout11 EX1/meshes/arm1_Link2.STL",
-      "sourceSha256": "645FC8FDF3D8C6F0A8237746908A673100DCB15DEAFF3BB82C72E0AB9352312A",
+      "sourcePath": "Aethor_Layout_deployed/meshes/arm1_Link2.STL",
+      "sourceSha256": "5D22A19B9DB9F78EA358723EAF3C648CA47466F807F14BBA8BF6F66007E983D2",
       "normalizedPath": "meshes/left_arm_link_2.stl",
-      "normalizedSha256": "645FC8FDF3D8C6F0A8237746908A673100DCB15DEAFF3BB82C72E0AB9352312A",
+      "normalizedSha256": "5D22A19B9DB9F78EA358723EAF3C648CA47466F807F14BBA8BF6F66007E983D2",
       "byteIdentical": true
     },
     {
-      "sourcePath": "Layout11 EX1/meshes/arm1_Link3.STL",
-      "sourceSha256": "2AEFEA0822115BA2EA0B42D7B2BE6FA5E3F6A6360DB260C16D3F4BAC425358A4",
+      "sourcePath": "Aethor_Layout_deployed/meshes/arm1_Link3.STL",
+      "sourceSha256": "32EF9C12E605C00D5C66384E06B90C1C1FF123BC31E553214E325CA11037996F",
       "normalizedPath": "meshes/left_arm_link_3.stl",
-      "normalizedSha256": "2AEFEA0822115BA2EA0B42D7B2BE6FA5E3F6A6360DB260C16D3F4BAC425358A4",
+      "normalizedSha256": "32EF9C12E605C00D5C66384E06B90C1C1FF123BC31E553214E325CA11037996F",
       "byteIdentical": true
     },
     {
-      "sourcePath": "Layout11 EX1/meshes/arm1_Link4.STL",
-      "sourceSha256": "BA013D8E1977B0CC069000CE45E32E334030819AC301AE58F32FD31DD14B5DC4",
+      "sourcePath": "Aethor_Layout_deployed/meshes/arm1_Link4.STL",
+      "sourceSha256": "AF88B7D8A49820EB01037FB2754C5661C4CAB039884A5303CD9DC8DE93CCFE5E",
       "normalizedPath": "meshes/left_arm_link_4.stl",
-      "normalizedSha256": "BA013D8E1977B0CC069000CE45E32E334030819AC301AE58F32FD31DD14B5DC4",
+      "normalizedSha256": "AF88B7D8A49820EB01037FB2754C5661C4CAB039884A5303CD9DC8DE93CCFE5E",
       "byteIdentical": true
     },
     {
-      "sourcePath": "Layout11 EX1/meshes/arm1_Link5.STL",
-      "sourceSha256": "EA61F849E777E5663474D43B1F9849CBC6052513451764611EBCD250284063CF",
+      "sourcePath": "Aethor_Layout_deployed/meshes/arm1_Link5.STL",
+      "sourceSha256": "890101DD46E918B31C26399392FA3CCF23FEF61E1EB2B5B732D32C41D163A588",
       "normalizedPath": "meshes/left_arm_link_5.stl",
-      "normalizedSha256": "EA61F849E777E5663474D43B1F9849CBC6052513451764611EBCD250284063CF",
+      "normalizedSha256": "890101DD46E918B31C26399392FA3CCF23FEF61E1EB2B5B732D32C41D163A588",
       "byteIdentical": true
     },
     {
-      "sourcePath": "Layout11 EX1/meshes/arm1_Link6.STL",
-      "sourceSha256": "5F3E73F8BA224725F7FB2615AAE7A8B62ECF31A1ACD6A6537BF8246B701BF9C2",
+      "sourcePath": "Aethor_Layout_deployed/meshes/arm1_Link6.STL",
+      "sourceSha256": "DDB5862AF6EA06E29307BA98A897E5ACE1A5A1CE73D0EAF19F0F5E87C37784CA",
       "normalizedPath": "meshes/left_arm_link_6.stl",
-      "normalizedSha256": "5F3E73F8BA224725F7FB2615AAE7A8B62ECF31A1ACD6A6537BF8246B701BF9C2",
+      "normalizedSha256": "DDB5862AF6EA06E29307BA98A897E5ACE1A5A1CE73D0EAF19F0F5E87C37784CA",
       "byteIdentical": true
     },
     {
-      "sourcePath": "Layout11 EX1/meshes/arm1_Link7.STL",
-      "sourceSha256": "BE146F9D121341347E0458D33616314479AFD94EE9E53F039F68FF35F6CAFA02",
+      "sourcePath": "Aethor_Layout_deployed/meshes/arm1_Link7.STL",
+      "sourceSha256": "D371CB4C6E10890ABB117770EEC473B79578B3AC1CA125AED126B174CEC8F770",
       "normalizedPath": "meshes/left_arm_link_7.stl",
-      "normalizedSha256": "BE146F9D121341347E0458D33616314479AFD94EE9E53F039F68FF35F6CAFA02",
+      "normalizedSha256": "D371CB4C6E10890ABB117770EEC473B79578B3AC1CA125AED126B174CEC8F770",
       "byteIdentical": true
     },
     {
-      "sourcePath": "Layout11 EX1/meshes/arm2_base_Link.STL",
-      "sourceSha256": "FDC395829AFBCB8F99FF96D56A273E0A92F7041D785831631D8BA762D6A06825",
+      "sourcePath": "Aethor_Layout_deployed/meshes/arm2_base_Link.STL",
+      "sourceSha256": "5FF0487BB4C3B7DE7BAD6529925C2494F841937239A195FB772B834131CC3541",
       "normalizedPath": "meshes/right_arm_base_link.stl",
-      "normalizedSha256": "FDC395829AFBCB8F99FF96D56A273E0A92F7041D785831631D8BA762D6A06825",
+      "normalizedSha256": "5FF0487BB4C3B7DE7BAD6529925C2494F841937239A195FB772B834131CC3541",
       "byteIdentical": true
     },
     {
-      "sourcePath": "Layout11 EX1/meshes/arm2_Link1.STL",
-      "sourceSha256": "A91D180C4F400A8423B9C0B310D2B37C0A30E4501CED9F528E766FF56A4D5382",
+      "sourcePath": "Aethor_Layout_deployed/meshes/arm2_Link1.STL",
+      "sourceSha256": "FE622AF05D4E2D5213F7787581E3CBF001BC79113D3060677D41B62279CE9244",
       "normalizedPath": "meshes/right_arm_link_1.stl",
-      "normalizedSha256": "A91D180C4F400A8423B9C0B310D2B37C0A30E4501CED9F528E766FF56A4D5382",
+      "normalizedSha256": "FE622AF05D4E2D5213F7787581E3CBF001BC79113D3060677D41B62279CE9244",
       "byteIdentical": true
     },
     {
-      "sourcePath": "Layout11 EX1/meshes/arm2_Link2.STL",
-      "sourceSha256": "5DAADDC9C32CA126BE438CE515CD8620D32B99C635C41B222CF955913800DECF",
+      "sourcePath": "Aethor_Layout_deployed/meshes/arm2_Link2.STL",
+      "sourceSha256": "7E28E07BCD9AA0A47C5771A0BBC83EBE8C4E189BE03ACB6CA58CFDDCFE7C8B5F",
       "normalizedPath": "meshes/right_arm_link_2.stl",
-      "normalizedSha256": "5DAADDC9C32CA126BE438CE515CD8620D32B99C635C41B222CF955913800DECF",
+      "normalizedSha256": "7E28E07BCD9AA0A47C5771A0BBC83EBE8C4E189BE03ACB6CA58CFDDCFE7C8B5F",
       "byteIdentical": true
     },
     {
-      "sourcePath": "Layout11 EX1/meshes/arm2_Link3.STL",
-      "sourceSha256": "D640F1D7C2AB43073AC4C64D93C75D4C1B8FF7B008B592980A1F2C03BD522CCD",
+      "sourcePath": "Aethor_Layout_deployed/meshes/arm2_Link3.STL",
+      "sourceSha256": "559B1B7A2807C1B14DA906B42EDBCDD5DB5D8ED2D7D5D02844496BF42C4BEF57",
       "normalizedPath": "meshes/right_arm_link_3.stl",
-      "normalizedSha256": "D640F1D7C2AB43073AC4C64D93C75D4C1B8FF7B008B592980A1F2C03BD522CCD",
+      "normalizedSha256": "559B1B7A2807C1B14DA906B42EDBCDD5DB5D8ED2D7D5D02844496BF42C4BEF57",
       "byteIdentical": true
     },
     {
-      "sourcePath": "Layout11 EX1/meshes/arm2_Link4.STL",
-      "sourceSha256": "5B1855BBC0602A694CED630513FFA83FD5947657C384309F3EC42C900E33636A",
+      "sourcePath": "Aethor_Layout_deployed/meshes/arm2_Link4.STL",
+      "sourceSha256": "99F27ABC5767C1398360DFF06155688FEDDCC424CC0DFC70C8123D0D604684E3",
       "normalizedPath": "meshes/right_arm_link_4.stl",
-      "normalizedSha256": "5B1855BBC0602A694CED630513FFA83FD5947657C384309F3EC42C900E33636A",
+      "normalizedSha256": "99F27ABC5767C1398360DFF06155688FEDDCC424CC0DFC70C8123D0D604684E3",
       "byteIdentical": true
     },
     {
-      "sourcePath": "Layout11 EX1/meshes/arm2_Link5.STL",
-      "sourceSha256": "C440CF291334FC07D73DF1E9C416A5EACA05731EB91CAC68C340DC3B2379749B",
+      "sourcePath": "Aethor_Layout_deployed/meshes/arm2_Link5.STL",
+      "sourceSha256": "3C4763E5874C3831E38A5B045EE6CE4EEFF5CDC24B8E985653F8431A436F6498",
       "normalizedPath": "meshes/right_arm_link_5.stl",
-      "normalizedSha256": "C440CF291334FC07D73DF1E9C416A5EACA05731EB91CAC68C340DC3B2379749B",
+      "normalizedSha256": "3C4763E5874C3831E38A5B045EE6CE4EEFF5CDC24B8E985653F8431A436F6498",
       "byteIdentical": true
     },
     {
-      "sourcePath": "Layout11 EX1/meshes/arm2_Link6.STL",
-      "sourceSha256": "8C87CACF32EF3CFB376BC1212151B5F62A2A9895A81FEAEFF4D73DCEF3E56106",
+      "sourcePath": "Aethor_Layout_deployed/meshes/arm2_Link6.STL",
+      "sourceSha256": "619F7BE6F97D9968FB867525E64F1CA0CC183FED0A8B181777CE78C43C6F3691",
       "normalizedPath": "meshes/right_arm_link_6.stl",
-      "normalizedSha256": "8C87CACF32EF3CFB376BC1212151B5F62A2A9895A81FEAEFF4D73DCEF3E56106",
+      "normalizedSha256": "619F7BE6F97D9968FB867525E64F1CA0CC183FED0A8B181777CE78C43C6F3691",
       "byteIdentical": true
     },
     {
-      "sourcePath": "Layout11 EX1/meshes/arm2_Link7.STL",
-      "sourceSha256": "2656A8733401ABE3CF0BBB4B0E302F925E02B6BE4A5F797AE7A099C0C8C07277",
+      "sourcePath": "Aethor_Layout_deployed/meshes/arm2_Link7.STL",
+      "sourceSha256": "63D5837731E02BBC8C4DF4A5B491B6EF54387EB7143B44CED6320BC61D90D948",
       "normalizedPath": "meshes/right_arm_link_7.stl",
-      "normalizedSha256": "2656A8733401ABE3CF0BBB4B0E302F925E02B6BE4A5F797AE7A099C0C8C07277",
+      "normalizedSha256": "63D5837731E02BBC8C4DF4A5B491B6EF54387EB7143B44CED6320BC61D90D948",
       "byteIdentical": true
     },
     {
-      "sourcePath": "Layout11 EX1/meshes/satellite_base_link.STL",
-      "sourceSha256": "6E114B9E1024666F8FF22031043E3A7F96FD1C77CEE367DE8751860E63810587",
+      "sourcePath": "Aethor_Layout_deployed/meshes/satellite_base_link.STL",
+      "sourceSha256": "58E51DFE3A636EF372C8BBCCEC7241215B07B67941186ABB8E08B3E953382EBE",
       "normalizedPath": "meshes/satellite_base_link.stl",
-      "normalizedSha256": "6E114B9E1024666F8FF22031043E3A7F96FD1C77CEE367DE8751860E63810587",
-      "byteIdentical": true
-    },
-    {
-      "sourcePath": "Layout11 EX1/meshes/wheel_Link1.STL",
-      "sourceSha256": "4AED2EC84FDFE6EC9BD613F8E31D74760CC489FF8A0733515EC823616541268D",
-      "normalizedPath": "meshes/wheel_link_1.stl",
-      "normalizedSha256": "4AED2EC84FDFE6EC9BD613F8E31D74760CC489FF8A0733515EC823616541268D",
-      "byteIdentical": true
-    },
-    {
-      "sourcePath": "Layout11 EX1/meshes/wheel_Link2.STL",
-      "sourceSha256": "14B2976A38101945FAEAA87B4B945B1D599707F1E52C0288B5170C5997AA1683",
-      "normalizedPath": "meshes/wheel_link_2.stl",
-      "normalizedSha256": "14B2976A38101945FAEAA87B4B945B1D599707F1E52C0288B5170C5997AA1683",
-      "byteIdentical": true
-    },
-    {
-      "sourcePath": "Layout11 EX1/meshes/wheel_Link3.STL",
-      "sourceSha256": "810A2291065D5E2BE525D0A53051C04108D2402DA35171F45E3FD7D96CF49703",
-      "normalizedPath": "meshes/wheel_link_3.stl",
-      "normalizedSha256": "810A2291065D5E2BE525D0A53051C04108D2402DA35171F45E3FD7D96CF49703",
-      "byteIdentical": true
-    },
-    {
-      "sourcePath": "Layout11 EX1/meshes/wheel_Link4.STL",
-      "sourceSha256": "B9C0F05EC348409B0FE5E13B3EF4812984A4B9CA5A72DBE2AA0E36B336DB0DC6",
-      "normalizedPath": "meshes/wheel_link_4.stl",
-      "normalizedSha256": "B9C0F05EC348409B0FE5E13B3EF4812984A4B9CA5A72DBE2AA0E36B336DB0DC6",
-      "byteIdentical": true
-    },
-    {
-      "sourcePath": "Layout11 EX1/meshes/wheel_Link5.STL",
-      "sourceSha256": "EA198FE7FA7ED436909E0B4AF96C41F4DB2C4EEB3B91773469F264CFD655A654",
-      "normalizedPath": "meshes/wheel_link_5.stl",
-      "normalizedSha256": "EA198FE7FA7ED436909E0B4AF96C41F4DB2C4EEB3B91773469F264CFD655A654",
-      "byteIdentical": true
-    },
-    {
-      "sourcePath": "Layout11 EX1/meshes/wheel_Link6.STL",
-      "sourceSha256": "EA198FE7FA7ED436909E0B4AF96C41F4DB2C4EEB3B91773469F264CFD655A654",
-      "normalizedPath": "meshes/wheel_link_6.stl",
-      "normalizedSha256": "EA198FE7FA7ED436909E0B4AF96C41F4DB2C4EEB3B91773469F264CFD655A654",
+      "normalizedSha256": "58E51DFE3A636EF372C8BBCCEC7241215B07B67941186ABB8E08B3E953382EBE",
       "byteIdentical": true
     }
   ]
