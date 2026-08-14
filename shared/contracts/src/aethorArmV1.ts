@@ -9,6 +9,8 @@ export interface AethorArmMotorSampleV1 {
   positionDeg: number;
   feedbackAgeMs: number;
   valid: boolean;
+  /** Firmware reported that this expected ID cannot be trusted. */
+  identityConflict?: boolean;
 }
 
 /**
@@ -27,4 +29,6 @@ export interface AethorArmMotorFrameV1 {
   receivedAtUtc: string;
   snapshotComplete: boolean;
   motors: readonly AethorArmMotorSampleV1[];
+  /** Observed IDs outside 1..7 that have no meaningful q_deg slot. */
+  unexpectedMotorIds?: readonly number[];
 }

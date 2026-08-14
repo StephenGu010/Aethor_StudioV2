@@ -4,13 +4,13 @@
 
 | 项 | 值 |
 |---|---|
-| Track | A1-H0 Aethor_robo 主机协议 codec 软件门 |
+| Track | A1-H1-S Aethor_robo 主机会话软件核心 |
 | 状态 | `DONE` |
-| A1 总体 | `IN PROGRESS`；A1-H0 `DONE`，A1-H1 固件/只读会话 adapter 为 `BLOCKED` |
+| A1 总体 | `IN PROGRESS`；A1-H1-S `DONE`，A1-H1-F 固件/只读生产 adapter 为 `BLOCKED` |
 | 日期 | 2026-08-13 |
 | 起始提交 | `7003510eb08fe9ae236125e340111217e6880ceb` |
 | 上一阶段提交 | `f574e21 phase(A1-T0): add Aethor twin realtime core` |
-| 当前阶段交接 | [aethor-robo-a1-h0.md](aethor-robo-a1-h0.md) |
+| 当前阶段交接 | [aethor-robo-a1-h1-s.md](aethor-robo-a1-h1-s.md) |
 | 最新模型修订 | [aethor-robo-a0-r1.md](aethor-robo-a0-r1.md)：17 links / 16 joints / 17 STL，14 关节映射不变，独立动量轮链路已移除 |
 | 硬件访问 | 无；未枚举或打开 COM4，未发送任何硬件命令 |
 
@@ -25,13 +25,14 @@
 - A1-U2 已将该运行时接入 Dummy 生产网关：唯一 reader/decoder、优先级 writer、结构化 response fence 和无回复 direct 队列共同运行；`/terminal` 可连续发送并按 request ID 展示 queued/sent/失败类结果。Aethor 分支仍只做候选模板校验，发送固定禁用。完整证据见独立 A1-U2 交接。
 - A1-T0 已在未来 adapter 接缝之后增加每臂最新帧优先、20 ms 双臂原子提交和逐关节 250 ms 显示新鲜度；控制台展示入口/模型 Hz、合并与拒绝计数。Aethor 生产 adapter 和真实串口仍未实现。
 - A1-H0 已新增共享 TypeScript 与独立 C# 无状态 codec，共同消费语言无关 CRC/REQ/frame/invalid 向量；终端快捷命令生成真实 CRC，手工输入显示具体 CRC/字段错误，发送继续禁用。
+- A1-H1-S 已新增未注册生产 DI 的 C# 会话核心：严格递增 request ID 并发关联、HELLO/boot/session 身份、GET_JPOS/TEL 同一 ID/mask 投影、latest-only 下游投递、超时/孤立响应/重启探针和唯一资源释放均通过 fake transport。
 - 更新路线图、架构、产品边界、Profile、契约索引、验收矩阵、变更记录和 A1-H 执行提示词。外部固件 PRD 已同步到 0.3.0-draft，但不属于本 Git 仓库。
 - A0-R1 已换入 `Aethor_Layout_deployed/`：Profile 为 17 links / 16 joints / 17 STL，保持 14 关节映射，排除六个独立动量轮 link/joint/mesh；详见独立模型交接。
 
 ## 当前没有实现
 
 - Profile adapter 仍为 `aethor-robo-pending`，硬件 capability 全部为 false。
-- 没有 Aethor pending request/session registry、REST/SignalR 投影或真实串口入口。无状态 C# codec 已完成；共用持续 RX/优先 TX 调度器已在 Dummy 生产路径验证，但两者都不能算作 Aethor adapter。
+- 已有未注册生产 DI 的 Aethor pending request/session core，但没有启动协调器、心跳、REST/SignalR 投影或真实串口入口。无状态 codec、会话 core 与共用双工调度基础设施都不能单独算作生产 adapter。
 - 控制台的 `ingestAethorTwinMotorFrame` 是经过测试的 adapter 接缝；生产运行时仍没有调用者，不能解释为已获得实机反馈。
 - 读取、使能、停止、七轴组下发和 Aethor 动作执行仍禁用。MIT/POS_VEL、真实限位/速度、同步到达和梯度速度尚无实机证据。
 - 串口终端外壳已支持 Aethor CRC/帧本地校验；真实 TX/RX、连接和设备状态仍只属于 Dummy runtime。Dummy 已迁移到新双工调度器，Aethor 不得复用 Dummy codec。
@@ -52,10 +53,10 @@
 - 候选 `921600 baud` 与 50 Hz 遥测尚未由固件实测；主机侧 CRC/基础帧向量已冻结，但固件尚未证明消费，重复请求、会话、回绕与业务错误仍未跨语言关闭。
 - Aethor_robo 当前来源目录仍缺完整 BSD 条款；底座 STL 还烘焙有 wheel-shell CAD 外形，若要彻底删除外观需重新导出底座。
 
-## 下一步：A1-H1
+## 下一步：A1-H1-F
 
 1. 取得可追溯的 Keil/CubeMX/FreeRTOS 固件 commit，并按 `docs/prompts/aethor-robo-a1-h-firmware-adapter.md` 复核任务所有权。
 2. 让固件消费现有主机向量，并补齐重复请求、回绕、boot/session 与业务错误向量；不得从 Dummy 协议补推。
-3. 复用现有 Aethor codec 与已在 Dummy 生产路径验证的双工调度基础设施，实现 pending request/session registry；不得新增第二套 codec，也不得把 Dummy codec 当成生产 adapter。
-4. 先以 fake transport 验证部分/乱序/冲突/范围外 ID、终端公平性、心跳和进程退出，再设计只读监督实机 runbook。
+3. 复用现有 Aethor codec、`AethorArmSerialSession` 与双工调度基础设施，新增启动协调器和心跳 owner；不得新增第二套 reader、writer 或 codec。
+4. 先以 fake transport 验证生产 REST/SignalR、心跳、部分/冲突/范围外 ID 和进程退出，再设计只读监督实机 runbook。
 5. 未取得新的现场授权前，不打开 COM4、不使能、不发送运动或停止命令。A1-H 未关闭前，A1 不得标记 DONE。

@@ -34,8 +34,9 @@
 | 左/右七轴本地 FK 预览 | SOFTWARE VERIFIED | 独立 14 轴 store；拖动、滑块、数值、键盘只改变幽灵模型；支持整机/左臂/右臂取景 |
 | 电机发现帧与 ID 投影 | SOFTWARE VERIFIED | `AethorArmMotorFrameV1` 允许任意子集/顺序；ID 1–7 直接映射每臂 J1–J7，冲突、范围外与缺失均可诊断 |
 | 数字孪生实时投影 | SOFTWARE VERIFIED | 每臂最新帧优先、双臂原子提交、模型更新上限 50 Hz；逐关节 250 ms 新鲜度 |
-| 主机协议 codec | SOFTWARE VERIFIED | TypeScript/C# 独立实现 CRC、REQ formatter、wire parser 和有界行解码；尚未接 transport |
-| 串口、反馈、使能、停止、模式 | BLOCKED | 固件和规范指令集未完成 |
+| 主机协议 codec | SOFTWARE VERIFIED | TypeScript/C# 独立实现 CRC、REQ formatter、wire parser 和有界行解码 |
+| 主机会话软件核心 | SOFTWARE VERIFIED | fake transport 下完成 request/session/boot、GET_JPOS/TEL ID 投影、latest-only 投递和资源释放；未注册生产 DI |
+| 串口、反馈、使能、停止、模式 | BLOCKED | 固件证据、生产 adapter 与监督实机尚未完成 |
 | 关节组硬件下发 | BLOCKED | 无可信限位、速度、完成确认和停止语义 |
 | Aethor_robo 动作编排 | NOT STARTED | 当前 `ActionProgramV1` 只支持 Dummy 六轴 |
 | 动量轮控制 | OUT OF SCOPE | Profile 不包含独立动量轮链路 |
@@ -50,4 +51,4 @@ Aethor_robo visual/collision 按 URL 共享 17 份只读 geometry；实体模型
 
 ## 并行阶段
 
-进度以 [路线图](../roadmap.md) 的 A0–A3 表为准：A0-R1 部署模型更新、A1-U0 候选契约、A1-U1/U2 双工基础、A1-T0 数字孪生实时内核和 A1-H0 主机 codec 已完成；A1-H1 等待固件证据和只读会话 adapter。A2 为只读网关，A3 为安全控制和动作编排。
+进度以 [路线图](../roadmap.md) 的 A0–A3 表为准：A0-R1 部署模型更新、A1-U0 候选契约、A1-U1/U2 双工基础、A1-T0 数字孪生实时内核、A1-H0 主机 codec 和 A1-H1-S 会话软件核心已完成；A1-H1-F 等待固件证据和只读生产 adapter。A2 为只读网关，A3 为安全控制和动作编排。

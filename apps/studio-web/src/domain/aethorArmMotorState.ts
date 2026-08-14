@@ -87,12 +87,13 @@ export function applyAethorArmMotorFrame(
   });
 
   const duplicateMotorIds = [...samplesById.entries()]
-    .filter(([, samples]) => samples.length > 1)
+    .filter(([, samples]) => samples.length > 1 || samples.some((sample) => sample.identityConflict === true))
     .map(([motorId]) => motorId)
     .sort(compareNumbers);
-  const unexpectedMotorIds = [...samplesById.keys()]
-    .filter((motorId) => !isAethorArmMotorId(motorId))
-    .sort(compareNumbers);
+  const unexpectedMotorIds = [...new Set([
+    ...[...samplesById.keys()].filter((motorId) => !isAethorArmMotorId(motorId)),
+    ...(frame.unexpectedMotorIds ?? []).filter((motorId) => !isAethorArmMotorId(motorId))
+  ])].sort(compareNumbers);
   const duplicateSet = new Set(duplicateMotorIds);
   const actualPositionsDeg = [...previous.actualPositionsDeg];
 

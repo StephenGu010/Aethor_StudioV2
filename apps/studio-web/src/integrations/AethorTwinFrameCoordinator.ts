@@ -152,10 +152,34 @@ function isSupportedFrame(frame: AethorArmMotorFrameV1) {
   return frame.contractVersion === '1.0'
     && frame.profileId === 'aethor-robo-dual-7dof'
     && (frame.jointGroupId === 'left-arm' || frame.jointGroupId === 'right-arm')
+    && isIdentityToken(frame.controllerId)
+    && isIdentityToken(frame.armId)
+    && isIdentityToken(frame.bootId)
     && Number.isInteger(frame.frameSeq)
     && frame.frameSeq >= 0
     && frame.frameSeq <= 0xFFFF_FFFF
-    && Number.isFinite(Date.parse(frame.receivedAtUtc));
+    && Number.isFinite(Date.parse(frame.receivedAtUtc))
+    && frame.motors.length <= 32
+    && frame.motors.every((motor) => Number.isInteger(motor.motorId)
+      && motor.motorId >= 0
+      && motor.motorId <= 255
+      && Number.isFinite(motor.positionDeg)
+      && Number.isFinite(motor.feedbackAgeMs)
+      && motor.feedbackAgeMs >= 0
+      && motor.feedbackAgeMs <= 65_535
+      && typeof motor.valid === 'boolean'
+      && (motor.identityConflict === undefined || typeof motor.identityConflict === 'boolean'))
+    && (frame.unexpectedMotorIds === undefined
+      || (frame.unexpectedMotorIds.length <= 32
+        && new Set(frame.unexpectedMotorIds).size === frame.unexpectedMotorIds.length
+        && frame.unexpectedMotorIds.every((motorId) => Number.isInteger(motorId)
+          && motorId >= 0
+          && motorId <= 255
+          && (motorId < 1 || motorId > 7))));
+}
+
+function isIdentityToken(value: string) {
+  return /^[A-Za-z0-9._-]{1,64}$/.test(value);
 }
 
 function recordRateSample(samples: number[], nowMs: number) {

@@ -101,9 +101,10 @@ TEL <seq> JOINT_STATE t_us=<uint64> q_deg=<7> qd_deg_s=<7> tau_nm=<7> present_ma
 | `controllerId/armId/bootId` | 来自握手的稳定身份 |
 | `frameSeq/receivedAtUtc` | 网关有序帧号与接收 UTC 时间 |
 | `snapshotComplete` | 是否是完整发现快照；不是“七台电机均在线” |
-| `motors[]` | 保留原始 motor ID、角度、反馈年龄和有效标记 |
+| `motors[]` | ID 1–7 的角度、反馈年龄、有效标记与可选身份冲突标记 |
+| `unexpectedMotorIds` | `unexpected_ids` 的范围外 ID；没有对应 q_deg 槽，不伪造角度样本 |
 
-Schema 有意允许 `0..255` 的 ID、重复项和无序子集，让领域层可以诊断，而不是在 JSON 入口静默丢失证据；最多 32 项，额外字段拒绝。领域层按 ID 更新模型，拒绝同一 `bootId` 下倒序/重复 `frameSeq`，在新 `bootId` 后重新接受低序号。
+Schema 允许无序子集，并继续允许原始重复/范围外样本作为兼容诊断输入；固件 projector 优先以 `identityConflict` 和 `unexpectedMotorIds` 表达 mask 证据，避免伪造重复设备数量或没有角度槽的样本。最多 32 项，额外字段拒绝。领域层按 ID 更新模型，拒绝同一 `bootId` 下倒序/重复 `frameSeq`，在新 `bootId` 后重新接受低序号。
 
 控制台状态含义：
 
@@ -140,7 +141,7 @@ C# 服务是串口的唯一所有者，采用一个持续 RX reader 和一个有
 - 请求超时不自动用新 ID 重放运动；先查询状态，结果仍未知时由操作者停止和恢复；
 - 串口终端的辅助模式必须经过 Aethor codec 校验，raw 模式仍只提交一次 transport write，不等待回包占住发送队列。
 
-该模型与当前 Dummy adapter 分开实现；不能复制 Dummy 无标签 response fence 的关联方式。A1-U2 已在 Dummy 生产路径验证共用双工调度基础设施，A1-H0 已提供无状态 Aethor TypeScript/C# codec；Aethor 仍需 request ID correlation、boot/session 状态机和生产 adapter，这些运行时能力尚未实现。
+该模型与当前 Dummy adapter 分开实现；不能复制 Dummy 无标签 response fence 的关联方式。A1-U2 已在 Dummy 生产路径验证共用双工调度基础设施，A1-H0 已提供无状态 Aethor TypeScript/C# codec，A1-H1-S 已用 fake transport 验证严格递增 request ID 的乱序关联、HELLO/boot/session、GET_JPOS/TEL 同一 projector、容量一 latest-only 下游投递和关闭释放。该 session 尚未注册生产 DI；启动协调器、心跳、REST/SignalR、固件兼容和真实串口仍未实现。
 
 ## 错误与恢复
 
@@ -153,8 +154,8 @@ C# 服务是串口的唯一所有者，采用一个持续 RX reader 和一个有
 进入真实网关前还需关闭以下门：
 
 1. 固件仓库提交、CubeMX/FreeRTOS 任务所有权与 DM3520 映射可追溯；
-2. 主机侧 CRC、formatter、parser 与基础错误向量已在 A1-H0 冻结；仍需固件消费同一向量，并补齐重复请求、帧回绕、会话和业务错误码证据；
+2. 主机侧 CRC/formatter/parser 已在 A1-H0 冻结，request/session/boot 与只读投影已在 A1-H1-S 通过 fake transport；仍需固件消费同一向量，并补齐重复请求、帧回绕、会话和业务错误码证据；
 3. UART/CAN 负载下 50 Hz 完整快照、反馈年龄和 TX 拥塞行为实测；
 4. 单电机、任意子集、乱序 ID、ID >7、冲突 ID 和全七轴发现验收；
 5. STOP/DISABLE、看门狗、MIT/POS_VEL、同步到达与梯度速度完成独立监督验收；
-6. C# adapter、终端 codec、REST/SignalR 投影和资源释放通过 fake transport 后，才允许打开真实串口。
+6. C# session core 和资源释放已通过 fake transport；仍需生产启动/心跳 adapter、REST/SignalR 投影和监督 runbook 通过后，才允许打开真实串口。

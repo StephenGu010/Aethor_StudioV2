@@ -41,6 +41,22 @@ describe('Aethor arm commissioning contract', () => {
     expect(validate(frame), JSON.stringify(validate.errors)).toBe(true);
   });
 
+  it('carries firmware conflict masks and unexpected ids without inventing motor samples', () => {
+    const frame = validFrame();
+    frame.motors = [
+      {
+        motorId: 3,
+        positionDeg: 31,
+        feedbackAgeMs: 65535,
+        valid: false,
+        identityConflict: true
+      }
+    ];
+    frame.unexpectedMotorIds = [8, 12];
+
+    expect(validate(frame), JSON.stringify(validate.errors)).toBe(true);
+  });
+
   it('rejects incompatible identity, malformed time and oversized snapshots', () => {
     expect(validate({ ...validFrame(), contractVersion: '2.0' })).toBe(false);
     expect(validate({ ...validFrame(), receivedAtUtc: 'local-time' })).toBe(false);

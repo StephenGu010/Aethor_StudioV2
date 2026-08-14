@@ -1,5 +1,13 @@
 # 变更记录
 
+## 2026-08-13 - A1-H1-S Aethor_robo 主机会话软件核心（DONE）
+
+- 新增未注册生产 DI 的 `AethorArmSerialSession`：复用唯一持续 reader 与有界优先 writer，以会话内严格递增 request ID 关联乱序 RSP/ERR；终端 REQ 只等待 physical write，不等待回包或持有 writer。
+- HELLO 严格验证 product/protocol/DOF/controller/arm/session/boot/firmware/modes/stream 上限。重复握手取消旧 pending，boot_id 变化清空身份与全部在途请求；超时后的迟到响应进入有界 orphan 诊断，退休 request ID 不可复用。
+- GET_JPOS 与 TEL JOINT_STATE 统一投影到 `AethorArmMotorFrameV1`。Schema 增加可选的冲突与范围外 ID 证据；缺失 q_deg 槽位不使用、冲突值不应用、ID >7 不伪造角度样本。
+- 高频遥测经过容量一的 latest-only pull 槽，未来唯一事件泵主动取帧；慢或失效下游会合并旧帧，既不阻塞协议 parser，也不进入串口 dispose 链。probe 统计 projected/published/coalesced/rejected、pending、correlated/orphan、timeout 与 boot reset，正常遥测不逐帧写日志。
+- C# Gateway 145/145、共享契约 125/125、前端全量 245/245 与 strict TypeScript 通过；isolated wrapper 明确 `serialPortOpened=false / hardwareCommandSent=false`。Profile adapter 与硬件 capability 保持不变，固件/生产 adapter 进入 A1-H1-F。
+
 ## 2026-08-13 - A0-R1 Aethor_robo 部署模型替换（DONE）
 
 - 将 Aethor_robo 内置模型从旧 `Layout11 EX1.zip` 版本替换为用户提供的 `Aethor_Layout_deployed/` 目录快照。规范化结果为 17 links、16 joints、17 个 STL；来源快照、原始/规范化 URDF 和每个保留 STL 均记录 SHA-256。

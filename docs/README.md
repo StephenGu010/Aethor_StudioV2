@@ -34,6 +34,8 @@
 28. [Aethor_robo A1-T0 交接](handoffs/aethor-robo-a1-t0.md)：双臂高频遥测合并、原子模型提交、逐关节显示新鲜度和 adapter 接缝。
 29. [Aethor_robo A1-H0 交接](handoffs/aethor-robo-a1-h0.md)：主机侧 TypeScript/C# codec、跨语言 CRC/帧向量和仍禁用的终端发送边界。
 30. [Aethor_robo A0-R1 部署模型替换交接](handoffs/aethor-robo-a0-r1.md)：新部署 URDF/STL、14 关节兼容映射、动量轮排除和三档视觉/资源验收。
+31. [ADR-0011 Aethor 主机会话边界](decisions/0011-aethor-host-session-boundary.md)：request ID、boot/session、只读投影、高频投递和资源所有权。
+32. [Aethor_robo A1-H1-S 交接](handoffs/aethor-robo-a1-h1-s.md)：未注册生产 DI 的主机会话软件核心与仍被固件阻塞的 H1-F。
 
 ## 状态约定
 
@@ -42,4 +44,4 @@
 - `NOT STARTED`：仅有规划，尚未实现。
 - `BLOCKED`：已记录外部阻塞与恢复条件。
 
-当前状态以 [阶段路线图](roadmap.md) 为准。Aethor_robo A0 模型接入与双七轴本地控制台、A1-U0 候选契约与 ID 诊断、A1-U1/U2 双工基础、A1-T0 数字孪生实时内核和 A1-H0 主机协议 codec 均已完成；A1 总体仍等待 Aethor 固件实现、固件侧向量和只读会话 adapter。Dummy Phase 4 已完成监督只读 COM4 验收；Phase 6B-S 无生产接线执行内核已验证，但 Phase 5 Gate B 与 Phase 6B-H 仍被运动包络和独立授权阻止。Phase 7A 有界观测软件门和 Phase 8A 桌面软件门已验证，但 7B 实机长测与 8B 正式发布门未完成，因此 Dummy Phase 5–8 均保持 `IN PROGRESS`。协议只在 `protocols/` 维护；接口 Schema 只在 `shared/contracts/` 维护，阶段提示词不复制这些定义。
+当前状态以 [阶段路线图](roadmap.md) 为准。Aethor_robo A0 模型接入与双七轴本地控制台、A1-U0 候选契约与 ID 诊断、A1-U1/U2 双工基础、A1-T0 数字孪生实时内核、A1-H0 主机协议 codec 和 A1-H1-S 主机会话软件核心均已完成；A1 总体仍等待 Aethor 固件实现、固件侧向量、生产启动/心跳 adapter 和只读监督实机。Dummy Phase 4 已完成监督只读 COM4 验收；Phase 6B-S 无生产接线执行内核已验证，但 Phase 5 Gate B 与 Phase 6B-H 仍被运动包络和独立授权阻止。Phase 7A 有界观测软件门和 Phase 8A 桌面软件门已验证，但 7B 实机长测与 8B 正式发布门未完成，因此 Dummy Phase 5–8 均保持 `IN PROGRESS`。协议只在 `protocols/` 维护；接口 Schema 只在 `shared/contracts/` 维护，阶段提示词不复制这些定义。

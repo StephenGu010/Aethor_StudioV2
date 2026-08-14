@@ -22,6 +22,7 @@
 | Dummy 双工生产迁移（A1-U2） | 单 reader/decoder、response fence、P0 抢占、direct 连续入队、queued→sent/失败类结果、REST/SignalR 恢复、结构化命令兼容、关闭资源收束 | 禁止访问串口 | `RobotGateway` 不再直接读写或持有 `serialIoGate`；缺回复的 direct 不占响应 waiter、不禁用后续发送；结构化无标签响应仍只归属一个事务；断开取消未写队列并清空 session 历史；全量回归通过 |
 | Aethor_robo 数字孪生实时内核（A1-T0） | 100 Hz 突发、左右臂并发、同 boot 乱序、boot 回流、身份串线、逐轴增量新鲜度、目标隔离、断流灰显和诊断指标 | 禁止访问串口 | 每臂最多一条待提交帧，20 ms 窗口只触发一次原子模型提交；旧帧在 React 前拒绝；逐轴总年龄达到 250 ms 后末姿态保留但来源撤销；目标数组引用和值均不被反馈写入 |
 | Aethor_robo 主机协议 codec（A1-H0） | CCITT-FALSE 标准校验串、TS/C# 共享 vectors、REQ formatter、7 类输出帧、CRC/字段/序号错误、任意字节切分/粘包、CRLF、控制字符、512-byte 边界、终端本地校验与三档视口 | 禁止访问串口 | `123456789 → 29B1`；两种语言独立实现对同一结果一致；超长/非 ASCII/孤立 CR/未结束尾帧有界丢弃；终端生成真实 CRC 并显示具体错误，发送固定禁用；不注册生产 adapter |
+| Aethor_robo 主机会话核心（A1-H1-S） | fake transport、乱序并发响应、严格递增/退休 request ID、HELLO/boot/session、GET_JPOS/TEL 同一 projector、mask 异常、下游暂停拉取、timeout/late orphan、重复握手与 dispose | 禁止访问串口 | 会话不复制 Dummy response fence；终端 write 不等回包；部分/冲突/越界 ID 证据不伪造；200 帧下 parser 不阻塞且最新帧槽丢旧保新；关闭释放等待者、取消全部 pending，transport 只 close/dispose 一次；不注册生产 DI |
 
 ## 实机安全门
 

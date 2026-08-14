@@ -46,6 +46,27 @@ describe('Aethor arm motor-id mapping', () => {
     expect(snapshot.actualPositionsDeg[9]).toBe(0);
   });
 
+  it('preserves conflict-mask and unexpected-id evidence from the firmware projection', () => {
+    const snapshot = applyAethorArmMotorFrame(
+      aethorRoboProfile,
+      createAethorArmMotorSnapshot(aethorRoboProfile, 'left-arm', initial),
+      frame([
+        {
+          motorId: 4,
+          positionDeg: 44,
+          feedbackAgeMs: 65535,
+          valid: false,
+          identityConflict: true
+        }
+      ], { unexpectedMotorIds: [8, 9] })
+    );
+
+    expect(snapshot.duplicateMotorIds).toEqual([4]);
+    expect(snapshot.unexpectedMotorIds).toEqual([8, 9]);
+    expect(snapshot.joints[3]?.availability).toBe('conflict');
+    expect(snapshot.actualPositionsDeg[3]).toBe(0);
+  });
+
   it('ignores reordered frames within one boot but accepts a controller reboot', () => {
     const start = createAethorArmMotorSnapshot(aethorRoboProfile, 'left-arm', initial);
     const newest = applyAethorArmMotorFrame(aethorRoboProfile, start, frame([

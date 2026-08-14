@@ -13,13 +13,19 @@
 5. `docs/handoffs/aethor-robo.md`
 6. 可追溯的 Keil/CubeMX/FreeRTOS 固件 commit 与固件侧协议文档
 
-若第 6 项缺失，只能推进不依赖固件事实的主机软件门；A1-H0 已完成该范围。A1-H1 的会话、固件兼容和真实 adapter 必须停止，不要用 UI、URDF 或 Dummy 行为补写协议事实。
+若第 6 项缺失，只能推进不依赖固件事实的主机软件门；A1-H0 的无状态 codec 与 A1-H1-S 的未注册会话 core 已完成该范围。A1-H1-F 的生产启动/心跳、固件兼容和真实 adapter 必须停止，不要用 UI、URDF 或 Dummy 行为补写协议事实。
 
 ## 已完成前置：A1-H0
 
 - `shared/contracts/src/aethorArmAsciiV1.ts` 与 C# Domain `AethorArmAsciiProtocol` 独立实现无状态 CRC/formatter/parser/行解码。
 - `shared/contracts/conformance/aethor-arm-ascii-v1.vectors.json` 是主机侧语言无关向量；固件尚未证明消费。
 - `/terminal` 生成并校验真实 CRC，但 Aethor 发送仍禁用；下一步不得再增加第二套 codec。
+
+## 已完成前置：A1-H1-S
+
+- `AethorArmSerialSession` 已通过 fake transport 验证严格递增 request ID、乱序 RSP/ERR、HELLO/boot/session、超时/孤立响应和资源释放；没有生产 DI。
+- `GET_JPOS` 与 `TEL JOINT_STATE` 已共用 `AethorArmMotorFrameProjector`，按 mask 输出冲突、缺失和范围外 ID 证据。
+- 高频遥测已通过容量一的 latest-only 投递槽与串口 parser 解耦；不得再创建第二套 reader、writer、pending registry 或下游队列。
 
 ## 实施要求
 

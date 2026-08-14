@@ -86,6 +86,29 @@ describe('Aethor twin frame coordinator', () => {
     expect(coordinator.ingest({ ...frame('left-arm', 1), controllerId: 'controller-2' })).toBe(true);
   });
 
+  it('rejects malformed motor samples and projected diagnostic ids at ingress', () => {
+    const sink = vi.fn();
+    const scheduler = new ManualFrameScheduler();
+    const coordinator = new AethorTwinFrameCoordinator(sink, scheduler, () => 3_750);
+
+    expect(coordinator.ingest({
+      ...frame('left-arm', 1),
+      motors: [{ motorId: 1, positionDeg: Number.NaN, feedbackAgeMs: 2, valid: true }]
+    })).toBe(false);
+    expect(coordinator.ingest({
+      ...frame('left-arm', 2),
+      unexpectedMotorIds: [7]
+    })).toBe(false);
+    expect(coordinator.ingest({
+      ...frame('left-arm', 3),
+      unexpectedMotorIds: [8, 8]
+    })).toBe(false);
+
+    scheduler.flush();
+    expect(sink).not.toHaveBeenCalled();
+    expect(coordinator.getMetrics()).toMatchObject({ receivedFrameCount: 3, rejectedFrameCount: 3 });
+  });
+
   it('cancels an uncommitted frame and sequence history on session reset', () => {
     const sink = vi.fn();
     const scheduler = new ManualFrameScheduler();

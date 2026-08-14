@@ -11,7 +11,8 @@
         "motorId": { "type": "integer", "minimum": 0, "maximum": 255 },
         "positionDeg": { "type": "number" },
         "feedbackAgeMs": { "type": "number", "minimum": 0, "maximum": 65535 },
-        "valid": { "type": "boolean" }
+        "valid": { "type": "boolean" },
+        "identityConflict": { "type": "boolean" }
       }
     },
     "AethorArmMotorFrameV1": {
@@ -43,6 +44,17 @@
           "type": "array",
           "maxItems": 32,
           "items": { "$ref": "#/$defs/AethorArmMotorSampleV1" }
+        },
+        "unexpectedMotorIds": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255,
+            "not": { "minimum": 1, "maximum": 7 }
+          }
         }
       }
     }
