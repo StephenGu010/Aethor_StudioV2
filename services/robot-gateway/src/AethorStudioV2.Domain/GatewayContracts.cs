@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace AethorStudioV2.Domain;
 
 public static class GatewayContractV1
@@ -88,6 +90,7 @@ public sealed record ProtocolFrame(
     string Raw,
     string ParsedKind,
     DataSource Source,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     string? CorrelationId = null);
 
 public sealed record SerialPortDescriptor(

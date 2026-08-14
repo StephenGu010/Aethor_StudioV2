@@ -23,7 +23,8 @@ public sealed record SerialWriteRequest(
     SerialWorkPriority Priority,
     TimeSpan MaximumQueueDelay,
     string? CorrelationId = null,
-    SerialResponseFence? ResponseFence = null);
+    SerialResponseFence? ResponseFence = null,
+    bool RetryOnTransientTimeout = false);
 
 /// <summary>
 /// Holds non-safety writes after a transaction payload reaches the transport.
@@ -65,6 +66,7 @@ public sealed record SerialDuplexProbeSnapshot(
     long AcceptedWrites,
     long RejectedWrites,
     long CompletedWrites,
+    long RetriedWrites,
     long ExpiredWrites,
     long SupersededWrites,
     long FailedWrites,
@@ -160,6 +162,7 @@ public sealed class SerialDuplexScheduler : IAsyncDisposable
     private long acceptedWrites;
     private long rejectedWrites;
     private long completedWrites;
+    private long retriedWrites;
     private long expiredWrites;
     private long supersededWrites;
     private long failedWrites;
@@ -322,6 +325,7 @@ public sealed class SerialDuplexScheduler : IAsyncDisposable
             AcceptedWrites: Interlocked.Read(ref acceptedWrites),
             RejectedWrites: Interlocked.Read(ref rejectedWrites),
             CompletedWrites: Interlocked.Read(ref completedWrites),
+            RetriedWrites: Interlocked.Read(ref retriedWrites),
             ExpiredWrites: Interlocked.Read(ref expiredWrites),
             SupersededWrites: Interlocked.Read(ref supersededWrites),
             FailedWrites: Interlocked.Read(ref failedWrites),
@@ -443,7 +447,7 @@ public sealed class SerialDuplexScheduler : IAsyncDisposable
                 try
                 {
                     writeStartedObserver?.Invoke(pending.Request);
-                    await transport.WriteAsync(pending.Request.Payload, cancellationToken).ConfigureAwait(false);
+                    await WriteWithBoundedRetryAsync(pending.Request, cancellationToken).ConfigureAwait(false);
                     if (writeObserver is not null)
                     {
                         try
@@ -512,6 +516,36 @@ public sealed class SerialDuplexScheduler : IAsyncDisposable
             CancelQueuedWrites();
         }
     }
+
+    private async Task WriteWithBoundedRetryAsync(
+        SerialWriteRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await transport.WriteAsync(request.Payload, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (
+            request.RetryOnTransientTimeout
+            && !cancellationToken.IsCancellationRequested
+            && IsTransientWriteTimeout(exception))
+        {
+            Interlocked.Increment(ref retriedWrites);
+            diagnostics.Record(new(
+                "serial.scheduler.write.retry",
+                GatewayDiagnosticSeverity.Warning,
+                null,
+                transport.PortName,
+                $"WorkId={request.WorkId} Priority={request.Priority} Attempt=1/1 Reason=transient-timeout",
+                exception));
+            await Task.Delay(TimeSpan.FromMilliseconds(100), timeProvider, cancellationToken).ConfigureAwait(false);
+            await transport.WriteAsync(request.Payload, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private static bool IsTransientWriteTimeout(Exception exception) =>
+        exception is TimeoutException
+        || exception is IOException && (exception.HResult & 0xffff) == 121;
 
     private PendingWrite? TakeNextWrite(bool safetyOnly)
     {

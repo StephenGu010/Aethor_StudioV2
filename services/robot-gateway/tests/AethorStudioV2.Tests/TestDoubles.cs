@@ -50,6 +50,7 @@ internal sealed class FakeAsciiTransport : IAsciiTransport
     private byte[]? activeChunk;
     private int activeChunkOffset;
     private int writeCount;
+    private int writeAttemptCount;
     private bool disposed;
 
     public FakeAsciiTransport(Func<string, int, IReadOnlyList<byte[]>> responseScript)
@@ -77,6 +78,8 @@ internal sealed class FakeAsciiTransport : IAsciiTransport
     public int OpenCount { get; private set; }
     public int CloseCount { get; private set; }
     public int DisposeCount { get; private set; }
+    public int WriteAttemptCount => Volatile.Read(ref writeAttemptCount);
+    public ConcurrentQueue<Exception> WriteFailures { get; } = new();
     public ConcurrentQueue<string> Writes { get; } = new();
 
     public async ValueTask OpenAsync(CancellationToken cancellationToken)
@@ -144,6 +147,12 @@ internal sealed class FakeAsciiTransport : IAsciiTransport
             {
                 throw new IOException("fake port closed while writing");
             }
+        }
+
+        Interlocked.Increment(ref writeAttemptCount);
+        if (WriteFailures.TryDequeue(out var writeFailure))
+        {
+            throw writeFailure;
         }
 
         var text = Encoding.ASCII.GetString(payload.Span);

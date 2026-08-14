@@ -67,7 +67,7 @@ Desktop 通过 `Runtime.consoleAPICalled` 接收前端 `console.info`，只把�
 
 既有资源/会话探针继续使用 `serial.opened`、`serial.closed`、`serial.open.failed`、`serial.open.timeout`、`serial.open.cancelled`、`serial.query.timeout`、`serial.polling.faulted`、`serial.close.failed`、`events.publish.timeout`、`events.publish.failed`、`events.shutdown.timeout` 和 `events.shutdown.abandoned`。这些事件可包含 session/port 上下文，但不得据此推断电机状态或命令完成。`serial.open.timeout/cancelled` 表示候选连接没有成为 active transport；网关已开始释放候选资源并隔离本进程后续打开尝试，操作者应关闭并重启该 Gateway，不应连续点击连接。
 
-A1-U1/A1-U2 双工运行时定义 `serial.scheduler.queue.rejected`、`serial.scheduler.queue.superseded`、`serial.scheduler.write.expired`、`serial.scheduler.write.failed`、`serial.scheduler.read.failed`、`serial.scheduler.receive_handler.failed` 和 `serial.scheduler.close.failed`。写入异常同时通过 ticket 的 `failed` 终态和 probe `FailedWrites/LastFault` 观察。事件详情只包含 work ID、priority、queue depth、替代关系或异常类别，不包含串口 payload。probe snapshot 提供四级队列深度，以及 accepted/rejected/completed/expired/superseded/failed、received chunks/bytes 和 last fault。A1-U2 起这些探针已进入 Dummy 生产网关；排查“能入队但未写入”时应同时核对 direct result history 与 scheduler probe。
+A1-U1/A1-U2 双工运行时定义 `serial.scheduler.queue.rejected`、`serial.scheduler.queue.superseded`、`serial.scheduler.write.expired`、`serial.scheduler.write.retry`、`serial.scheduler.write.failed`、`serial.scheduler.read.failed`、`serial.scheduler.receive_handler.failed` 和 `serial.scheduler.close.failed`。写入异常同时通过 ticket 终态和 probe `RetriedWrites/FailedWrites/LastFault` 观察。`write.retry` 只表示显式幂等的只读查询遇到瞬态超时后进行了一次物理重试，不表示设备已应答，也不适用于动作写入。事件详情只包含 work ID、priority、queue depth、替代关系或异常类别，不包含串口 payload。probe snapshot 提供四级队列深度，以及 accepted/rejected/completed/retried/expired/superseded/failed、received chunks/bytes 和 last fault。A1-U2 起这些探针已进入 Dummy 生产网关；排查“能入队但未写入”时应同时核对 direct result history 与 scheduler probe。
 
 ### WebView2 性能样本
 
@@ -93,6 +93,7 @@ Select-String -LiteralPath $log -Pattern 'serial.catalog|serial.session|AETHOR_P
 - `serial.session.failed FailureCategory=conflict`：先读取 REST session 与命令审计确认当前 owner；不得把冲突当成已断开或自动重连。
 - `serial.open.timeout`：原生打开超过 `AETHOR_GATEWAY_SERIAL_OPEN_TIMEOUT_MS`。保留同一 operationId、Gateway PID 和时间窗，正常关闭并重启该 Gateway；不要在原进程中换端口反复尝试，也不要启动第二个串口工具。如果重启后仍复现，再检查驱动、设备管理器状态和是否存在其他 owner。
 - `serial.open.cancelled`：请求在打开过程中被取消，物理句柄取得状态不可由 HTTP 终态推断。当前 Gateway 同样要求重启；不要把页面重试当成清理证据。
+- `serial.scheduler.write.retry`：核对其 work ID 是否为只读 query，并继续观察同一 session 是否恢复 measured 帧。若随后出现 `serial.scheduler.write.failed` 或 `serial.polling.faulted`，说明一次有界恢复未成功，端口应按 faulted 会话处理；不得人工重放动作命令。
 - 出现 5127 而 Desktop 本次声明了其他随机端口：生产 Web 被开发配置污染；构建应立即失败，禁止通过放宽 CORS 掩盖。
 - 没有 `AETHOR_PERF_V1`：确认本地页面已导航成功且日志中没有 `Performance probe unavailable` / `Performance sampling stopped`。不要通过打开远程调试端口绕过；该端口不属于产品诊断契约。
 - heap、node/layout 或受跟踪工作集持续增长：先按 Profile、路由、窗口可见性、`webViewProcessCount` 和相同 sequence 时间窗复现，再对照 `sceneResourceTracker`、ECharts dispose 与路由卸载证据。`webViewProcessCount` 同步变化时先区分进程创建/退出与单进程增长；单次峰值不等于泄漏，禁止用手工 GC 或重启掩盖趋势。

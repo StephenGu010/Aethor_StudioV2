@@ -1,5 +1,11 @@
 # 变更记录
 
+## 2026-08-14 - Dummy 连续动作后的契约告警与瞬态写超时恢复（DONE）
+
+- 从桌面有界日志还原现场链路：三次 engineering 关节组均已到达 `transportWritten`；第二、三次动作后 `#GETJPOS` 出现查询超时，随后 Windows 串口写入返回原生错误 121 并使会话进入 faulted。查询超时产生的错误 `ProtocolFrame` 没有关联号，但旧 C# JSON 仍写出 `correlationId: null`，与公共契约“可选字符串”不一致，前端因此显示泛化 `GATEWAY WARNING`。
+- `ProtocolFrame.CorrelationId` 现在只在有值时序列化。只读 Dummy 查询显式标记为可重试：`#GETJPOS/#GETMODE/#GETENABLE` 遇到一次 `TimeoutException` 或 Windows 错误 121 时延迟 100 ms 后重试一次；动作、使能、停止、模式和任意终端写入绝不自动重发。probe 新增 `RetriedWrites`，诊断事件为 `serial.scheduler.write.retry`，不记录 payload。
+- Gateway 150/150 通过，覆盖空关联号 wire shape、错误 121 恢复、生产轮询接线和动作写入不重试；整仓 contracts 125 + frontend 246 + gateway 150 + desktop 118 + legal 6，共 645/645。Web 2658 modules 与 Gateway/Desktop Release 构建通过，0 warning/error；隔离验证明确 `serialPortOpened=false / hardwareCommandSent=false`。真实 COM4 连续三次动作复验尚未执行。
+
 ## 2026-08-13 - A1-H1-S Aethor_robo 主机会话软件核心（DONE）
 
 - 新增未注册生产 DI 的 `AethorArmSerialSession`：复用唯一持续 reader 与有界优先 writer，以会话内严格递增 request ID 关联乱序 RSP/ERR；终端 REQ 只等待 physical write，不等待回包或持有 writer。

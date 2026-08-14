@@ -92,7 +92,11 @@ public sealed class DummySerialSession : IAsyncDisposable
             correlationId,
             commandId,
             directRequestId);
-        return QueueWrite(write, maximumQueueDelay, responseFence: null);
+        return QueueWrite(
+            write,
+            maximumQueueDelay,
+            responseFence: null,
+            retryOnTransientWriteTimeout: false);
     }
 
     public async Task<DummyResponse> TransactAsync(
@@ -106,7 +110,8 @@ public sealed class DummySerialSession : IAsyncDisposable
         TimeSpan responseTimeout,
         CancellationToken cancellationToken,
         string? correlationId = null,
-        string? commandId = null)
+        string? commandId = null,
+        bool retryOnTransientWriteTimeout = false)
     {
         ArgumentNullException.ThrowIfNull(isExpected);
         ThrowIfDisposed();
@@ -132,7 +137,11 @@ public sealed class DummySerialSession : IAsyncDisposable
                 lease.CorrelationId,
                 commandId,
                 directRequestId: null);
-            var ticket = QueueWrite(write, maximumQueueDelay, responseFence);
+            var ticket = QueueWrite(
+                write,
+                maximumQueueDelay,
+                responseFence,
+                retryOnTransientWriteTimeout);
             lease.ReleasePreemptedWriterFence();
             if (!ticket.Accepted)
             {
@@ -188,7 +197,8 @@ public sealed class DummySerialSession : IAsyncDisposable
     private SerialWriteTicket QueueWrite(
         DummySerialWrite write,
         TimeSpan maximumQueueDelay,
-        SerialResponseFence? responseFence)
+        SerialResponseFence? responseFence,
+        bool retryOnTransientWriteTimeout)
     {
         if (!writes.TryAdd(write.WorkId, write))
         {
@@ -204,7 +214,8 @@ public sealed class DummySerialSession : IAsyncDisposable
                 write.Priority,
                 maximumQueueDelay,
                 write.CorrelationId,
-                responseFence));
+                responseFence,
+                retryOnTransientWriteTimeout));
         }
         catch
         {

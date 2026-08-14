@@ -36,6 +36,7 @@
 30. [Aethor_robo A0-R1 部署模型替换交接](handoffs/aethor-robo-a0-r1.md)：新部署 URDF/STL、14 关节兼容映射、动量轮排除和三档视觉/资源验收。
 31. [ADR-0011 Aethor 主机会话边界](decisions/0011-aethor-host-session-boundary.md)：request ID、boot/session、只读投影、高频投递和资源所有权。
 32. [Aethor_robo A1-H1-S 交接](handoffs/aethor-robo-a1-h1-s.md)：未注册生产 DI 的主机会话软件核心与仍被固件阻塞的 H1-F。
+33. [Dummy 连续动作故障恢复](handoffs/dummy-repeated-motion-recovery.md)：第三次动作后契约告警的日志根因、只读查询有界恢复与现场复验步骤。
 
 ## 状态约定
 

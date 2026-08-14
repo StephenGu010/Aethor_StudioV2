@@ -2055,7 +2055,8 @@ public sealed class RobotGateway : IAsyncDisposable
             options.CommandTimeout,
             options.QueryTimeout,
             cancellationToken,
-            commandId: commandId).ConfigureAwait(false);
+            commandId: commandId,
+            retryOnTransientWriteTimeout: true).ConfigureAwait(false);
     }
 
     private async Task HandlePollingFaultAsync(DummySerialSession transport, string sessionId, Exception exception)

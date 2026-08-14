@@ -317,6 +317,56 @@ public sealed class SerialDuplexSchedulerTests
         await scheduler.DisposeAsync();
     }
 
+    [Fact]
+    public async Task RetrySafeTelemetryRecoversOneWindowsSemaphoreTimeout()
+    {
+        var diagnostics = new RecordingGatewayDiagnostics();
+        var transport = new FakeAsciiTransport((_, _) => []);
+        transport.WriteFailures.Enqueue(new IOException(
+            "fake Windows semaphore timeout",
+            unchecked((int)0x80070079)));
+        await transport.OpenAsync(CancellationToken.None);
+        await using var scheduler = new SerialDuplexScheduler(
+            transport,
+            (_, _) => ValueTask.CompletedTask,
+            diagnostics);
+
+        var ticket = scheduler.QueueWrite(new(
+            "retry-safe-query",
+            Encoding.ASCII.GetBytes("#GETJPOS\n"),
+            SerialWorkPriority.Telemetry,
+            TimeSpan.FromSeconds(2),
+            RetryOnTransientTimeout: true));
+
+        Assert.Equal(SerialWriteOutcome.Written, (await ticket.Completion!).Outcome);
+        var probe = scheduler.GetProbeSnapshot();
+        Assert.Equal(2, transport.WriteAttemptCount);
+        Assert.Equal(1, probe.RetriedWrites);
+        Assert.Equal(0, probe.FailedWrites);
+        Assert.False(probe.Faulted);
+        Assert.Contains(diagnostics.Events, item => item.EventName == "serial.scheduler.write.retry");
+    }
+
+    [Fact]
+    public async Task MotionWriteNeverRetriesAfterATransientTimeout()
+    {
+        var transport = new FakeAsciiTransport((_, _) => []);
+        transport.WriteFailures.Enqueue(new TimeoutException("fake write timeout"));
+        await transport.OpenAsync(CancellationToken.None);
+        await using var scheduler = CreateScheduler(transport);
+
+        var ticket = scheduler.QueueWrite(Request(
+            "motion",
+            ">1,2,3,4,5,6,10\n",
+            SerialWorkPriority.Interactive));
+
+        Assert.Equal(SerialWriteOutcome.Failed, (await ticket.Completion!).Outcome);
+        await scheduler.Completion.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(1, transport.WriteAttemptCount);
+        Assert.Equal(0, scheduler.GetProbeSnapshot().RetriedWrites);
+        Assert.True(scheduler.GetProbeSnapshot().Faulted);
+    }
+
     private static SerialDuplexScheduler CreateScheduler(
         FakeAsciiTransport transport,
         SerialDuplexSchedulerOptions? options = null) =>

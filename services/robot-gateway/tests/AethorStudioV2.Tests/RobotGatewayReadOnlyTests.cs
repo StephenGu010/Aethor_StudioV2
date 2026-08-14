@@ -50,6 +50,29 @@ public sealed class RobotGatewayReadOnlyTests
     }
 
     [Fact]
+    public async Task ReadOnlyPollingRetriesOneWindowsSemaphoreTimeoutWithoutFaultingTheSession()
+    {
+        var transport = FakeAsciiTransport.WithDefaultStatus();
+        transport.WriteFailures.Enqueue(new IOException(
+            "fake Windows semaphore timeout",
+            unchecked((int)0x80070079)));
+        var diagnostics = new RecordingGatewayDiagnostics();
+        await using var gateway = CreateGateway(
+            new FakeAsciiTransportFactory(_ => transport),
+            diagnostics: diagnostics);
+
+        await gateway.ConnectAsync(
+            new("COM4", GatewayContractV1.DummyProfileId),
+            CancellationToken.None);
+        await TestWait.UntilAsync(() => gateway.GetSession().Validity == Validity.Valid);
+
+        Assert.Equal(ConnectionState.Connected, gateway.GetSession().ConnectionState);
+        Assert.Equal(transport.Writes.Count + 1, transport.WriteAttemptCount);
+        Assert.Contains(diagnostics.Events, item => item.EventName == "serial.scheduler.write.retry");
+        Assert.DoesNotContain(diagnostics.Events, item => item.EventName == "serial.polling.faulted");
+    }
+
+    [Fact]
     public async Task ConcurrentConnectIsRejectedAndCreatesOnlyOneTransport()
     {
         var factory = new FakeAsciiTransportFactory();

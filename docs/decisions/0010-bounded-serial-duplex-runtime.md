@@ -30,6 +30,10 @@ Application 层提供 `SerialDuplexScheduler`，只接管已经打开的 `IAscii
 
 Dummy A1-U2 已将所有生产读写一次性迁移到 `DummySerialSession + SerialDuplexScheduler`，并删除 `RobotGateway` 的旧 `serialIoGate`/直接读写路径。单一 decoder 负责所有 Dummy RX；结构化命令的 response fence 只有在 writer 开始向 transport 提交对应 payload 后才允许匹配回包，排队期间到达的旧响应保持无主观察。direct terminal 只排队写入并通过结果事件/历史收束。Dummy 没有 request ID，writer 开始后的迟到同形响应仍无法从线协议上强区分。
 
+2026-08-14 的现场日志证明 Windows CDC 写入可能在连续人工动作后的只读轮询中返回原生错误 121。调度器因此增加一个显式、默认关闭的 `RetryOnTransientTimeout` 属性：只有 Dummy adapter 的三种幂等只读查询设置它；一次 `TimeoutException` 或低位 Win32 code 121 允许在 100 ms 后重试一次。所有动作、状态改变和人工终端写入保持默认关闭，避免因主机不确定写入结果而重复执行。第一次失败计入 `RetriedWrites` 和 `serial.scheduler.write.retry`；重试仍失败时继续使用原有 session fault、close、dispose 路径。
+
+`ProtocolFrame.correlationId` 在共享契约中是可选字符串。无关联的解析/查询错误必须省略该 JSON 属性，不能写成 `null`；否则 SignalR 严格边界会把真实串口退化误报成网关契约违规。
+
 `/terminal` 已按 request ID 展示多个 direct 请求的 `queued/sent/失败类` 状态，某个请求缺少设备回复不会禁用下一次发送。Aethor_robo 仍只显示候选 REQ 模板和白名单校验；CRC 跨语言向量与 adapter 缺席时发送固定禁用，不显示 Dummy 帧。
 
 ## 后续顺序

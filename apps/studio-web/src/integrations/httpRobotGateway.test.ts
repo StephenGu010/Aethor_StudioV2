@@ -300,6 +300,41 @@ describe('HttpRobotGateway boundary', () => {
     await close();
   });
 
+  it('accepts an uncorrelated protocol error only when the optional field is omitted', async () => {
+    const handlers = new Map<string, (value: unknown) => void>();
+    const connection = {
+      on: vi.fn((name: string, handler: (value: unknown) => void) => handlers.set(name, handler)),
+      onreconnecting: vi.fn(),
+      onreconnected: vi.fn(),
+      onclose: vi.fn(),
+      start: vi.fn(async () => {}),
+      stop: vi.fn(async () => {})
+    };
+    const gateway = new HttpRobotGateway(
+      { baseUrl: 'http://127.0.0.1:5127', sessionToken: token },
+      globalThis.fetch.bind(globalThis),
+      () => connection as never
+    );
+    const onProtocolFrame = vi.fn();
+    const onTransportError = vi.fn();
+    const close = await gateway.openTelemetry({ onProtocolFrame, onTransportError });
+    const frame = {
+      id: 'query-timeout-1', timestampUtc: '2026-08-14T00:00:00.000Z', direction: 'error',
+      raw: 'Read-only query timed out: #GETJPOS', parsedKind: 'queryTimeout', source: 'unavailable'
+    };
+
+    handlers.get('protocolFrame')?.(frame);
+    expect(onProtocolFrame).toHaveBeenCalledWith(frame);
+    expect(onTransportError).not.toHaveBeenCalled();
+
+    handlers.get('protocolFrame')?.({ ...frame, correlationId: null });
+    expect(onTransportError).toHaveBeenCalledWith({
+      kind: 'contractViolation',
+      message: expect.stringContaining('RobotGatewayV1')
+    });
+    await close();
+  });
+
   it('falls back to an explicitly unavailable showcase source for missing or unsafe config', () => {
     expect(createRobotGateway({})).toBeInstanceOf(StaticShowcaseSource);
     expect(createRobotGateway({ VITE_AETHOR_GATEWAY_URL: 'http://127.0.0.1:5127' }).unavailableReason).toBeTruthy();
