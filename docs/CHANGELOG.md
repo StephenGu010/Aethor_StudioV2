@@ -1,5 +1,11 @@
 # 变更记录
 
+## 2026-08-17 - Aethor_robo 固件 PRD 快照与协议基线同步（DONE）
+
+- 将用户提供的 18 份固件 PRD、阶段计划和 handoff 作为非权威参考快照收录到 `docs/references/aethor-robo-firmware-prd/`，保留原始文件 SHA-256；入库副本清理一处个人桌面绝对路径，并把两处行尾空格等价改为 `<br>`，原始本地文件未修改。
+- 只读检查外部固件提交 `db0818b15eb3c2bc7cdde5b34a548c6e69f47a9f`，确认当前正式 Type-C USB CDC 协议为 `aethor-text-v1`，而 `aethor-arm-ascii-v1` 只作为迁移前回归资产。固件仓库未被修改、提交或推送。
+- 同步候选协议状态、A1/A1-H1-F 路线图、文档索引和 Aethor_robo 当前交接。Studio 的 Profile adapter 与硬件 capability 保持不变；本次不实现新 codec、生产 adapter、串口连接或硬件动作。
+
 ## 2026-08-14 - Dummy 连续动作后的契约告警与瞬态写超时恢复（DONE）
 
 - 从桌面有界日志还原现场链路：三次 engineering 关节组均已到达 `transportWritten`；第二、三次动作后 `#GETJPOS` 出现查询超时，随后 Windows 串口写入返回原生错误 121 并使会话进入 faulted。查询超时产生的错误 `ProtocolFrame` 没有关联号，但旧 C# JSON 仍写出 `correlationId: null`，与公共契约“可选字符串”不一致，前端因此显示泛化 `GATEWAY WARNING`。

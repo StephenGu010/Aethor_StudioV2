@@ -37,6 +37,7 @@
 31. [ADR-0011 Aethor 主机会话边界](decisions/0011-aethor-host-session-boundary.md)：request ID、boot/session、只读投影、高频投递和资源所有权。
 32. [Aethor_robo A1-H1-S 交接](handoffs/aethor-robo-a1-h1-s.md)：未注册生产 DI 的主机会话软件核心与仍被固件阻塞的 H1-F。
 33. [Dummy 连续动作故障恢复](handoffs/dummy-repeated-motion-recovery.md)：第三次动作后契约告警的日志根因、只读查询有界恢复与现场复验步骤。
+34. [Aethor_robo 固件 PRD 参考快照](references/aethor-robo-firmware-prd/IMPORT-MANIFEST.md)：用户提供的 18 份固件需求与阶段交接、原始哈希及当前正式固件协议差异。
 
 ## 状态约定
 
@@ -45,4 +46,4 @@
 - `NOT STARTED`：仅有规划，尚未实现。
 - `BLOCKED`：已记录外部阻塞与恢复条件。
 
-当前状态以 [阶段路线图](roadmap.md) 为准。Aethor_robo A0 模型接入与双七轴本地控制台、A1-U0 候选契约与 ID 诊断、A1-U1/U2 双工基础、A1-T0 数字孪生实时内核、A1-H0 主机协议 codec 和 A1-H1-S 主机会话软件核心均已完成；A1 总体仍等待 Aethor 固件实现、固件侧向量、生产启动/心跳 adapter 和只读监督实机。Dummy Phase 4 已完成监督只读 COM4 验收；Phase 6B-S 无生产接线执行内核已验证，但 Phase 5 Gate B 与 Phase 6B-H 仍被运动包络和独立授权阻止。Phase 7A 有界观测软件门和 Phase 8A 桌面软件门已验证，但 7B 实机长测与 8B 正式发布门未完成，因此 Dummy Phase 5–8 均保持 `IN PROGRESS`。协议只在 `protocols/` 维护；接口 Schema 只在 `shared/contracts/` 维护，阶段提示词不复制这些定义。
+当前状态以 [阶段路线图](roadmap.md) 为准。Aethor_robo A0 模型接入与双七轴本地控制台、A1-U0 候选契约与 ID 诊断、A1-U1/U2 双工基础、A1-T0 数字孪生实时内核、A1-H0 主机协议 codec 和 A1-H1-S 主机会话软件核心均已完成；可追溯固件基线现已取得，但正式 `aethor-text-v1` 与 Studio 候选 `aethor-arm-ascii-v1` 尚未对齐，生产启动/会话 adapter 和只读监督实机仍不存在。Dummy Phase 4 已完成监督只读 COM4 验收；Phase 6B-S 无生产接线执行内核已验证，但 Phase 5 Gate B 与 Phase 6B-H 仍被运动包络和独立授权阻止。Phase 7A 有界观测软件门和 Phase 8A 桌面软件门已验证，但 7B 实机长测与 8B 正式发布门未完成，因此 Dummy Phase 5–8 均保持 `IN PROGRESS`。协议只在 `protocols/` 维护；接口 Schema 只在 `shared/contracts/` 维护，参考快照不得覆盖这些事实源。

@@ -14,6 +14,14 @@
 | 最新模型修订 | [aethor-robo-a0-r1.md](aethor-robo-a0-r1.md)：17 links / 16 joints / 17 STL，14 关节映射不变，独立动量轮链路已移除 |
 | 硬件访问 | 无；未枚举或打开 COM4，未发送任何硬件命令 |
 
+## 2026-08-17 外部固件与 PRD 同步
+
+- 外部固件仓库为 [StephenGu010/Aethor_robo_fw](https://github.com/StephenGu010/Aethor_robo_fw)，检查基线为 `db0818b15eb3c2bc7cdde5b34a548c6e69f47a9f`。
+- 本次只读取该提交的 Git 对象。固件本地工作区已有大量未提交重构，未被修改、暂存、提交或推送。
+- 该提交的正式 Type-C USB CDC 协议是 `aethor-text-v1`，采用可打印 ASCII、LF/CRLF 和可选十进制请求编号，不使用应用层 CRC。`aethor-arm-ascii-v1` 只作为迁移前兼容性回归资产。
+- 用户提供的 18 份固件 PRD/阶段 handoff 已作为非权威参考快照收录到 [固件 PRD 导入说明](../references/aethor-robo-firmware-prd/IMPORT-MANIFEST.md)。快照不能覆盖当前 Studio 协议、契约和路线图。
+- Studio 现有 H0/H1-S 仍实现 `aethor-arm-ascii-v1`，因此当前并不兼容该固件正式入口。Profile adapter 和硬件 capability 保持不变。
+
 ## 本阶段完成内容
 
 - 新增 `AethorArmMotorFrameV1` TypeScript 类型和独立 JSON Schema。帧固定 Profile、左右臂、controller/arm/boot/sequence 身份，最多保留 32 个无序、部分、重复或范围外样本供领域诊断。
@@ -50,13 +58,13 @@
 - Schema 允许异常 ID 是为了保留诊断证据，不表示这些 ID 可控制；未来 C# adapter 必须重复执行领域校验。
 - 完全相同 CAN ID 的两个驱动未必能可靠计数，只能报告身份冲突候选，不能声称知道重复设备数量。
 - 当前实体链灰显使用“首个不确定关节及其后全部 link”的保守投影；需在真实 URDF/CAN 反馈联调时确认每个关节的 link 归属仍与 Profile 一致。
-- 候选 `921600 baud` 与 50 Hz 遥测尚未由固件实测；主机侧 CRC/基础帧向量已冻结，但固件尚未证明消费，重复请求、会话、回绕与业务错误仍未跨语言关闭。
+- Studio 候选 `921600 baud`、CRC 帧与 50 Hz 遥测不属于固件基线 `db0818b` 的正式 `aethor-text-v1` 入口；不能把固件中的旧 CRC 回归资产当作生产兼容证据。
 - Aethor_robo 当前来源目录仍缺完整 BSD 条款；底座 STL 还烘焙有 wheel-shell CAD 外形，若要彻底删除外观需重新导出底座。
 
 ## 下一步：A1-H1-F
 
-1. 取得可追溯的 Keil/CubeMX/FreeRTOS 固件 commit，并按 `docs/prompts/aethor-robo-a1-h-firmware-adapter.md` 复核任务所有权。
-2. 让固件消费现有主机向量，并补齐重复请求、回绕、boot/session 与业务错误向量；不得从 Dummy 协议补推。
-3. 复用现有 Aethor codec、`AethorArmSerialSession` 与双工调度基础设施，新增启动协调器和心跳 owner；不得新增第二套 reader、writer 或 codec。
+1. 以固件提交 `db0818b` 的 `aethor-text-v1` 文档、正式 vectors 和实现为输入，形成 Studio 侧协议采用决策；不得把旧 `aethor-arm-ascii-v1` 回归资产误作正式入口。
+2. 若 Studio 采用 `aethor-text-v1`，先定义独立版本化 codec/会话迁移方案并让两端消费同一 vectors；若固件恢复 CRC 协议，则必须提供新的正式入口、版本和固件侧证据。
+3. 复用现有双工调度和数字孪生 ingest 接缝，新增与最终协议匹配的启动协调器和会话 owner；不得复制 Dummy reader/writer，也不得让两套 Aethor codec 同时成为生产入口。
 4. 先以 fake transport 验证生产 REST/SignalR、心跳、部分/冲突/范围外 ID 和进程退出，再设计只读监督实机 runbook。
 5. 未取得新的现场授权前，不打开 COM4、不使能、不发送运动或停止命令。A1-H 未关闭前，A1 不得标记 DONE。

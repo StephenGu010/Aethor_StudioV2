@@ -2,9 +2,9 @@
 
 ## 状态与适用范围
 
-本文是 `Aethor_robo` 单条七轴机械臂与 Aethor Studio V2 之间的候选协议事实源，协议 ID 为 `aethor-arm-ascii-v1`。它服务左臂或右臂中的一条七轴链；双臂由独立的控制器/臂身份区分，不能依靠串口到达顺序推断。
+本文是 Aethor Studio V2 已实现的主机候选协议事实源，协议 ID 为 `aethor-arm-ascii-v1`。它服务左臂或右臂中的一条七轴链；双臂由独立的控制器/臂身份区分，不能依靠串口到达顺序推断。本文不代表当前 Aethor_robo 固件正式入口已经采用该协议。
 
-当前状态为 `DRAFT / HOST CODEC SOFTWARE VERIFIED`：JSON Schema、TypeScript 类型、ID 映射、TypeScript/C# 独立 codec、CRC/帧跨语言向量和控制台降级显示已有软件测试。固件 parser、固件侧向量、请求会话 adapter 和实机反馈尚未实现；内置 Profile 的 adapter 仍是 `aethor-robo-pending`，全部硬件 capability 继续为 false。
+当前状态为 `DRAFT / HOST CODEC SOFTWARE VERIFIED / FIRMWARE PROTOCOL MISMATCH`：JSON Schema、TypeScript 类型、ID 映射、TypeScript/C# 独立 codec、CRC/帧跨语言向量和控制台降级显示已有软件测试。外部固件仓库提交 `db0818b15eb3c2bc7cdde5b34a548c6e69f47a9f` 的正式入口为无应用层 CRC 的 `aethor-text-v1`；本协议在该固件中只保留为迁移前回归资产。Studio 尚未实现 `aethor-text-v1` adapter，请求会话也未注册生产 DI；内置 Profile 的 adapter 仍是 `aethor-robo-pending`，全部硬件 capability 继续为 false。
 
 本协议不兼容 Dummy 的 `!START`、`#GETJPOS` 和 `>` 命令。两种机器人可以共享上位机的串口生命周期、日志和终端 UI，但必须使用不同 codec 与状态机。
 
