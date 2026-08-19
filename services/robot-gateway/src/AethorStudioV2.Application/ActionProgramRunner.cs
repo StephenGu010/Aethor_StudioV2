@@ -83,11 +83,12 @@ public sealed partial class ActionProgramRunner : IAsyncDisposable
         ObjectDisposedException.ThrowIf(disposed, this);
         ArgumentNullException.ThrowIfNull(plan);
 
-        var fingerprint = ComputePlanFingerprint(plan);
-        var validationErrors = ValidatePlan(plan, fingerprint, resumeCheckpoint);
+        var executionPlan = SnapshotPlan(plan);
+        var fingerprint = ComputePlanFingerprint(executionPlan);
+        var validationErrors = ValidatePlan(executionPlan, fingerprint, resumeCheckpoint);
         if (validationErrors.Count > 0)
         {
-            return RejectedHandle(plan, ActionProgramRunCode.InvalidPlan, validationErrors);
+            return RejectedHandle(executionPlan, ActionProgramRunCode.InvalidPlan, validationErrors);
         }
 
         ActiveRun ownedRun;
@@ -102,12 +103,12 @@ public sealed partial class ActionProgramRunner : IAsyncDisposable
                     ["已有动作运行持有执行器；并发运行被拒绝。"]);
             }
 
-            ownedRun = new ActiveRun(plan.RunId);
+            ownedRun = new ActiveRun(executionPlan.RunId);
             activeRun = ownedRun;
         }
 
-        _ = RunOwnedAsync(ownedRun, plan, fingerprint, resumeCheckpoint);
-        return new(plan.RunId, true, [], ownedRun.Completion.Task);
+        _ = RunOwnedAsync(ownedRun, executionPlan, fingerprint, resumeCheckpoint);
+        return new(executionPlan.RunId, true, [], ownedRun.Completion.Task);
     }
 
     public bool RequestStop(string runId)
@@ -666,10 +667,9 @@ public sealed partial class ActionProgramRunner : IAsyncDisposable
             for (var jointIndex = 0; jointIndex < waypoint.PositionsDeg.Count; jointIndex += 1)
             {
                 var value = waypoint.PositionsDeg[jointIndex];
-                var limit = DummyJointLimits.All[jointIndex];
-                if (!double.IsFinite(value) || value < limit.LowerDeg || value > limit.UpperDeg)
+                if (!double.IsFinite(value))
                 {
-                    errors.Add($"点位 {index + 1} 的 J{jointIndex + 1} 超出 Dummy manifest 限位。");
+                    errors.Add($"点位 {index + 1} 的 J{jointIndex + 1} 必须是有限设备角。");
                 }
             }
         }
@@ -727,6 +727,14 @@ public sealed partial class ActionProgramRunner : IAsyncDisposable
         $"action-{runId}-wp-{waypointIndex + 1:D3}-{operation}";
 
     private static string StopCommandId(string runId) => $"action-{runId}-stop";
+
+    private static ActionProgramExecutionPlan SnapshotPlan(ActionProgramExecutionPlan plan) =>
+        plan with
+        {
+            Waypoints = plan.Waypoints
+                .Select(waypoint => waypoint with { PositionsDeg = [.. waypoint.PositionsDeg] })
+                .ToArray()
+        };
 
     private static string ComputePlanFingerprint(ActionProgramExecutionPlan plan)
     {

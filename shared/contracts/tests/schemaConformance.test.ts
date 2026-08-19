@@ -8,7 +8,13 @@ import actionProgramSchema from '../action-program-v1.schema.json';
 import gatewaySchema from '../gateway-contracts-v1.schema.json';
 import profileSchema from '../robot-profile-v1.schema.json';
 import type { ActionProgramV1 } from '../src/actionProgram';
-import type { CommandResult, RobotProfileManifestV1, RobotSessionSnapshot } from '../src/types';
+import type {
+  ActionProgramRunSnapshotV1,
+  ActionProgramRunStartRequestV1,
+  CommandResult,
+  RobotProfileManifestV1,
+  RobotSessionSnapshot
+} from '../src/types';
 
 const ajv = new Ajv2020({ allErrors: true, strict: true });
 addFormats(ajv);
@@ -41,7 +47,7 @@ describe('JSON Schema and TypeScript contract conformance', () => {
     expect(validate(typedProgram), JSON.stringify(validate.errors)).toBe(true);
   });
 
-  it('rejects unsafe or silently incompatible action documents', () => {
+  it('rejects structurally incompatible action documents while allowing unbounded finite device angles', () => {
     const validate = ajv.compile(actionProgramSchema);
     const waypoint = actionProgramExample.waypoints[0]!;
 
@@ -49,7 +55,16 @@ describe('JSON Schema and TypeScript contract conformance', () => {
     expect(validate({ ...actionProgramExample, hiddenExecutionFlag: true })).toBe(false);
     expect(validate({ ...actionProgramExample, waypoints: [{ ...waypoint, mode: 5 }] })).toBe(false);
     expect(validate({ ...actionProgramExample, waypoints: [{ ...waypoint, positionsDeg: [0, 0, 0, 0, 0] }] })).toBe(false);
-    expect(validate({ ...actionProgramExample, waypoints: [{ ...waypoint, positionsDeg: [180, 0, 0, 0, 0, 0] }] })).toBe(false);
+    expect(validate({ ...actionProgramExample, waypoints: [{ ...waypoint, positionsDeg: [180, 95, -45, 200, -150, 900] }] })).toBe(true);
+    expect(validate({
+      ...actionProgramExample,
+      waypoints: [{
+        ...waypoint,
+        positionsDeg: [0, 95, -5, 0, 0, 0],
+        source: 'measuredCapture',
+        capturedAtUtc: '2026-08-09T00:00:01.000Z'
+      }]
+    })).toBe(true);
     expect(validate({
       ...actionProgramExample,
       waypoints: [{ ...waypoint, source: 'measuredCapture', capturedAtUtc: null }]
@@ -233,6 +248,70 @@ describe('JSON Schema and TypeScript contract conformance', () => {
     expect(validate({ ...sent, evidence: 'deviceAck' })).toBe(false);
     expect(validate({ ...sent, deviceReply: 'ok' })).toBe(false);
     expect(validate({ ...sent, status: 'replied' })).toBe(false);
+  });
+
+  it('validates immutable engineering action-run requests and unconfirmed runtime snapshots', () => {
+    const request = {
+      contractVersion: '1.0',
+      runId: 'run-1',
+      programId: 'program-1',
+      revision: 4,
+      sessionId: 'session-1',
+      profileId: 'dummy-6dof',
+      source: 'authored',
+      speedDegS: 20,
+      loopEnabled: true,
+      waypoints: [{
+        waypointId: 'point-1',
+        name: '示教点 1',
+        positionsDeg: [181, 95, -45, 200, -150, 900],
+        mode: 2,
+        postDispatchWaitMs: 500,
+        source: 'measuredCapture'
+      }]
+    } satisfies ActionProgramRunStartRequestV1;
+    const snapshot = {
+      contractVersion: '1.0',
+      runId: 'run-1',
+      programId: 'program-1',
+      revision: 4,
+      sessionId: 'session-1',
+      profileId: 'dummy-6dof',
+      state: 'finishedUnconfirmed',
+      currentWaypointIndex: 0,
+      waypointCount: 1,
+      completedCycles: 1,
+      loopEnabled: false,
+      speedDegS: 20,
+      lastRequestId: 'run-1-point-0-cycle-0',
+      lastEvidence: 'transportWritten',
+      physicalCompletionConfirmed: false,
+      message: '全部点位已写入串口；未确认物理到位',
+      startedAtUtc: '2026-08-19T00:00:00.000Z',
+      updatedAtUtc: '2026-08-19T00:00:02.000Z',
+      finishedAtUtc: '2026-08-19T00:00:02.000Z'
+    } satisfies ActionProgramRunSnapshotV1;
+
+    const validateRequest = gatewayValidator('ActionProgramRunStartRequestV1');
+    const validateSnapshot = gatewayValidator('ActionProgramRunSnapshotV1');
+    expect(validateRequest(request), JSON.stringify(validateRequest.errors)).toBe(true);
+    expect(validateSnapshot(snapshot), JSON.stringify(validateSnapshot.errors)).toBe(true);
+    expect(validateRequest({ ...request, source: 'showcaseExample' })).toBe(false);
+    expect(validateRequest({ ...request, revision: 2_147_483_648 })).toBe(false);
+    expect(validateRequest({ ...request, waypoints: [{ ...request.waypoints[0], positionsDeg: [1, 2, 3] }] })).toBe(false);
+    expect(validateSnapshot({ ...snapshot, physicalCompletionConfirmed: true })).toBe(false);
+    expect(validateSnapshot({ ...snapshot, state: 'finishedUnconfirmed', lastEvidence: 'deviceAck' })).toBe(false);
+    expect(validateSnapshot({ ...snapshot, completedCycles: 2_147_483_648 })).toBe(false);
+    expect(validateSnapshot({
+      ...snapshot,
+      state: 'running',
+      currentWaypointIndex: null,
+      waypointCount: 0,
+      completedCycles: 0,
+      lastRequestId: null,
+      lastEvidence: 'none',
+      finishedAtUtc: null
+    })).toBe(false);
   });
 
   it.each([

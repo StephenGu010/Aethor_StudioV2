@@ -300,6 +300,77 @@ describe('HttpRobotGateway boundary', () => {
     await close();
   });
 
+  it('posts immutable action-run snapshots and accepts only unconfirmed runtime states', async () => {
+    const starting = {
+      contractVersion: '1.0', runId: 'run-1', programId: 'program-1', revision: 2,
+      sessionId: 'session-1', profileId: 'dummy-6dof', state: 'starting',
+      currentWaypointIndex: null, waypointCount: 1, completedCycles: 0, loopEnabled: true,
+      speedDegS: 20, lastRequestId: null, lastEvidence: 'none', physicalCompletionConfirmed: false,
+      message: 'starting', startedAtUtc: '2026-08-19T00:00:00.000Z',
+      updatedAtUtc: '2026-08-19T00:00:00.000Z', finishedAtUtc: null
+    };
+    const stopped = {
+      ...starting, state: 'stoppedUnconfirmed', lastRequestId: 'run-1-disable',
+      lastEvidence: 'transportWritten', message: 'stopped without physical confirmation',
+      updatedAtUtc: '2026-08-19T00:00:01.000Z', finishedAtUtc: '2026-08-19T00:00:01.000Z'
+    };
+    const responses = [starting, stopped];
+    const fetcher = vi.fn(async () => new Response(JSON.stringify(responses.shift()), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    })) as unknown as typeof fetch;
+    const gateway = new HttpRobotGateway({ baseUrl: 'http://127.0.0.1:5127', sessionToken: token }, fetcher);
+    const request = {
+      contractVersion: '1.0' as const,
+      runId: 'run-1', programId: 'program-1', revision: 2, sessionId: 'session-1',
+      profileId: 'dummy-6dof' as const, source: 'authored' as const, speedDegS: 20, loopEnabled: true,
+      waypoints: [{
+        waypointId: 'point-1', name: '点位 1', positionsDeg: [181, 95, -45, 200, -150, 900],
+        mode: 2 as const, postDispatchWaitMs: 500, source: 'measuredCapture' as const
+      }]
+    };
+
+    await expect(gateway.startActionProgram(request)).resolves.toMatchObject({ state: 'starting' });
+    await expect(gateway.stopActionProgram()).resolves.toMatchObject({ state: 'stoppedUnconfirmed' });
+    expect(vi.mocked(fetcher).mock.calls[0]?.[0]).toBe('http://127.0.0.1:5127/api/v1/engineering/action-program/run/start');
+    expect(JSON.parse(String(vi.mocked(fetcher).mock.calls[0]?.[1]?.body))).toEqual(request);
+    expect(vi.mocked(fetcher).mock.calls[1]?.[0]).toBe('http://127.0.0.1:5127/api/v1/engineering/action-program/run/stop');
+  });
+
+  it('delivers action-run progress from SignalR and rejects false physical completion claims', async () => {
+    const handlers = new Map<string, (value: unknown) => void>();
+    const connection = {
+      on: vi.fn((name: string, handler: (value: unknown) => void) => handlers.set(name, handler)),
+      onreconnecting: vi.fn(), onreconnected: vi.fn(), onclose: vi.fn(),
+      start: vi.fn(async () => {}), stop: vi.fn(async () => {})
+    };
+    const gateway = new HttpRobotGateway(
+      { baseUrl: 'http://127.0.0.1:5127', sessionToken: token },
+      globalThis.fetch.bind(globalThis),
+      () => connection as never
+    );
+    const onActionProgramRun = vi.fn();
+    const onTransportError = vi.fn();
+    const close = await gateway.openTelemetry({ onActionProgramRun, onTransportError });
+    const snapshot = {
+      contractVersion: '1.0', runId: 'run-1', programId: 'program-1', revision: 2,
+      sessionId: 'session-1', profileId: 'dummy-6dof', state: 'running',
+      currentWaypointIndex: 0, waypointCount: 1, completedCycles: 0, loopEnabled: false,
+      speedDegS: 20, lastRequestId: 'run-1-p0-c0', lastEvidence: 'transportWritten',
+      physicalCompletionConfirmed: false, message: 'written, unconfirmed',
+      startedAtUtc: '2026-08-19T00:00:00.000Z', updatedAtUtc: '2026-08-19T00:00:01.000Z',
+      finishedAtUtc: null
+    };
+
+    handlers.get('actionProgramRunSnapshot')?.(snapshot);
+    handlers.get('actionProgramRunSnapshot')?.({ ...snapshot, physicalCompletionConfirmed: true });
+
+    expect(onActionProgramRun).toHaveBeenCalledOnce();
+    expect(onActionProgramRun).toHaveBeenCalledWith(snapshot);
+    expect(onTransportError).toHaveBeenCalledWith(expect.objectContaining({ kind: 'contractViolation' }));
+    await close();
+  });
+
   it('accepts an uncorrelated protocol error only when the optional field is omitted', async () => {
     const handlers = new Map<string, (value: unknown) => void>();
     const connection = {

@@ -29,7 +29,7 @@ interface ActionProgramStoreState {
   previewedWaypointId: string | null;
   setDraft: (program: ActionProgramV1, origin: ActionDraftOrigin) => void;
   openSavedProgram: (programId: string) => boolean;
-  updateDraftMeta: (patch: Pick<ActionProgramV1, 'name' | 'notes'>) => void;
+  updateDraftMeta: (patch: Partial<Pick<ActionProgramV1, 'name' | 'notes' | 'speedDegS' | 'loopEnabled'>>) => void;
   addWaypoint: (waypoint: ActionWaypointV1) => boolean;
   updateWaypoint: (waypointId: string, patch: Partial<Omit<ActionWaypointV1, 'waypointId'>>) => void;
   removeWaypoint: (waypointId: string) => void;

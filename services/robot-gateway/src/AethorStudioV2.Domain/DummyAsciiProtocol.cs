@@ -85,6 +85,8 @@ public static class DummyAsciiProtocol
 {
     public const int BaudRate = 115_200;
     public const int MaximumLineCharacters = 255;
+    public const int MotionQueueBytes = 64;
+    public const int MaximumMotionLineCharacters = MotionQueueBytes - 1;
     public const int JointCount = 6;
     public const string LineEnding = "\n";
 
@@ -141,8 +143,51 @@ public static class DummyAsciiProtocol
 
         var values = positionsDeg
             .Append(speedDegS)
-            .Select(value => value.ToString("0.###############", CultureInfo.InvariantCulture));
-        return $">{string.Join(',', values)}";
+            .Select(FormatFiniteNumber);
+        var line = $">{string.Join(',', values)}";
+        if (line.Length > MaximumMotionLineCharacters)
+        {
+            throw new ArgumentException(
+                $"Dummy motion command must fit {MaximumMotionLineCharacters} ASCII characters",
+                nameof(positionsDeg));
+        }
+        return line;
+    }
+
+    private static string FormatFiniteNumber(double value)
+    {
+        if (value == 0) return "0";
+        var roundTrip = value.ToString("R", CultureInfo.InvariantCulture);
+        var exponentMarker = roundTrip.IndexOf('E');
+        if (exponentMarker < 0) return roundTrip;
+        var mantissa = roundTrip[..exponentMarker];
+        var exponent = int.Parse(roundTrip[(exponentMarker + 1)..], NumberStyles.Integer, CultureInfo.InvariantCulture);
+        var negative = mantissa.StartsWith('-');
+        if (negative) mantissa = mantissa[1..];
+        var decimalPoint = mantissa.IndexOf('.');
+        var integerDigits = decimalPoint < 0 ? mantissa.Length : decimalPoint;
+        var digits = mantissa.Replace(".", string.Empty, StringComparison.Ordinal);
+        var scientificExponent = exponent + integerDigits - 1;
+        var prefix = negative ? "-" : string.Empty;
+
+        // Match ECMAScript Number::toString notation selection so the TS and
+        // C# formatters make the same 63-byte firmware queue decision.
+        if (scientificExponent is >= -6 and < 21)
+        {
+            var insertion = scientificExponent + 1;
+            if (insertion <= 0)
+            {
+                return $"{prefix}0.{new string('0', -insertion)}{digits}";
+            }
+            if (insertion >= digits.Length)
+            {
+                return $"{prefix}{digits}{new string('0', insertion - digits.Length)}";
+            }
+            return $"{prefix}{digits[..insertion]}.{digits[insertion..]}";
+        }
+
+        var canonicalMantissa = digits.Length == 1 ? digits : $"{digits[0]}.{digits[1..]}";
+        return $"{prefix}{canonicalMantissa}e{(scientificExponent >= 0 ? "+" : string.Empty)}{scientificExponent.ToString(CultureInfo.InvariantCulture)}";
     }
 
     public const string SafetyZeroCurrentLine = "$0,0,0,0,0,0";
@@ -206,6 +251,12 @@ public static class DummyAsciiProtocol
             return false;
         }
 
+        if (line.Length > MaximumMotionLineCharacters)
+        {
+            error = $"六轴整组命令必须适配固件 {MotionQueueBytes} 字节队列项，最多 {MaximumMotionLineCharacters} 个 ASCII 字符";
+            return false;
+        }
+
         var tokens = line[1..].Split(',', StringSplitOptions.None);
         if (tokens.Length != JointCount + 1)
         {
@@ -220,16 +271,6 @@ public static class DummyAsciiProtocol
                 || !double.IsFinite(values[index]))
             {
                 error = "六轴整组命令包含非法数值";
-                return false;
-            }
-        }
-
-        for (var index = 0; index < JointCount; index++)
-        {
-            var limit = DummyJointLimits.All[index];
-            if (values[index] < limit.LowerDeg || values[index] > limit.UpperDeg)
-            {
-                error = $"J{index + 1} 目标超出配置限位";
                 return false;
             }
         }

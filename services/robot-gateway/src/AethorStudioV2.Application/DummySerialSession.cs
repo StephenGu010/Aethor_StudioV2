@@ -99,6 +99,9 @@ public sealed class DummySerialSession : IAsyncDisposable
             retryOnTransientWriteTimeout: false);
     }
 
+    public bool CancelQueuedWrite(string workId, string detail) =>
+        scheduler.CancelQueuedWrite(workId, detail);
+
     public async Task<DummyResponse> TransactAsync(
         string workId,
         string line,

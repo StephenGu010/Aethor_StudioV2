@@ -1,7 +1,10 @@
 import type { DummyControlMode } from './types';
+import { DEFAULT_DUMMY_JOINT_SPEED_DEG_S } from './dummyAsciiV1';
 
 export type ActionProgramSourceV1 = 'authored' | 'showcaseExample';
 export type ActionWaypointSourceV1 = 'manual' | 'measuredCapture' | 'showcaseExample';
+
+export const DEFAULT_ACTION_PROGRAM_SPEED_DEG_S = DEFAULT_DUMMY_JOINT_SPEED_DEG_S;
 
 export type ActionPostArrivalWaitV1 =
   | { kind: 'none' }
@@ -28,6 +31,8 @@ export interface ActionProgramV1 {
   createdAtUtc: string;
   updatedAtUtc: string;
   source: ActionProgramSourceV1;
+  speedDegS: number;
+  loopEnabled: boolean;
   notes: string;
   waypoints: ActionWaypointV1[];
 }

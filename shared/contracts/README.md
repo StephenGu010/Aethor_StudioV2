@@ -5,9 +5,9 @@
 - `robot-profile-v1.schema.json`：受管机器人配置包的 manifest Schema；可选 `jointGroups` 用于显式声明多机械臂分组与 TCP link。
 - `gateway-contracts-v1.schema.json`：会话、关节帧、整组命令、受限 engineering direct 请求/结果、协议帧、信号与桌面能力的 JSON Schema `$defs`。
 - `aethor-arm-gateway-v1.schema.json`：Aethor 单条七轴臂的 commissioning 帧 Schema；有意保留无序子集、重复和范围外 ID 供领域层诊断。前端通过单一 ingest 接缝按每臂最新帧优先合并，页面不直接消费串口文本。
-- `robot-gateway-v1.md`：RobotGatewayV1.4 的命令、遥测、错误、来源与安全语义。
+- `robot-gateway-v1.md`：RobotGatewayV1.4 的命令、遥测、engineering 动作运行、错误、来源与完成证据语义。
 - `action-program-v1.schema.json`：Dummy 六轴离线动作文档 Schema。
-- `action-program-v1.md`：点位、来源、显式保存、兼容性与未来执行边界。
+- `action-program-v1.md`：点位、来源、自动保存、兼容性与未来执行边界。
 - `desktop-bridge-v1.md`：WebView2 原生窗口能力契约。
 - `src/types.ts`、`src/actionProgram.ts`、`src/aethorArmV1.ts`：与 wire/file Schema 对应的 TypeScript 类型；前端不再保留副本。
 - `src/aethorArmAsciiV1.ts`：Aethor Arm ASCII v1 的无状态 CRC、REQ formatter、wire parser 和有界行解码器；不拥有串口、会话或请求等待。

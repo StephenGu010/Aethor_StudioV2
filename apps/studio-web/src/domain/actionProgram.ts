@@ -1,3 +1,4 @@
+import { DEFAULT_ACTION_PROGRAM_SPEED_DEG_S } from '@aethor/contracts';
 import type {
   ActionPostArrivalWaitV1,
   ActionProgramSourceV1,
@@ -56,6 +57,8 @@ const actionProgramSchema = z.object({
   createdAtUtc: utcTimestamp,
   updatedAtUtc: utcTimestamp,
   source: z.enum(['authored', 'showcaseExample']),
+  speedDegS: z.number().finite().gt(0).max(100).default(DEFAULT_ACTION_PROGRAM_SPEED_DEG_S),
+  loopEnabled: z.boolean().default(false),
   notes: z.string().max(2_000),
   waypoints: z.array(waypointSchema).max(MAX_ACTION_WAYPOINTS)
 }).strict();
@@ -94,14 +97,6 @@ export function validateActionProgramV1(
       errors.push(`点位 ${waypointIndex + 1} 的 waypointId 重复`);
     }
     waypointIds.add(waypoint.waypointId);
-    waypoint.positionsDeg.forEach((positionDeg, protocolIndex) => {
-      const joint = profile.joints.find((candidate) => candidate.protocolIndex === protocolIndex);
-      if (!joint) {
-        errors.push(`点位 ${waypointIndex + 1} 缺少协议轴 ${protocolIndex}`);
-      } else if (positionDeg < joint.lowerDeg || positionDeg > joint.upperDeg) {
-        errors.push(`点位 ${waypointIndex + 1} ${joint.displayName} 超出 ${joint.lowerDeg}…${joint.upperDeg} deg`);
-      }
-    });
   });
 
   return {
@@ -138,12 +133,16 @@ export function createActionProgramV1({
   name,
   timestampUtc,
   source = 'authored',
+  speedDegS = DEFAULT_ACTION_PROGRAM_SPEED_DEG_S,
+  loopEnabled = false,
   waypoints = []
 }: {
   programId: string;
   name: string;
   timestampUtc: string;
   source?: ActionProgramSourceV1;
+  speedDegS?: number;
+  loopEnabled?: boolean;
   waypoints?: ActionWaypointV1[];
 }): ActionProgramV1 {
   return {
@@ -156,6 +155,8 @@ export function createActionProgramV1({
     createdAtUtc: timestampUtc,
     updatedAtUtc: timestampUtc,
     source,
+    speedDegS,
+    loopEnabled,
     notes: '',
     waypoints: waypoints.map(cloneWaypoint)
   };

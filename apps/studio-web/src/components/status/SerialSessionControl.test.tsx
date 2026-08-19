@@ -149,13 +149,16 @@ function fakeGateway(overrides: Partial<RobotGatewayV1> = {}): RobotGatewayV1 {
     getProtocolFrames: async () => [],
     getCommandHistory: async () => [],
     getDirectCommandHistory: async () => [],
+    getActionProgramRun: async () => null,
     enable: async () => { throw new Error('not used'); },
     stopAndDisable: async () => { throw new Error('not used'); },
     home: async () => { throw new Error('not used'); },
     reset: async () => { throw new Error('not used'); },
     setMode: async () => { throw new Error('not used'); },
     sendJointGroup: async () => { throw new Error('not used'); },
-    sendDirectCommand: async () => { throw new Error('not used'); }
+    sendDirectCommand: async () => { throw new Error('not used'); },
+    startActionProgram: async () => { throw new Error('not used'); },
+    stopActionProgram: async () => { throw new Error('not used'); }
   } satisfies RobotGatewayV1;
   return { ...gateway, ...overrides };
 }

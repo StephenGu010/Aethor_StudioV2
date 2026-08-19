@@ -353,6 +353,7 @@ function coordinatorGateway(
     getProtocolFrames: async () => [],
     getCommandHistory: overrides.getCommandHistory ?? (async () => []),
     getDirectCommandHistory: async () => [],
+    getActionProgramRun: async () => null,
     listSerialPorts: async () => [],
     connect: async () => session,
     disconnect: async () => session,
@@ -363,6 +364,8 @@ function coordinatorGateway(
     setMode: async () => { throw new Error('not used'); },
     sendJointGroup: async () => { throw new Error('not used'); },
     sendDirectCommand: async () => { throw new Error('not used'); },
+    startActionProgram: async () => { throw new Error('not used'); },
+    stopActionProgram: async () => { throw new Error('not used'); },
     openTelemetry: async () => async () => {}
   };
   return { ...gateway, ...overrides };

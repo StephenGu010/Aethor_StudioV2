@@ -86,7 +86,9 @@ function fakeGateway({
     getProtocolFrames: vi.fn(async () => []),
     getCommandHistory,
     getDirectCommandHistory: vi.fn(async () => []),
-    enable: vi.fn(), stopAndDisable: vi.fn(), home: vi.fn(), reset: vi.fn(), setMode: vi.fn(), sendJointGroup: vi.fn(), sendDirectCommand: vi.fn()
+    getActionProgramRun: vi.fn(async () => null),
+    enable: vi.fn(), stopAndDisable: vi.fn(), home: vi.fn(), reset: vi.fn(), setMode: vi.fn(), sendJointGroup: vi.fn(), sendDirectCommand: vi.fn(),
+    startActionProgram: vi.fn(), stopActionProgram: vi.fn()
   };
   return { gateway, getSession, getCommandHistory };
 }

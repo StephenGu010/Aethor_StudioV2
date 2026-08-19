@@ -1,5 +1,17 @@
 # 变更记录
 
+## 2026-08-19 - Dummy 手动示教与 Engineering 动作运行（Phase 6 IN PROGRESS）
+
+- 修正设备角链路：`ActionProgramV1`、自动保存、导入导出、目标预览、Three.js 实体/幽灵模型和两个 C# runner 都不再应用旧 Profile/URDF 角度范围。`#GETJPOS` 的六个有限值按 J1–J6 原样采集和交接；错误轴数与 `NaN/Infinity` 仍失败关闭。
+- 动作页取消未保存退出与点位删除确认，改为 350 ms 防抖自动保存；新建默认 20 deg/s，加入循环开关、实测点只读编辑、当前 revision 深快照和明确的运行/停止状态。
+- 新增 `ActionProgramRunStartRequestV1/ActionProgramRunSnapshotV1`、三个 REST 端点和 `actionProgramRunSnapshot` SignalR 事件。C# `EngineeringActionProgramRuntime` 独占点位顺序、估算节拍、循环和停止；每点只在 direct 达到 `sent + transportWritten` 后推进，不等待 FIFO、最终 `ok` 或到位。单次结束和停止分别为 `finishedUnconfirmed/stoppedUnconfirmed`，物理完成标志恒为 false。
+- 结构化停止、终端 `!STOP/!DISABLE`、断开和 runtime dispose 会先取消未来点位。停止链即使 `!STOP` 写入失败仍尝试 `!DISABLE` 并释放 owner；并发开始返回 409，非法 wire 请求返回 400，不会覆盖活动快照。运行事件时间严格递增，前端按 session/时间拒绝旧通知。
+- 停止现在会从串口调度器原子撤销尚未写出的当前点位；若 writer 已经取得该点位，则等待该次不可撤销写入收束后再排入 `!STOP → !DISABLE`，不会让旧运动点残留在停止链之后。客户端复用 `runId` 时，网关仍为每次执行生成独立 nonce，避免 direct 幂等缓存把旧的 `transportWritten` 当成本轮新写入。
+- Dummy 运动数值统一采用 ECMAScript `Number::toString` 的最短往返规范，TS/C# 对 `1e-16`、`1e-5`、高精度小数和 `1e20` 生成相同文本，并在接管串口前验证固件每项 64 bytes/最多 63 ASCII 字符。engineering 路径保留六个有限设备角原值且不应用旧关节范围；supervised 路径仍保留既有硬件限位门。
+- HTTP JSON 绑定拒绝缺少构造字段、未知字段和数字枚举；停止与有限运行终态竞争时返回 409 而不是 500。动作事件发布改为单在途、只保留最新待发快照；跨运行时间戳即使系统 UTC 回拨也保持单调。前端不会让晚到的空 REST 快照擦除已观察到的活动运行，session 更换仍会完整清理。
+- 原 `ActionProgramRunner` 继续保留为未接线的 `feedbackConfirmed` 监督内核，未用固定等待弱化；Aethor_robo 仍不进入 Dummy 动作契约。
+- 最终全量验证：contracts 131、frontend 255、gateway 177、desktop 118、legal inventory 6，共 687/687；三档 Playwright 63/63；strict TypeScript、2658-module Web、Gateway/Desktop Release build 均通过，.NET 0 warning / 0 error。重新生成的 development-dirty 桌面包为 701 个文件，engineering offline smoke 验证 manifest 700 项、网关 ready、session offline、正常退出，只枚举到 COM1，`serialPortOpened=false/hardwareCommandSent=false`；桌面快捷方式已更新到该包并显式携带 `--engineering`。本轮没有打开 COM4，也没有发送查询、状态改变或运动命令。
+
 ## 2026-08-17 - Aethor_robo 固件 PRD 快照与协议基线同步（DONE）
 
 - 将用户提供的 18 份固件 PRD、阶段计划和 handoff 作为非权威参考快照收录到 `docs/references/aethor-robo-firmware-prd/`，保留原始文件 SHA-256；入库副本清理一处个人桌面绝对路径，并把两处行尾空格等价改为 `<br>`，原始本地文件未修改。

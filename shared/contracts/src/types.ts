@@ -200,6 +200,59 @@ export interface DirectCommandResult {
   deviceReply?: string | null | undefined;
 }
 
+export type ActionProgramRuntimeStateV1 =
+  | 'starting'
+  | 'running'
+  | 'stopping'
+  | 'finishedUnconfirmed'
+  | 'stoppedUnconfirmed'
+  | 'failed'
+  | 'rejected';
+
+export interface ActionProgramRunWaypointV1 {
+  waypointId: string;
+  name: string;
+  positionsDeg: number[];
+  mode: DummyControlMode;
+  postDispatchWaitMs: number;
+  source: 'manual' | 'measuredCapture';
+}
+
+export interface ActionProgramRunStartRequestV1 {
+  contractVersion: '1.0';
+  runId: string;
+  programId: string;
+  revision: number;
+  sessionId: string;
+  profileId: 'dummy-6dof';
+  source: 'authored';
+  speedDegS: number;
+  loopEnabled: boolean;
+  waypoints: ActionProgramRunWaypointV1[];
+}
+
+export interface ActionProgramRunSnapshotV1 {
+  contractVersion: '1.0';
+  runId: string;
+  programId: string;
+  revision: number;
+  sessionId: string;
+  profileId: 'dummy-6dof';
+  state: ActionProgramRuntimeStateV1;
+  currentWaypointIndex: number | null;
+  waypointCount: number;
+  completedCycles: number;
+  loopEnabled: boolean;
+  speedDegS: number;
+  lastRequestId: string | null;
+  lastEvidence: 'none' | 'gatewayAccepted' | 'transportWritten';
+  physicalCompletionConfirmed: false;
+  message: string;
+  startedAtUtc: string;
+  updatedAtUtc: string;
+  finishedAtUtc: string | null;
+}
+
 export interface CommandResult {
   commandId: string;
   sessionId: string;

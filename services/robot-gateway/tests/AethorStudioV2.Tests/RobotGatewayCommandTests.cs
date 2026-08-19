@@ -745,6 +745,56 @@ public sealed class RobotGatewayCommandTests
     }
 
     [Fact]
+    public async Task ActionStopPurgesQueuedMotionBeforeWritingStopAndDisable()
+    {
+        var transport = new FakeAsciiTransport((line, _) => line switch
+        {
+            "#GETJPOS" => [FakeAsciiTransport.Ascii("ok 0 0 0 0 0 0\n")],
+            "#GETMODE" => [FakeAsciiTransport.Ascii("ok 2 INT_POINT\n")],
+            "#GETENABLE" => [FakeAsciiTransport.Ascii("ok 1\n")],
+            _ => []
+        });
+        await using var gateway = CreateGateway(transport, EngineeringOptions());
+        var session = await ConnectAndWaitAsync(gateway);
+        transport.PauseWrites();
+        await transport.WriteStarted.WaitAsync(TimeSpan.FromSeconds(1));
+        await using var runtime = new EngineeringActionProgramRuntime(gateway);
+        var request = new ActionProgramRunStartRequest(
+            ActionProgramRunContractV1.Version,
+            "stop-purge-run",
+            "stop-purge-program",
+            1,
+            session.SessionId,
+            GatewayContractV1.DummyProfileId,
+            ActionProgramSource.Authored,
+            20,
+            false,
+            [new ActionProgramRunWaypoint(
+                "point-1",
+                "point-1",
+                [1, 2, 3, 4, 5, 6],
+                2,
+                0,
+                ActionWaypointSource.MeasuredCapture)]);
+
+        var run = runtime.Start(request);
+        await TestWait.UntilAsync(() => gateway.GetDirectCommandHistory(128)
+            .Any(result => result.NormalizedLine.StartsWith('>') && result.Status == DirectCommandStatus.Queued));
+        var stopping = runtime.StopAsync("operator");
+        await Task.Delay(20);
+        transport.ReleaseWrites();
+        var stopped = await stopping.WaitAsync(TimeSpan.FromSeconds(1));
+        await run.Completion.WaitAsync(TimeSpan.FromSeconds(1));
+
+        Assert.Equal(ActionProgramRuntimeState.StoppedUnconfirmed, stopped.State);
+        var writes = transport.Writes.ToArray();
+        Assert.DoesNotContain(writes, line => line.StartsWith('>'));
+        Assert.Equal(
+            ["!STOP", "!DISABLE"],
+            writes.Where(line => line.StartsWith('>') || line is "!STOP" or "!DISABLE"));
+    }
+
+    [Fact]
     public async Task JointGroupTimeoutLatchesInterlockAndDoesNotClaimCompletion()
     {
         var diagnostics = new RecordingGatewayDiagnostics();

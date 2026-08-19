@@ -303,6 +303,42 @@ public sealed class SerialDuplexScheduler : IAsyncDisposable
         return new(true, request.WorkId, accepted!.Completion.Task);
     }
 
+    public bool CancelQueuedWrite(string workId, string detail)
+    {
+        if (string.IsNullOrWhiteSpace(workId)) return false;
+        PendingWrite? cancelled = null;
+        lock (queueGate)
+        {
+            foreach (var queue in queues)
+            {
+                var node = queue.First;
+                while (node is not null)
+                {
+                    var next = node.Next;
+                    if (string.Equals(node.Value.Request.WorkId, workId, StringComparison.Ordinal))
+                    {
+                        cancelled = node.Value;
+                        queue.Remove(node);
+                        pendingWorkIds.Remove(workId);
+                        queueDepth--;
+                        break;
+                    }
+                    node = next;
+                }
+                if (cancelled is not null) break;
+            }
+        }
+
+        if (cancelled is null) return false;
+        cancelled.Completion.TrySetResult(new(
+            cancelled.Request.WorkId,
+            SerialWriteOutcome.Cancelled,
+            timeProvider.GetUtcNow(),
+            detail));
+        SignalWriter();
+        return true;
+    }
+
     public SerialDuplexProbeSnapshot GetProbeSnapshot()
     {
         int[] depths;

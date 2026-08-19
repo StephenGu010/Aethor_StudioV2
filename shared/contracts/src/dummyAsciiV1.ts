@@ -4,6 +4,7 @@ export const DUMMY_ASCII_BAUD_RATE = 115_200;
 export const DUMMY_ASCII_LINE_ENDING = '\n';
 export const DUMMY_ASCII_MAX_LINE_CHARS = 255;
 export const DUMMY_ASCII_MOTION_QUEUE_BYTES = 64;
+export const DEFAULT_DUMMY_JOINT_SPEED_DEG_S = 20;
 
 export type DummyJointVector = [number, number, number, number, number, number];
 export type DummyCommandRisk = 'low' | 'medium' | 'high';
@@ -271,8 +272,7 @@ function validateJointGroupLine(line: string): DummyRawCommandValidation {
 
 function formatFiniteNumber(value: number, label: string): string {
   if (!Number.isFinite(value)) throw new Error(`${label} must be finite`);
-  const rounded = Math.abs(value) < 0.0005 ? 0 : value;
-  return rounded.toFixed(3).replace(/\.?0+$/, '');
+  return Object.is(value, -0) ? '0' : value.toString();
 }
 
 function assertAllowedMode(mode: number): asserts mode is DummyControlMode {

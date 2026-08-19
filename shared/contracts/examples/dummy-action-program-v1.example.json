@@ -8,6 +8,8 @@
   "createdAtUtc": "2026-08-09T00:00:00.000Z",
   "updatedAtUtc": "2026-08-09T00:00:00.000Z",
   "source": "showcaseExample",
+  "speedDegS": 20,
+  "loopEnabled": false,
   "notes": "仅用于离线编辑与预览，不是实机安全动作。",
   "waypoints": [
     {

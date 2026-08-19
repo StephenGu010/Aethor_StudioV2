@@ -12,7 +12,6 @@ import {
   isRobotProfileId,
   robotProfileOptions
 } from '../../profile/profileCatalog';
-import { isActionProgramDirty, useActionProgramStore } from '../../stores/useActionProgramStore';
 import {
   getRobotProfileSwitchBlockReason,
   useActiveRobotProfileStore
@@ -28,10 +27,6 @@ export function StatusHeader({ route, gateway = robotGateway }: { route: RouteMe
   const setTransportWarning = useGatewayRuntimeStore((state) => state.setTransportWarning);
   const activeProfileId = useActiveRobotProfileStore((state) => state.activeProfileId);
   const switchProfile = useActiveRobotProfileStore((state) => state.switchProfile);
-  const actionDraft = useActionProgramStore((state) => state.draft);
-  const savedActionProgram = useActionProgramStore((state) => state.draft
-    ? state.programs[state.draft.programId]
-    : undefined);
   const [stopping, setStopping] = useState(false);
   const [profileSwitchNotice, setProfileSwitchNotice] = useState<string | null>(null);
   const isAethorActive = activeProfileId === aethorRoboProfile.profileId;
@@ -82,11 +77,6 @@ export function StatusHeader({ route, gateway = robotGateway }: { route: RouteMe
 
   const changeProfile = (value: string) => {
     if (!isRobotProfileId(value) || value === activeProfileId) return;
-    const actionDraftDirty = isActionProgramDirty(actionDraft, savedActionProgram);
-    if (actionDraftDirty && activeProfileId === dummyProfile.profileId
-      && !window.confirm('Dummy 动作草稿尚未保存。切换后草稿会保留，但动作工作区将暂时不可用。确认切换？')) {
-      return;
-    }
     const result = switchProfile(value);
     setProfileSwitchNotice(result.reason ?? (result.switched ? `已切换到 ${getRobotProfileOption(value).profile.displayName}` : null));
   };

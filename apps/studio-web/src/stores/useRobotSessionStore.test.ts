@@ -26,4 +26,16 @@ describe('target and feedback isolation', () => {
     useRobotSessionStore.getState().alignTargetFromMeasured('session-2', [7, 8, 9, 10, 11, 12]);
     expect(useRobotSessionStore.getState().targetPositionsDeg[0]).toBe(12);
   });
+
+  it('loads an action preview as an exact unbounded six-axis device-angle vector', () => {
+    const positionsDeg = [181, 95, -45, 200, -150, 900];
+
+    expect(useRobotSessionStore.getState().loadActionPreview(positionsDeg)).toBe(true);
+    expect(useRobotSessionStore.getState().targetPositionsDeg).toEqual(positionsDeg);
+    expect(useRobotSessionStore.getState().targetPositionsDeg).not.toBe(positionsDeg);
+
+    expect(useRobotSessionStore.getState().loadActionPreview([1, 2, 3])).toBe(false);
+    expect(useRobotSessionStore.getState().loadActionPreview([1, 2, 3, 4, 5, Number.NaN])).toBe(false);
+    expect(useRobotSessionStore.getState().targetPositionsDeg).toEqual(positionsDeg);
+  });
 });

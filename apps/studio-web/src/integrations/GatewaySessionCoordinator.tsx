@@ -29,6 +29,7 @@ export function GatewaySessionCoordinator({
   const replaceCommandHistory = useGatewayRuntimeStore((state) => state.replaceCommandHistory);
   const replaceDirectCommandHistory = useGatewayRuntimeStore((state) => state.replaceDirectCommandHistory);
   const upsertDirectCommandResult = useGatewayRuntimeStore((state) => state.upsertDirectCommandResult);
+  const setActionProgramRun = useGatewayRuntimeStore((state) => state.setActionProgramRun);
   const setLastCommandResult = useGatewayRuntimeStore((state) => state.setLastCommandResult);
   const setTransportWarning = useGatewayRuntimeStore((state) => state.setTransportWarning);
   const markTelemetryDegraded = useGatewayRuntimeStore((state) => state.markTelemetryDegraded);
@@ -127,12 +128,13 @@ export function GatewaySessionCoordinator({
     const refreshAuthority = async () => {
       const refreshSequence = ++authorityRefreshSequence;
       try {
-        const [capabilities, session, jointState, protocolFrames, directCommandHistory] = await Promise.all([
+        const [capabilities, session, jointState, protocolFrames, directCommandHistory, actionProgramRun] = await Promise.all([
           gateway.getCapabilities(),
           gateway.getSession(),
           gateway.getJointState(),
           gateway.getProtocolFrames(),
-          gateway.getDirectCommandHistory()
+          gateway.getDirectCommandHistory(),
+          gateway.getActionProgramRun()
         ]);
         if (!active || refreshSequence !== authorityRefreshSequence) return false;
         telemetryTrusted = true;
@@ -141,6 +143,7 @@ export function GatewaySessionCoordinator({
         acceptJointState(jointState);
         replaceProtocolFrames(protocolFrames);
         replaceDirectCommandHistory(directCommandHistory);
+        setActionProgramRun(actionProgramRun);
         setTransportWarning(telemetryFallbackActive ? TELEMETRY_FALLBACK_WARNING : null);
         return true;
       } catch (error) {
@@ -271,6 +274,9 @@ export function GatewaySessionCoordinator({
           onDirectCommandResult: (value) => {
             if (active) upsertDirectCommandResult(value);
           },
+          onActionProgramRun: (value) => {
+            if (active) setActionProgramRun(value);
+          },
           onTransportError: (incident) => {
             if (!active) return;
             enterTelemetryFallback(
@@ -305,7 +311,7 @@ export function GatewaySessionCoordinator({
       if (freshnessTimer !== undefined) window.clearInterval(freshnessTimer);
       if (closeTelemetry) void closeTelemetry();
     };
-  }, [appendProtocolFrame, beginCommandAuditRefresh, failCommandAuditRefresh, gateway, markTelemetryDegraded, replaceCommandHistory, replaceDirectCommandHistory, replaceProtocolFrames, resetRuntime, setCapabilities, setJointState, setLastCommandResult, setSession, setTransportWarning, telemetryFallbackIntervalMs, telemetryStallThresholdMs, upsertDirectCommandResult]);
+  }, [appendProtocolFrame, beginCommandAuditRefresh, failCommandAuditRefresh, gateway, markTelemetryDegraded, replaceCommandHistory, replaceDirectCommandHistory, replaceProtocolFrames, resetRuntime, setActionProgramRun, setCapabilities, setJointState, setLastCommandResult, setSession, setTransportWarning, telemetryFallbackIntervalMs, telemetryStallThresholdMs, upsertDirectCommandResult]);
 
   return null;
 }

@@ -78,12 +78,17 @@ public static class SerialPayloadPolicy
             return true;
         }
 
-        return IsAllowedJointGroup(line, jointGroupSpeedLimitDegS);
+        return IsAllowedJointGroup(line, access, jointGroupSpeedLimitDegS);
     }
 
-    private static bool IsAllowedJointGroup(string line, double? jointGroupSpeedLimitDegS)
+    private static bool IsAllowedJointGroup(
+        string line,
+        SerialPayloadAccess access,
+        double? jointGroupSpeedLimitDegS)
     {
-        if (!line.StartsWith('>') || jointGroupSpeedLimitDegS is not { } speedLimit)
+        if (!line.StartsWith('>')
+            || line.Length > DummyAsciiProtocol.MaximumMotionLineCharacters
+            || jointGroupSpeedLimitDegS is not { } speedLimit)
         {
             return false;
         }
@@ -104,12 +109,15 @@ public static class SerialPayloadPolicy
             }
         }
 
-        for (var index = 0; index < DummyAsciiProtocol.JointCount; index++)
+        if (access != SerialPayloadAccess.Engineering)
         {
-            var limit = DummyJointLimits.All[index];
-            if (values[index] < limit.LowerDeg || values[index] > limit.UpperDeg)
+            for (var index = 0; index < DummyAsciiProtocol.JointCount; index++)
             {
-                return false;
+                var limit = DummyJointLimits.All[index];
+                if (values[index] < limit.LowerDeg || values[index] > limit.UpperDeg)
+                {
+                    return false;
+                }
             }
         }
 

@@ -35,6 +35,11 @@ gateway lifecycle. It is not a production installer or a signed release.
   No ACK, queue number, or measured arrival is required before the operator may
   submit the next target. Transport-written status never claims device receipt
   or physical arrival.
+- The same explicit `--engineering` desktop mode now supports Dummy action
+  programs captured from exact six-axis GETJPOS values. New programs default
+  to 20 deg/s, may run once or loop, and are paced by the C# gateway from an
+  immutable revision snapshot. `FINISHED/STOPPED UNCONFIRMED` means serial
+  transport writes completed; it does not claim measured arrival.
 - Bounded frontend operation probes are captured from the WebView runtime only
   after strict field and terminal-state validation; ordinary console messages,
   expanded fields, and secret-bearing payloads are rejected.

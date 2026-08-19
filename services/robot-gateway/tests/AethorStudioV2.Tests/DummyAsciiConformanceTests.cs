@@ -20,6 +20,23 @@ public sealed class DummyAsciiConformanceTests
     }
 
     [Fact]
+    public void CSharpFormatterMatchesEveryLanguageNeutralJointGroupVector()
+    {
+        using var document = LoadVectors();
+        foreach (var testCase in document.RootElement.GetProperty("formatCases").EnumerateArray())
+        {
+            var command = testCase.GetProperty("command");
+            if (command.GetProperty("type").GetString() != "jointGroup") continue;
+            var positions = command.GetProperty("positionsDeg").EnumerateArray()
+                .Select(value => value.GetDouble())
+                .ToArray();
+            var speed = command.GetProperty("speedDegS").GetDouble();
+            Assert.Equal(testCase.GetProperty("expectedLine").GetString(),
+                DummyAsciiProtocol.FormatJointGroup(positions, speed));
+        }
+    }
+
+    [Fact]
     public void PhaseFourFormatsOnlyTheThreeReadQueriesAndRejectsEveryOtherVector()
     {
         using var document = LoadVectors();
@@ -118,7 +135,7 @@ public sealed class DummyAsciiConformanceTests
     }
 
     [Fact]
-    public void EngineeringParserUsesFirmwareDeviceAngleLimits()
+    public void EngineeringParserPreservesFiniteDeviceAnglesWithoutInventedHostLimits()
     {
         Assert.True(DummyAsciiProtocol.TryParseEngineeringCommand(
             ">170,90,180,180,120,720,10",
@@ -127,10 +144,28 @@ public sealed class DummyAsciiConformanceTests
             out _));
         Assert.Equal([170d, 90d, 180d, 180d, 120d, 720d], command!.PositionsDeg);
 
-        Assert.False(DummyAsciiProtocol.TryParseEngineeringCommand(">171,0,90,0,0,0,10", 100, out _, out _));
-        Assert.False(DummyAsciiProtocol.TryParseEngineeringCommand(">0,91,90,0,0,0,10", 100, out _, out _));
-        Assert.False(DummyAsciiProtocol.TryParseEngineeringCommand(">0,0,-0.1,0,0,0,10", 100, out _, out _));
-        Assert.False(DummyAsciiProtocol.TryParseEngineeringCommand(">0,0,180.1,0,0,0,10", 100, out _, out _));
+        Assert.True(DummyAsciiProtocol.TryParseEngineeringCommand(">181,95,-45,200,-150,900,10", 100, out var measured, out _));
+        Assert.Equal([181d, 95d, -45d, 200d, -150d, 900d], measured!.PositionsDeg);
+    }
+
+    [Fact]
+    public void MotionCommandsMustFitTheFirmwareQueueEntryInEveryCSharpLayer()
+    {
+        var valid = ">123456789012345,123456789012345,0,0,0,0,20";
+        var overlong = ">1.23456789012345,1.23456789012345,1.23456789012345,1.23456789012345,0,0,20";
+
+        Assert.True(valid.Length <= DummyAsciiProtocol.MaximumMotionLineCharacters);
+        Assert.True(overlong.Length > DummyAsciiProtocol.MaximumMotionLineCharacters);
+        Assert.Equal(valid, DummyAsciiProtocol.FormatJointGroup(
+            [123456789012345d, 123456789012345d, 0, 0, 0, 0], 20));
+        Assert.Throws<ArgumentException>(() => DummyAsciiProtocol.FormatJointGroup(
+            [1.23456789012345d, 1.23456789012345d, 1.23456789012345d, 1.23456789012345d, 0, 0], 20));
+        Assert.False(DummyAsciiProtocol.TryParseEngineeringCommand(overlong, 100, out _, out var error));
+        Assert.Contains("63", error, StringComparison.Ordinal);
+        Assert.False(SerialPayloadPolicy.IsAllowed(
+            Encoding.ASCII.GetBytes(overlong + "\n"),
+            SerialPayloadAccess.Engineering,
+            100));
     }
 
     [Fact]
@@ -146,6 +181,10 @@ public sealed class DummyAsciiConformanceTests
             100));
         Assert.False(SerialPayloadPolicy.IsAllowed(
             Encoding.ASCII.GetBytes("!HOME\n"),
+            SerialPayloadAccess.Engineering,
+            100));
+        Assert.True(SerialPayloadPolicy.IsAllowed(
+            Encoding.ASCII.GetBytes(">181,95,-45,200,-150,900,20\n"),
             SerialPayloadAccess.Engineering,
             100));
     }

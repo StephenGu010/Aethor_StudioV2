@@ -73,12 +73,12 @@
 
 ## Phase 6 当前结果
 
-- 按 [ADR-0005](decisions/0005-offline-action-document-boundary.md) 拆为 Phase 6A 离线文档、Phase 6B-S 无生产接线执行内核与 Phase 6B-H 实机接线；Gate B 的外部阻塞不再冻结纯软件语义验证，但不能被 6A/6B-S 绕过。
-- Phase 6A 已实现 `ActionProgramV1` Schema/类型/示例、程序与点位编辑、顺序调整、来源真实的单点采集、目标草稿预览、显式本机保存、导入导出、dirty guard 和损坏存储隔离。
-- `/actions` 没有 `RobotGatewayV1` 命令调用、串口写入、运行队列或定时完成路径；运行按钮固定为 `PHASE 6B LOCKED`。
-- 全量 shared 87 + frontend 116 + C# 46，共 249 项测试通过；strict typecheck、Vite/.NET Release build 和三档 Edge E2E 39/39 通过。
+- 按 [ADR-0005](decisions/0005-offline-action-document-boundary.md) 拆为 Phase 6A 离线文档、Phase 6B-S 反馈确认式软件内核、Phase 6B-E engineering 人工运行与 Phase 6B-H 监督实机接线；两种执行模型的完成证据保持分离。
+- Phase 6A 已实现 `ActionProgramV1` Schema/类型/示例、程序与点位编辑、顺序调整、来源真实的单点采集、目标草稿预览、350 ms 自动保存、导入导出和损坏存储隔离。`#GETJPOS` 六轴有限值在采集、保存、预览和 6B-S port 交接中保持原值，不应用 Profile/URDF 范围；新建程序默认 20 deg/s、循环关闭并保存循环偏好。
+- Phase 6B-E 已接入 `/actions`、REST、SignalR 与 C# 网关：只有 engineering + 新鲜 Dummy 会话/反馈 + enabled + mode 一致时可提交不可变 revision；逐点以 `sent + transportWritten` 推进，默认 20 deg/s，可循环，有限运行/停止分别显示 `finishedUnconfirmed/stoppedUnconfirmed`。
+- 6B-E 的循环、估算节拍、串口写入和停止均由 C# `EngineeringActionProgramRuntime` 持有；前端不创建第二套 runner。停止、终端 STOP/DISABLE、断开和 dispose 会取消未来点位。
 - Phase 6B-S 已实现 C# Application 独立 owner：非 SHOWCASE Dummy 计划逐点执行，模式与关节组均只接受 `completed + feedbackConfirmed`；到位后才等待；命令异常/超时/停止只进入一次有界 stop-and-disable；同 revision/session/计划指纹的 checkpoint 才能从最后确认点后恢复。当前只有 fake port，未注册 DI、API 或 UI。
-- Phase 6B-H 仍为 `NOT STARTED`，依赖 Phase 5 Gate B；真实 adapter、运行计划 wire contract、API、审计恢复和监督实机执行均不存在。
+- Phase 6B-H 仍为 `NOT STARTED`，依赖 Phase 5 Gate B；反馈确认式 `ActionProgramRunner` 仍无生产 adapter/checkpoint 接线，engineering 人工运行不能替代它。
 - Phase 6 总体仍为 `IN PROGRESS`，不创建 `phase(06)` 完成提交。
 
 ## Phase 7 当前结果
@@ -86,7 +86,7 @@
 - 按 [ADR-0006](decisions/0006-live-observability-boundary.md) 拆为 7A 软件门和 7B 实机长测；只读观测不依赖 Gate B 运动包络，但真实串口仍需新鲜现场授权。
 - 7A 已实现 18 路、每路 4800 点/120 秒的有界历史，默认 60 秒窗口；采集与 10 Hz/1 Hz 可见性刷新分离，ECharts 实例跨数据更新复用。
 - 网关模式不再因缓冲为空而回退 SHOWCASE；示波/终端显示 measured/waiting/stale/idle 的真实状态。终端日志限 256 帧、去重，清空只影响当前视图。
-- 终端不再使用管理员/专家解锁。`engineering` 网关下可直接发送 Dummy 单行白名单；C# 仍独占串口并二次校验 session、状态、模式、六轴限位和显式速度。HOME/RESET、RGB、电流/PID、reboot、多行及任意 raw 均拒绝。
+- 终端不再使用管理员/专家解锁。`engineering` 网关下可直接发送 Dummy 单行白名单；C# 仍独占串口并二次校验 session、状态、模式、六轴有限数和显式速度，不应用旧 Profile/URDF 角度范围。HOME/RESET、RGB、电流/PID、reboot、多行及任意 raw 均拒绝。
 - engineering direct 按人工模式呈现：HTTP 受理显示 `QUEUED · GATEWAY ACCEPTED`，物理写入显示 `SENT · MANUAL CONFIRM / transportWritten`；请求不等待或解释 FIFO/`ok`，也不写成设备接收或实测到位。后台唯一 reader 继续轮询，查询超时不自动断开；正式 `supervised` Gate B 仍依赖四参数运动包络和独立实机验收。
 - 错误 COM 口造成 `stale/unknown/faulted` 时允许人工释放会话；只有明确 `motor=enabled` 或存在在途命令时拒绝普通断开。
 - 当前软件回归为 contracts 95 + frontend 211 + gateway 103 + desktop 118 + legal inventory 6，共 533/533；strict TypeScript、2644-module Web、Gateway/Desktop Release build 0 warning/0 error，三档生产 E2E 63/63。engineering 人工运动现能识别“`#GETJPOS` 持续回包但角度冻结”，只把关节反馈降为 stale，连续人工目标不被锁定，角度重新变化后恢复 valid。本次自动验证未打开 COM4、未发送任何硬件命令；既有 disabled/engineering 包 smoke 记录不冒充本次新代码的打包复验。

@@ -27,6 +27,8 @@ C# `RobotGateway` 是唯一的串口、轮询、命令仲裁、最新快照和�
 - `RobotCommandRequestSnapshot`：命令种类、SHA-256 请求指纹和有界参数快照；关节数组最多保留前六项，同时记录原数量和截断标志。
 - `CommandAuditRecord`：命令身份、接收时间、请求快照、实际成功写入 transport 的 payload 和当前/最终结果；默认最多保留 128 项。
 - `DirectCommandRequest/DirectCommandResult`：开发调试的一行白名单命令。HTTP 接纳返回 `queued + gatewayAccepted`；物理写成功后转为 `sent + transportWritten`，队列拒绝、过期、淘汰、断开取消与写故障分别收束为 `rejected/expired/superseded/cancelled/failed`。direct 不等待设备回包。
+- `ActionProgramRunStartRequestV1`：engineering 动作运行的不可变提交快照，包含 program revision、session、速度、循环开关和 1–256 个六轴点位。
+- `ActionProgramRunSnapshotV1`：C# 运行时权威状态。`finishedUnconfirmed/stoppedUnconfirmed` 只证明相应串口写入完成；`physicalCompletionConfirmed` 在该契约中恒为 `false`。
 
 ## REST
 
@@ -44,6 +46,7 @@ C# `RobotGateway` 是唯一的串口、轮询、命令仲裁、最新快照和�
 | `GET` | `/api/v1/commands?limit=N` | — | 1–500 条命令审计 |
 | `GET` | `/api/v1/commands/{commandId}` | — | 单条命令审计或 404 |
 | `GET` | `/api/v1/engineering/direct-commands?limit=N` | — | 1–500 条 direct 请求当前/终态 |
+| `GET` | `/api/v1/engineering/action-program/run` | — | 最新 `ActionProgramRunSnapshotV1` 或 `null` |
 | `POST` | `/api/v1/session/connect` | `RobotConnectRequest` | 人工打开唯一设备会话 |
 | `POST` | `/api/v1/session/disconnect` | — | 释放会话；命令在途或电机已确认 enabled 时拒绝，stale/unknown 错误端口可释放 |
 | `POST` | `/api/v1/commands/enable` | `SimpleRobotCommand` | `CommandResult` |
@@ -53,6 +56,8 @@ C# `RobotGateway` 是唯一的串口、轮询、命令仲裁、最新快照和�
 | `POST` | `/api/v1/commands/set-mode` | `SetModeCommand` | 仅模式 1–3 |
 | `POST` | `/api/v1/commands/joint-group` | `JointGroupCommand` | 只有配置完整四参数运动包络后才支持 |
 | `POST` | `/api/v1/engineering/direct-command` | `DirectCommandRequest` | 仅 engineering；返回 `DirectCommandResult` |
+| `POST` | `/api/v1/engineering/action-program/run/start` | `ActionProgramRunStartRequestV1` | 初始/拒绝 `ActionProgramRunSnapshotV1`；并发运行返回 409 |
+| `POST` | `/api/v1/engineering/action-program/run/stop` | — | 取消未来点位并等待停止链写入终态；无活动运行返回 409 |
 
 连接、端口枚举和 query 参数错误使用 400/409/503；认证失败使用 401。请求取消不会被改写为成功或自动重试。请求在网关接管前已取消时不得创建审计条目或写串口；写入命令审计条目是接管线性化点，接管后的 HTTP 取消只终止当前调用方等待，网关仍须把唯一物理执行收束为可查询终态。
 
@@ -78,12 +83,21 @@ Dummy 当前没有可信的完整运动包络，因此 `jointGroup` 默认不在
 ## Engineering 直连调试
 
 - 允许：`#GETJPOS/#GETMODE/#GETENABLE`、`!START/!STOP/!DISABLE`、`#CMDMODE 1–3`、`>j1,j2,j3,j4,j5,j6,speed`。
-- 六轴命令必须显式携带第七个速度参数，六个角度满足 Profile 限位；网关还要求当前 session connected、模式有效、电机 enabled，并已至少取得一帧实测六轴数据。保留最后实测值的 stale 会话可继续人工下发；断开或新 session 后必须重新取得实测帧。
+- 六轴命令必须显式携带第七个速度参数，六个角度必须为有限数；engineering direct 不应用旧 Profile/URDF 范围，也不改写设备角。TS/C# 以同一最短往返数值规范生成命令，最终 `>` 行不得超过固件 64-byte FIFO 项允许的 63 个 ASCII 字符。网关还要求当前 session connected、模式有效、电机 enabled，并已至少取得一帧实测六轴数据。保留最后实测值的 stale 会话可继续单条人工下发；断开或新 session 后必须重新取得实测帧。
 - 查询可用于 stale 会话诊断；`!STOP/!DISABLE` 可在 stale 状态发送。其他状态改变命令失败关闭。
 - direct HTTP 请求进入 P1 有界队列后立即返回 `queued + gatewayAccepted`，不创建响应 waiter；终端可以继续提交后续请求。物理 writer 成功后由 SignalR/REST history 发布 `sent + transportWritten`。失败、过期、淘汰与断开均有独立终态，前端不得自行补写 TX/RX 或成功。
 - 结构化命令一次只允许一个响应 transaction；Dummy 无标签回包由单一 decoder 和 response fence 匹配。轮询使用 P2，普通结构化命令与 direct 使用 P1，STOP/DISABLE 使用 P0；P0 可抢占低优先级 response fence，但被抢占请求必须取消而非成功。
 - 六轴 direct payload 不等待或解释 FIFO、`ok`、队列满或到位。迟到回包只进入协议和诊断日志，不改变 direct 结果；操作者可继续发送下一目标。
 - 该策略不关闭 Phase 5 Gate B。桌面无参数启动继续固定 `commandPolicy=disabled`；本机开发包只有显式 `--engineering` 才以 Development/development token 启用 direct，且不会自动连接串口。该入口不能作为正式发布或受监督运动证据，后者仍依赖四参数运动包络和 `feedbackConfirmed`。
+
+### Engineering 动作运行
+
+- 运行仅接受 authored Dummy 六轴快照；SHOWCASE、空程序、非有限角度、会话不匹配、反馈不新鲜、未使能、模式不一致和越过网关速度上限均在取得串口运行所有权前拒绝。
+- C# `EngineeringActionProgramRuntime` 是循环、点位顺序、估算节拍和停止的唯一 owner。每个点位只有在对应 direct 结果达到 `sent + transportWritten` 后才推进；不会等待 FIFO、最终 `ok` 或实测到位。
+- 点间基础等待按“上一设备角到当前点的最大绝对角差 / `speedDegS`”估算，再加文档中的附加等待。首点以启动时新鲜 `#GETJPOS` 快照为基准；该计算用于调度节拍，不是轨迹规划或完成证明。
+- 同一时刻只允许一个动作运行。运行期间查询和停止命令可用，其他外部状态改变/运动命令拒绝；结构化停止、终端 `!STOP/!DISABLE`、断开和宿主释放都会先取消动作运行。尚在 writer 队列中的当前点位会被撤销；已经由 writer 取得的原子写入必须先收束，随后才排入停止与去使能，保证旧点位不会在停止链之后发送。
+- 客户端 `runId` 是审计身份，不是 transport 幂等身份；每次执行由服务端 nonce 派生内部 direct request ID。快照 `updatedAtUtc` 跨运行保持单调，空 REST 快照不能覆盖已观察到的活动运行。
+- 操作者停止依次尝试 `!STOP` 与 `!DISABLE`，不等待两条命令的设备确认。两次 transport 写入都成功时状态为 `stoppedUnconfirmed`；任一步未写入为 `failed`。有限程序全部点位写入后为 `finishedUnconfirmed`。
 
 ## 停止、HOME 与 RESET
 
@@ -108,6 +122,7 @@ Hub 为 `/hubs/robot-v1`，使用 Bearer token；没有 client-to-server Hub met
 - `protocolFrame(ProtocolFrame)`
 - `commandResult(CommandResult)`
 - `directCommandResult(DirectCommandResult)`
+- `actionProgramRunSnapshot(ActionProgramRunSnapshotV1)`
 
 服务事件队列默认 128，拥塞时丢弃最旧通知；协议历史默认 256，结构化命令与 direct 结果历史分别有界保存。高频轮询可能覆盖协议历史中的早期命令帧，因此结构化审计必须以 `CommandAuditRecord.request/transmittedPayloads/result` 为准；direct 发送事实以 `DirectCommandResult` 历史为准，协议帧只作补充诊断。SignalR `commandResult/directCommandResult` 是变化通知；客户端按 request ID 合并 direct 状态，并在 session identity 改变后清空旧历史、重新读取 REST 历史。SignalR 重连、关闭或非法载荷会立即把已有 measured session/joint state 降为 `stale`；重连事件本身不是恢复证据，客户端必须重新取得 REST capabilities/session/joint/protocol 快照后才可恢复 `valid`。契约违规则触发合并限流的 REST 恢复；重连中等待 `onreconnected`，最终关闭则保持降级直至重新建立实时会话。恢复期间收到的实时 valid 帧也按 stale 接收，防止通道恢复与权威快照之间短暂误解锁。
 
@@ -120,4 +135,4 @@ Hub 为 `/hubs/robot-v1`，使用 Bearer token；没有 client-to-server Hub met
 - 网关不会自动重连。普通失败后的再次连接仍由操作者重新确认端口和现场条件；打开超时/取消则必须先重启 Gateway。
 - 未知、畸形、非 ASCII、超长和半帧保留为有界诊断，不更新可信状态。
 - Infrastructure 使用 100 ms 有界同步读窗口并在每个窗口检查取消，不依赖 Windows `SerialPort.BaseStream.ReadAsync` 的非可靠取消；关闭仍先释放句柄，再等待轮询/命令收束和 dispose。
-- 成功断开是新的会话边界：REST session 回到 `offline/unavailable`，joint 回到 unavailable，协议帧、命令审计和安全联锁清空。调用方必须同时清空当前会话遥测和目标草稿；显式保存到持久层或已经导出的文件不属于该临时会话。
+- 成功断开是新的会话边界：REST session 回到 `offline/unavailable`，joint 回到 unavailable，协议帧、命令审计和安全联锁清空。调用方必须同时清空当前会话遥测和目标草稿；已自动保存到动作库或已经导出的文件不属于该临时会话。

@@ -375,6 +375,7 @@ function fakeGateway({
     getProtocolFrames: async () => [],
     getCommandHistory: async () => commandHistory,
     getDirectCommandHistory: async () => [],
+    getActionProgramRun: async () => null,
     enable,
     stopAndDisable,
     home: async (command) => unsupported(command.commandId, command.sessionId, 'home'),
@@ -389,7 +390,9 @@ function fakeGateway({
       normalizedLine: command.line,
       message: 'not used',
       timestampUtc: '2026-08-09T00:00:00.000Z'
-    })
+    }),
+    startActionProgram: async () => { throw new Error('not used'); },
+    stopActionProgram: async () => { throw new Error('not used'); }
   };
 }
 

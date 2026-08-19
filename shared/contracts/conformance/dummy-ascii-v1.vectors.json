@@ -6,7 +6,11 @@
     { "name": "query mode", "command": { "type": "queryMode" }, "expectedLine": "#GETMODE" },
     { "name": "query enable", "command": { "type": "queryEnable" }, "expectedLine": "#GETENABLE" },
     { "name": "set supported mode", "command": { "type": "setMode", "mode": 3 }, "expectedLine": "#CMDMODE 3" },
-    { "name": "six joint target", "command": { "type": "jointGroup", "positionsDeg": [0, -1.25, 2, 3, 4, 5], "speedDegS": 10 }, "expectedLine": ">0,-1.25,2,3,4,5,10" }
+    { "name": "six joint target", "command": { "type": "jointGroup", "positionsDeg": [0, -1.25, 2, 3, 4, 5], "speedDegS": 10 }, "expectedLine": ">0,-1.25,2,3,4,5,10" },
+    { "name": "tiny finite joint target", "command": { "type": "jointGroup", "positionsDeg": [1e-16, 0, 0, 0, 0, 0], "speedDegS": 20 }, "expectedLine": ">1e-16,0,0,0,0,0,20" },
+    { "name": "high precision joint target", "command": { "type": "jointGroup", "positionsDeg": [1.23456789012345, 0, 0, 0, 0, 0], "speedDegS": 20 }, "expectedLine": ">1.23456789012345,0,0,0,0,0,20" },
+    { "name": "small decimal notation boundary", "command": { "type": "jointGroup", "positionsDeg": [1e-5, 0, 0, 0, 0, 0], "speedDegS": 20 }, "expectedLine": ">0.00001,0,0,0,0,0,20" },
+    { "name": "large decimal notation boundary", "command": { "type": "jointGroup", "positionsDeg": [1e20, 0, 0, 0, 0, 0], "speedDegS": 20 }, "expectedLine": ">100000000000000000000,0,0,0,0,0,20" }
   ],
   "invalidRawCases": [
     { "raw": "#CMDMODE 4", "expectedCode": "MODE_NOT_ALLOWED" },

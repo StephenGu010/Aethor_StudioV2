@@ -9,6 +9,7 @@ interface RobotSessionState {
   measuredAlignmentPending: boolean;
   setJointTarget: (protocolIndex: number, valueDeg: number) => void;
   alignTarget: (positionsDeg: number[]) => void;
+  loadActionPreview: (positionsDeg: readonly number[]) => boolean;
   loadShowcasePose: () => void;
   beginHardwareSession: (sessionId: string) => void;
   alignTargetFromMeasured: (sessionId: string, positionsDeg: number[]) => void;
@@ -39,6 +40,13 @@ export const useRobotSessionStore = create<RobotSessionState>((set) => ({
       }),
       measuredAlignmentPending: false
     }),
+  loadActionPreview: (positionsDeg) => {
+    if (positionsDeg.length !== dummyProfile.model.dof || positionsDeg.some((value) => !Number.isFinite(value))) {
+      return false;
+    }
+    set({ targetPositionsDeg: [...positionsDeg], measuredAlignmentPending: false });
+    return true;
+  },
   loadShowcasePose: () => set({ targetPositionsDeg: defaultTargets(), measuredAlignmentPending: false }),
   beginHardwareSession: (hardwareSessionId) => set((state) => state.hardwareSessionId === hardwareSessionId
     ? state

@@ -629,7 +629,7 @@ test.describe('Aethor Studio V2 workspaces', () => {
     await expect(page.getByRole('button', { name: '网关未连接 · 禁止下发' })).toBeDisabled();
   });
 
-  test('edits and explicitly saves an offline action document without hardware traffic', async ({ page }) => {
+  test('preserves unbounded device angles and automatically saves an offline action document without hardware traffic', async ({ page }) => {
     const hardwareRequests: string[] = [];
     page.on('request', (request) => {
       if (['fetch', 'xhr', 'websocket'].includes(request.resourceType())) hardwareRequests.push(request.url());
@@ -639,16 +639,21 @@ test.describe('Aethor Studio V2 workspaces', () => {
     await page.getByRole('button', { name: '新建空白程序' }).click();
     await page.getByLabel('动作程序名称').fill('E2E inspection cycle');
     await page.getByRole('button', { name: '添加目标草稿' }).click();
-    await page.getByLabel('J1 点位角度').fill('20');
+    await page.getByLabel('J1 点位角度').fill('200');
+    await page.getByLabel('J3 点位角度').fill('-45');
     await page.getByRole('button', { name: '加载到 Dummy 本地目标草稿' }).click();
 
     await expect(page.getByText('TARGET PREVIEW · NO SEND')).toBeVisible();
+    await expect(page.getByText(/按原始设备角写入/)).toBeVisible();
     await expect(page.getByRole('button', { name: /运行程序/ })).toBeDisabled();
-    await page.getByRole('button', { name: '保存' }).click();
-    await expect(page.getByText('SAVED REVISION')).toBeVisible();
+    await expect(page.getByRole('button', { name: '保存' })).toHaveCount(0);
+    await expect(page.getByText('AUTO-SAVED').first()).toBeVisible();
 
     await page.reload();
     await expect(page.getByRole('button', { name: /^E2E inspection cycle/ })).toBeVisible();
+    await page.getByRole('button', { name: /^E2E inspection cycle/ }).click();
+    await expect(page.getByLabel('J1 点位角度')).toHaveValue('200');
+    await expect(page.getByLabel('J3 点位角度')).toHaveValue('-45');
     await expect(page.getByRole('button', { name: /运行程序/ })).toBeDisabled();
     expect(hardwareRequests).toEqual([]);
   });

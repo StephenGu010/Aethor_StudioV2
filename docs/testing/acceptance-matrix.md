@@ -10,10 +10,11 @@
 | 3D | Dummy 六轴与 Aethor_robo 双七轴 URDF 原点/轴/分组、本体与分组包围盒相机适配、参考网格、拾取/拖动、按需渲染、自适应 DPR、WebGL/资源失败、重复卸载/切换 | 无 | 17 个 Aethor_robo STL 全部加载且 visual/collision 共享 17 份 geometry；URDF 固定为 17 links、16 joints（14 revolute + 2 fixed），不存在 continuous/wheel 链；目标 collision 不绘制，幽灵材质按受控关节共享，诊断含操纵器为 23 geometry / 22 material；参考网格位于完整整机最低点下方至少 8 cm、覆盖至少 2 倍足迹且边长不少于 6 m；balanced DPR ≤1.75/350.5 万像素，constrained DPR ≤1.2/180 万像素且最低 1；关节只差量更新，连续目标输入不重算相机包围盒，工具窗坐标变化不重绘 3D 场景；空闲实际帧计数收敛，关节/相机/拖拽/模型变化立即恢复并再次停止；整机/左右臂取景可恢复，左右各七轴可独立预览；实体与幽灵独立；READY 时 DOM/可访问性树不存在场景失败告警，真实 WebGL/资源失败仍明确降级；初载/窗口变化/重置后模型完整入镜且不受固定雾距遮蔽；一次同源网络中断可恢复但持续失败可见；拖动目标变化而另一 Profile、反馈和硬件请求不变；renderer/controls/model/drag 所有权不累积 |
 | 网关 | 单元、集成、fake serial、顶栏/设备页端口选择、错误/占用/打开停滞/拔出端口、重复连接/断开、loopback/token、不合作事件 sink | Phase 4 已按监督手册完成只读连接；控制需对应 runbook | 顶栏枚举不自动连接，只有显式操作打开所选端口，连接端口在两个入口一致；普通打开失败释放临时 transport 后直接回到 offline；打开超时/取消主动 dispose 候选连接、回到 offline 并隔离本进程重试，宿主仍可退出；成功打开后的 stale/unknown/faulted 仍可人工释放，明确 enabled 或在途命令时拒绝普通断开；Aethor_robo 零枚举；单一串口所有者；查询/命令串行化；不自动重连；历史/事件有界；sink 忽略取消也不得阻塞 transport 释放或累积悬挂发布 |
 | Dummy 连续动作恢复 | 无关联错误帧 JSON、Windows error 121/`TimeoutException`、只读查询与动作写入区分、retry 后恢复/再次失败、唯一 close/dispose | 先用 fake serial；COM4 复验需重新授权 | 无 correlation 时省略可选字段；仅三种幂等查询最多重试一次并计入独立 probe；动作、使能、停止、模式和人工终端不自动重发；retry 失败仍 fault 并释放；前端不再把合法错误帧误报为契约违规 |
-| 硬件命令 | capability、命令 ID/指纹、单在途、有界抢占、安全联锁、engineering 白名单/状态门/速度上限、超时、取消、三入口恢复、乱序终态、审计恢复/导出、SignalR 降级/REST 恢复、停止链、目标/运动包络双重校验 | Gate A 状态控制已验证；engineering 运动需操作者按手册现场执行；supervised Gate B 仍需独立授权、物理急停和低风险运动门 | 默认关闭；engineering 仅 Development + 令牌，终端无需管理员解锁；HOME/RESET/RGB/电流/PID/reboot/多行/任意 raw 零写入；关节组须 connected、已知 enabled、有效 mode、六轴限位、至少一帧 measured 数据与显式 `0 < speed <= 100`；direct HTTP 只返回 `queued + gatewayAccepted`，物理写入再独立发布 `sent + transportWritten`，任一请求不等待设备回复而禁用下一次发送；迟到 ACK 只记日志，查询超时不自动断开；supervised 到位仍须连续实测收敛；停止响应未知继续锁存；去使能须 `#GETENABLE=0` |
-| 动作文档（6A） | Schema/Zod、来源、限位、文件上限、显式保存、持久化恢复、导入冲突、dirty guard、导出、三档 E2E | 禁止访问串口 | 只恢复校验通过的 V1；SHOWCASE/人工/实测不混淆；刷新恢复已保存库；页面零硬件请求且 runner 不存在 |
+| 硬件命令 | capability、命令 ID/指纹、单在途、有界抢占、安全联锁、engineering 白名单/状态门/速度上限、超时、取消、三入口恢复、乱序终态、审计恢复/导出、SignalR 降级/REST 恢复、停止链、目标/运动包络双重校验 | Gate A 状态控制已验证；engineering 运动需操作者按手册现场执行；supervised Gate B 仍需独立授权、物理急停和低风险运动门 | 默认关闭；engineering 仅 Development + 令牌，终端无需管理员解锁；HOME/RESET/RGB/电流/PID/reboot/多行/任意 raw 零写入；direct 关节组须 connected、已知 enabled、有效 mode、六个有限设备角、至少一帧 measured 数据与显式 `0 < speed <= 100`，不应用旧 Profile/URDF 范围；结构化 supervised 关节组仍校验 manifest 与完整运动包络；direct HTTP 只返回 `queued + gatewayAccepted`，物理写入再独立发布 `sent + transportWritten`；迟到 ACK 只记日志，查询超时不自动断开；停止响应未知继续锁存；去使能须 `#GETENABLE=0` |
+| 动作文档（6A） | Schema/Zod、来源、任意有限六轴值原样往返、文件上限、自动保存、持久化恢复、导入冲突、无拦截退出、无确认点位删除、导出、三档 E2E | 软件测试禁止访问串口 | 只恢复校验通过的 V1；SHOWCASE/人工/实测不混淆；`#GETJPOS` 六轴值不裁剪且可原值预览；无 engineering 能力时零硬件请求 |
 | 动作执行内核（6B-S） | fake command port、单 owner、逐点确认、弱证据、取消/停止、checkpoint 恢复、并发、超时、dispose | 禁止访问串口 | 无 DI/API/UI/RobotGateway adapter；逐点只消费 `completed + feedbackConfirmed`；到位后才等待；异常至多一次有界停止；未确认停止不显示 Stopped；恢复绑定 revision/session/计划指纹 |
-| 动作执行接线（6B-H） | 运行计划 wire contract、真实 adapter、命令审计恢复、断线与未知结果 | Gate B 后监督执行低风险短动作 | 不预灌 FIFO；不以固定 sleep 或 ACK 判断完成；停止后不遗留待发队列；页面和后端均有运行态与冲突命令保护 |
+| Engineering 动作运行（6B-E） | wire/Zod、严格 HTTP JSON、不可变快照、默认 20 deg/s、循环、transport-written 推进、估算节拍、重复 run ID、跨语言往返数值/63 字符、并发/时钟回拨/空快照、慢事件订阅、阻塞 writer 停止、停止失败、外部停止、断开/dispose | fake port；实机由操作者另行复核 | C# 单 owner；SHOWCASE 零写入；不等待 FIFO/`ok`/到位；有限运行和停止均为 unconfirmed；排队点位可撤销且停止链后无旧点位；任一异常释放 owner |
+| 动作执行接线（6B-H） | 反馈确认式运行计划、真实 adapter、命令审计恢复、checkpoint、断线与未知结果 | Gate B 后监督执行低风险短动作 | 不预灌 FIFO；只在 `feedbackConfirmed` 后推进；停止后不遗留待发队列；不能复用 6B-E 的估算等待冒充完成 |
 | 示波/终端 | 18 路有界 buffer、重复/乱序/缺口、可见性刷新节流、ECharts 生命周期、过滤、CSV/文本导出、视图清空、GETJPOS 显示切换、双 Profile 隔离、direct 白名单与状态门 | Phase 7B 验证真实帧、资源曲线与故障恢复；engineering 发送按独立手册 | 来源和单位字段存在；单路 ≤4800、总计 ≤86400；网关空缓冲不回填 SHOWCASE；隐藏 GETJPOS 不停止反馈或删除原始帧；Aethor_robo 只显示候选模板和本地校验，不消费 Dummy 帧或产生伪 TX/RX；只有网关返回结果和协议帧才显示真实发送；120s 后真实资源仍有界 |
 | 桌面壳（8A） | bridge、参数、令牌、有界日志/性能探针、诊断包、窗口恢复、进程监督、便携包清单、Profile 法律/溯源闭包、生产依赖/SPDX 清单、并发打包门、离线 smoke、实际 WebView2 | 禁止连接串口 | 浏览器不伪造原生能力；诊断包只含说明、清单和最多五份有界脱敏日志，取消/失败不留半成品；性能采样 60 秒 single-flight，只保留规范化工作区、白名单 Web 指标及宿主/WebView2/可空网关的受跟踪聚合值，进程句柄即时释放且异常停止，完整 URL 不落盘；同版本/Runtime 并发打包失败关闭；manifest 与实际文件集合完全相等；两个 Profile NOTICE/provenance 与第三方 SPDX/摘要/法律附件缺失时失败关闭；组件、PURL、关系和缺口计数一致；命令策略关闭；REST/SignalR 成功；正常退出不留桌面/网关进程 |
 | 桌面发布（8B） | 实际窗口句柄 DPI/Per-Monitor V2/可见范围、WebView2 Stable-only 前置条件、第三方与模型许可完整性、四档 DPI、多显示器、安装/升级/卸载、签名、受控崩溃恢复 | Windows 真机与独立监督硬件门 | 依赖正文缺口以 `third-party-license-incomplete`、模型条款缺口以 `model-redistribution-incomplete` 失败关闭；仓库补充正文必须绑定精确组件版本、包完整性和不可变上游来源；每档 DPI 必须与 96/120/144/192 实测一致且窗口可见；Runtime 失败先于网关启动且不自动下载；网关崩溃立即阻断且只允许显式离线重启；干净 MSI 候选可修复/升级；用户数据默认保留；退出不留后台进程，COM4 句柄有监督释放证据 |
@@ -33,9 +34,9 @@
 
 ## Phase 6A 离线动作编辑证据（2026-08-09）
 
-- `pnpm test`：shared 87、frontend 116、C# 46，共 249 项通过；ActionProgram 覆盖 Schema/Ajv、Zod、限位/DOF/模式/来源、未知版本、1 MiB 文件上限、64 文档/4 MiB 本机库边界、显式保存/revision、冲突、持久化隔离、dirty guard、预览和对象 URL 清理。
+- `pnpm test`：历史基线为 shared 87、frontend 116、C# 46，共 249 项通过；ActionProgram 现还应覆盖六轴超出 Profile 范围仍按原值往返/preview/port 交接、20 deg/s/循环默认值、350 ms 自动保存、退出无拦截和点位直接删除。最新数量以阶段 handoff 为准。
 - `pnpm typecheck` 与 `pnpm build` 通过；Vite 2617 modules，.NET Release 0 warning/0 error。
-- 三档 Edge E2E 39/39 通过；动作工作流覆盖创建、编辑、显式保存、刷新恢复和零 fetch/XHR/WebSocket，请求路径与运行按钮保持禁用。
+- 历史三档 Edge E2E 39/39 通过的是 6A 锁定基线；6B-E 加入后需另验无网关时禁用、engineering 门满足时启用以及开始/停止运行态。
 - 紧凑视口动作页和三档页面边界均无根 document 溢出；五个工作区的安全状态、3D 资源释放与当时的三维预览视觉基线继续通过。
 - 未打开 COM4、未启动网关、未发送查询/状态改变/运动命令；控制预检明确为 `serialPortOpened=false/networkRequestSent=false`。
 - 该次 Phase 6A 证据采集时 6B 尚未开始；当前新增的 6B-S 也只有 fake-port 软件内核，仍不能证明动作可运行或替代 Phase 5 Gate B/6B-H。
@@ -52,8 +53,8 @@
 
 - 11/11 fake command-port 回归通过：同一时刻仅一个 run owner，当前点模式/关节组未取得 `completed + feedbackConfirmed` 时不推进；模式确认与关节发送之间的停止竞态同样零关节调用；到位等待只发生在确认之后。
 - 操作者停止、弱证据、command await 超时和内部步骤故障均终止序列并至多调用一次有界 stop-and-disable；停止未确认保持失败。dispose 复用同一路径。
-- checkpoint 只接受相同 program revision、session、计划 SHA-256 和最后确认点；SHOWCASE、Aethor_robo、错误 DOF/限位和非正速度在 fake port 接管前拒绝。
-- 全仓库 398 项测试与 Release build 通过；动作页当前生产构建三档 E2E 3/3 保持运行按钮禁用、零 fetch/XHR/WebSocket。
+- checkpoint 只接受相同 program revision、session、计划 SHA-256 和最后确认点；SHOWCASE、Aethor_robo、错误 DOF、非有限角度和非正速度在 fake port 接管前拒绝。
+- 全仓库 398 项测试与 Release build 是 6B-S 无接线历史基线；6B-E 的当前回归数量以 Phase 6 handoff 和变更记录为准。
 - API/前端对执行内核零引用；无 DI、运行路由、真实 RobotGateway adapter、串口打开或硬件命令。该证据不能替代 6B-H/Gate B。
 
 ## Phase 8A Windows 桌面软件门证据（2026-08-09）

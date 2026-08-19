@@ -43,10 +43,11 @@ internal sealed class FakeAsciiTransport : IAsciiTransport
         FullMode = BoundedChannelFullMode.Wait
     });
     private readonly Func<string, int, IReadOnlyList<byte[]>> responseScript;
-    private readonly TaskCompletionSource writeStarted =
+    private TaskCompletionSource writeStarted =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private readonly TaskCompletionSource writeRelease =
+    private TaskCompletionSource writeRelease =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private int pauseWrites;
     private byte[]? activeChunk;
     private int activeChunkOffset;
     private int writeCount;
@@ -74,7 +75,7 @@ internal sealed class FakeAsciiTransport : IAsciiTransport
     public bool IgnoreReadCancellation { get; init; }
     public bool BlockWritesUntilClose { get; init; }
     public bool IgnoreWriteCancellation { get; init; }
-    public Task WriteStarted => writeStarted.Task;
+    public Task WriteStarted => Volatile.Read(ref writeStarted).Task;
     public int OpenCount { get; private set; }
     public int CloseCount { get; private set; }
     public int DisposeCount { get; private set; }
@@ -137,10 +138,12 @@ internal sealed class FakeAsciiTransport : IAsciiTransport
             throw new IOException("fake port closed");
         }
 
-        if (BlockWritesUntilClose)
+        if (BlockWritesUntilClose || Volatile.Read(ref pauseWrites) != 0)
         {
-            writeStarted.TrySetResult();
-            await writeRelease.Task
+            var started = Volatile.Read(ref writeStarted);
+            var release = Volatile.Read(ref writeRelease);
+            started.TrySetResult();
+            await release.Task
                 .WaitAsync(IgnoreWriteCancellation ? CancellationToken.None : cancellationToken)
                 .ConfigureAwait(false);
             if (!IsOpen)
@@ -190,7 +193,18 @@ internal sealed class FakeAsciiTransport : IAsciiTransport
         }
     }
 
-    public void ReleaseWrites() => writeRelease.TrySetResult();
+    public void PauseWrites()
+    {
+        Volatile.Write(ref writeStarted, new(TaskCreationOptions.RunContinuationsAsynchronously));
+        Volatile.Write(ref writeRelease, new(TaskCreationOptions.RunContinuationsAsynchronously));
+        Volatile.Write(ref pauseWrites, 1);
+    }
+
+    public void ReleaseWrites()
+    {
+        Volatile.Write(ref pauseWrites, 0);
+        Volatile.Read(ref writeRelease).TrySetResult();
+    }
 
     public ValueTask DisposeAsync()
     {

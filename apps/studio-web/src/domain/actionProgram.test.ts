@@ -36,7 +36,7 @@ describe('ActionProgramV1 domain', () => {
     expect(validateActionProgramV1({ ...program, jointCoordinateSystem: 'urdf-model-joints' }, dummyProfile).valid).toBe(false);
   });
 
-  it('rejects wrong DOF, unsupported modes, duplicate IDs, and joint-limit violations', () => {
+  it('rejects wrong DOF, unsupported modes, and duplicate IDs without applying profile limits', () => {
     const program = validProgram();
     const waypoint = program.waypoints[0]!;
     expect(validateActionProgramV1({
@@ -51,10 +51,12 @@ describe('ActionProgramV1 domain', () => {
       ...program,
       waypoints: [waypoint, { ...waypoint }]
     }, dummyProfile).errors.join(' ')).toMatch(/waypointId 重复/);
-    expect(validateActionProgramV1({
+    const unbounded = validateActionProgramV1({
       ...program,
-      waypoints: [{ ...waypoint, positionsDeg: [181, 0, 0, 0, 0, 0] }]
-    }, dummyProfile).errors.join(' ')).toMatch(/J1 超出/);
+      waypoints: [{ ...waypoint, positionsDeg: [181, 95, -45, 200, -150, 900] }]
+    }, dummyProfile);
+    expect(unbounded.valid).toBe(true);
+    expect(unbounded.program?.waypoints[0]?.positionsDeg).toEqual([181, 95, -45, 200, -150, 900]);
   });
 
   it('requires measured captures to carry a UTC timestamp and prevents false capture metadata', () => {
@@ -68,6 +70,28 @@ describe('ActionProgramV1 domain', () => {
       ...program,
       waypoints: [{ ...waypoint, source: 'manual', capturedAtUtc: timestampUtc }]
     }, dummyProfile).valid).toBe(false);
+  });
+
+  it('preserves an encoder capture outside profile limits without transforming any axis', () => {
+    const program = validProgram();
+    const measured = createActionWaypointV1({
+      waypointId: '9ef34ad8-50e0-4ad0-b754-272e83df0002',
+      sequence: 2,
+      positionsDeg: [181, 95, -45, 200, -150, 900],
+      source: 'measuredCapture',
+      timestampUtc
+    });
+    const validation = validateActionProgramV1({ ...program, waypoints: [measured] }, dummyProfile);
+
+    expect(validation).toMatchObject({ valid: true });
+    expect(validation.program?.waypoints[0]?.positionsDeg).toEqual([181, 95, -45, 200, -150, 900]);
+  });
+
+  it('defaults legacy-compatible execution preferences to 20 deg/s with looping off', () => {
+    const { speedDegS: _speedDegS, loopEnabled: _loopEnabled, ...legacyCompatible } = validProgram();
+    const validation = validateActionProgramV1(legacyCompatible, dummyProfile);
+
+    expect(validation.program).toMatchObject({ speedDegS: 20, loopEnabled: false });
   });
 
   it('enforces the import size limit before parsing JSON', () => {

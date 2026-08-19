@@ -204,6 +204,97 @@
         }
       ]
     },
+    "ActionProgramRunWaypointV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["waypointId", "name", "positionsDeg", "mode", "postDispatchWaitMs", "source"],
+      "properties": {
+        "waypointId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "positionsDeg": {
+          "type": "array",
+          "minItems": 6,
+          "maxItems": 6,
+          "items": { "type": "number" }
+        },
+        "mode": { "enum": [1, 2, 3] },
+        "postDispatchWaitMs": { "type": "integer", "minimum": 0, "maximum": 600000 },
+        "source": { "enum": ["manual", "measuredCapture"] }
+      }
+    },
+    "ActionProgramRunStartRequestV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contractVersion", "runId", "programId", "revision", "sessionId", "profileId", "source", "speedDegS", "loopEnabled", "waypoints"],
+      "properties": {
+        "contractVersion": { "const": "1.0" },
+        "runId": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "programId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "revision": { "type": "integer", "minimum": 1, "maximum": 2147483647 },
+        "sessionId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "profileId": { "const": "dummy-6dof" },
+        "source": { "const": "authored" },
+        "speedDegS": { "type": "number", "exclusiveMinimum": 0, "maximum": 100 },
+        "loopEnabled": { "type": "boolean" },
+        "waypoints": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "items": { "$ref": "#/$defs/ActionProgramRunWaypointV1" }
+        }
+      }
+    },
+    "ActionProgramRunSnapshotV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contractVersion", "runId", "programId", "revision", "sessionId", "profileId", "state", "currentWaypointIndex", "waypointCount", "completedCycles", "loopEnabled", "speedDegS", "lastRequestId", "lastEvidence", "physicalCompletionConfirmed", "message", "startedAtUtc", "updatedAtUtc", "finishedAtUtc"],
+      "properties": {
+        "contractVersion": { "const": "1.0" },
+        "runId": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "programId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "revision": { "type": "integer", "minimum": 1, "maximum": 2147483647 },
+        "sessionId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "profileId": { "const": "dummy-6dof" },
+        "state": { "enum": ["starting", "running", "stopping", "finishedUnconfirmed", "stoppedUnconfirmed", "failed", "rejected"] },
+        "currentWaypointIndex": {
+          "oneOf": [
+            { "type": "integer", "minimum": 0, "maximum": 255 },
+            { "type": "null" }
+          ]
+        },
+        "waypointCount": { "type": "integer", "minimum": 1, "maximum": 256 },
+        "completedCycles": { "type": "integer", "minimum": 0, "maximum": 2147483647 },
+        "loopEnabled": { "type": "boolean" },
+        "speedDegS": { "type": "number", "exclusiveMinimum": 0, "maximum": 100 },
+        "lastRequestId": {
+          "oneOf": [
+            { "type": "string", "minLength": 1, "maxLength": 128 },
+            { "type": "null" }
+          ]
+        },
+        "lastEvidence": { "enum": ["none", "gatewayAccepted", "transportWritten"] },
+        "physicalCompletionConfirmed": { "const": false },
+        "message": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "startedAtUtc": { "type": "string", "format": "date-time" },
+        "updatedAtUtc": { "type": "string", "format": "date-time" },
+        "finishedAtUtc": {
+          "oneOf": [
+            { "type": "string", "format": "date-time" },
+            { "type": "null" }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "state": { "enum": ["finishedUnconfirmed", "stoppedUnconfirmed"] } }, "required": ["state"] },
+          "then": { "properties": { "lastEvidence": { "const": "transportWritten" }, "finishedAtUtc": { "type": "string", "format": "date-time" } } }
+        },
+        {
+          "if": { "properties": { "state": { "enum": ["starting", "running", "stopping"] } }, "required": ["state"] },
+          "then": { "properties": { "finishedAtUtc": { "type": "null" } } }
+        }
+      ]
+    },
     "SimpleRobotCommand": {
       "type": "object",
       "additionalProperties": false,

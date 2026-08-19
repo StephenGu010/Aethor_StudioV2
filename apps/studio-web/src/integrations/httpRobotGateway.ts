@@ -1,5 +1,7 @@
 import { HubConnectionBuilder, LogLevel, type HubConnection } from '@microsoft/signalr';
 import type {
+  ActionProgramRunSnapshotV1,
+  ActionProgramRunStartRequestV1,
   CommandAuditRecord,
   CommandResult,
   DirectCommandRequest,
@@ -149,6 +151,38 @@ const directCommandResultSchema = z.object({
   }
   if (value.status === 'sent' && value.deviceReply != null) {
     context.addIssue({ code: 'custom', message: 'A sent direct result cannot include an unverified device reply' });
+  }
+});
+const actionProgramRunSnapshotSchema = z.object({
+  contractVersion: z.literal('1.0'),
+  runId: z.string().min(1).max(64),
+  programId: z.string().min(1).max(128),
+  revision: z.number().int().min(1).max(2_147_483_647),
+  sessionId: z.string().min(1).max(128),
+  profileId: z.literal('dummy-6dof'),
+  state: z.enum(['starting', 'running', 'stopping', 'finishedUnconfirmed', 'stoppedUnconfirmed', 'failed', 'rejected']),
+  currentWaypointIndex: z.number().int().min(0).max(255).nullable(),
+  waypointCount: z.number().int().min(1).max(256),
+  completedCycles: z.number().int().min(0).max(2_147_483_647),
+  loopEnabled: z.boolean(),
+  speedDegS: z.number().finite().positive().max(100),
+  lastRequestId: z.string().min(1).max(128).nullable(),
+  lastEvidence: z.enum(['none', 'gatewayAccepted', 'transportWritten']),
+  physicalCompletionConfirmed: z.literal(false),
+  message: z.string().min(1).max(500),
+  startedAtUtc: utcTimestampSchema,
+  updatedAtUtc: utcTimestampSchema,
+  finishedAtUtc: utcTimestampSchema.nullable()
+}).strict().superRefine((value, context) => {
+  const terminalUnconfirmed = value.state === 'finishedUnconfirmed' || value.state === 'stoppedUnconfirmed';
+  if (terminalUnconfirmed && (value.lastEvidence !== 'transportWritten' || value.finishedAtUtc === null)) {
+    context.addIssue({ code: 'custom', message: 'Unconfirmed terminal action states require transportWritten evidence and a finish time' });
+  }
+  if (['starting', 'running', 'stopping'].includes(value.state) && value.finishedAtUtc !== null) {
+    context.addIssue({ code: 'custom', message: 'Active action states cannot include a finish time' });
+  }
+  if (value.currentWaypointIndex !== null && value.currentWaypointIndex >= value.waypointCount) {
+    context.addIssue({ code: 'custom', message: 'Current waypoint index must be within the immutable run snapshot' });
   }
 });
 const commandRequestSnapshotSchema = z.object({
@@ -315,6 +349,10 @@ export class HttpRobotGateway implements RobotGatewayV1 {
     return this.request('/api/v1/engineering/direct-commands?limit=50', z.array(directCommandResultSchema));
   }
 
+  async getActionProgramRun(): Promise<ActionProgramRunSnapshotV1 | null> {
+    return this.request('/api/v1/engineering/action-program/run', actionProgramRunSnapshotSchema.nullable());
+  }
+
   async openTelemetry(listener: RobotGatewayTelemetryListener): Promise<CloseGatewayTelemetry> {
     const connection = this.createHubConnection();
     connection.on('sessionSnapshot', (value: unknown) => this.deliver(value, sessionSchema, listener.onSession, listener));
@@ -322,6 +360,7 @@ export class HttpRobotGateway implements RobotGatewayV1 {
     connection.on('protocolFrame', (value: unknown) => this.deliver(value, protocolFrameSchema, listener.onProtocolFrame, listener));
     connection.on('commandResult', (value: unknown) => this.deliver(value, commandResultSchema, listener.onCommandResult, listener));
     connection.on('directCommandResult', (value: unknown) => this.deliver(value, directCommandResultSchema, listener.onDirectCommandResult, listener));
+    connection.on('actionProgramRunSnapshot', (value: unknown) => this.deliver(value, actionProgramRunSnapshotSchema, listener.onActionProgramRun, listener));
     connection.onreconnecting(() => listener.onTransportError?.({
       kind: 'reconnecting',
       message: '实时遥测正在重连；等待通道恢复后核对 REST 权威快照'
@@ -374,6 +413,19 @@ export class HttpRobotGateway implements RobotGatewayV1 {
     return this.request('/api/v1/engineering/direct-command', directCommandResultSchema, {
       method: 'POST',
       body: JSON.stringify(command)
+    });
+  }
+
+  async startActionProgram(request: ActionProgramRunStartRequestV1): Promise<ActionProgramRunSnapshotV1> {
+    return this.request('/api/v1/engineering/action-program/run/start', actionProgramRunSnapshotSchema, {
+      method: 'POST',
+      body: JSON.stringify(request)
+    });
+  }
+
+  async stopActionProgram(): Promise<ActionProgramRunSnapshotV1> {
+    return this.request('/api/v1/engineering/action-program/run/stop', actionProgramRunSnapshotSchema, {
+      method: 'POST'
     });
   }
 

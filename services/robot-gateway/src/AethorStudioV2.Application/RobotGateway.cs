@@ -5,7 +5,7 @@ using AethorStudioV2.Domain;
 
 namespace AethorStudioV2.Application;
 
-public sealed class RobotGateway : IAsyncDisposable
+public sealed class RobotGateway : IAsyncDisposable, IEngineeringActionProgramCommandPort
 {
     private const int EngineeringFeedbackMinimumSamples = 8;
     private const double EngineeringFeedbackMovementEpsilonDeg = 0.02;
@@ -43,6 +43,7 @@ public sealed class RobotGateway : IAsyncDisposable
     private double engineeringMotionMaximumObservedMovementDeg;
     private bool engineeringMotionFeedbackFrozenSuspected;
     private string? exclusiveCommandId;
+    private string? engineeringActionRunId;
     private int commandInterlockLatched;
     private int engineeringManualMotionActive;
     private int serialOpenRecoveryRequired;
@@ -112,6 +113,10 @@ public sealed class RobotGateway : IAsyncDisposable
     }
 
     public RobotGatewayCapabilities Capabilities { get; }
+
+    public event Action<string>? SessionTerminated;
+
+    public double MaximumSpeedDegS => options.EngineeringJointSpeedMaxDegS;
 
     public RobotSessionSnapshot GetSession()
     {
@@ -210,8 +215,82 @@ public sealed class RobotGateway : IAsyncDisposable
     public Task<CommandResult> SendJointGroupAsync(JointGroupCommand command, CancellationToken cancellationToken) =>
         ExecuteCommandAsync(CommandSpec.From(command), cancellationToken);
 
-    public async Task<DirectCommandResult> SendDirectAsync(
+    public Task<DirectCommandResult> SendDirectAsync(
         DirectCommandRequest request,
+        CancellationToken cancellationToken) =>
+        SendDirectCoreAsync(request, actionRunId: null, cancellationToken);
+
+    public bool TryBeginActionRun(string runId, string sessionId)
+    {
+        if (!options.EngineeringCommandsEnabled) return false;
+        var current = GetSession();
+        lock (commandStateGate)
+        {
+            if (engineeringActionRunId is not null
+                || exclusiveCommandId is not null
+                || current.SessionId != sessionId
+                || current.ConnectionState != ConnectionState.Connected)
+            {
+                return false;
+            }
+
+            engineeringActionRunId = runId;
+            return true;
+        }
+    }
+
+    public void EndActionRun(string runId)
+    {
+        lock (commandStateGate)
+        {
+            if (engineeringActionRunId == runId) engineeringActionRunId = null;
+        }
+    }
+
+    public async Task<DirectCommandResult> SendActionDirectAndAwaitTerminalAsync(
+        string runId,
+        DirectCommandRequest request,
+        CancellationToken cancellationToken)
+    {
+        var initial = await SendDirectCoreAsync(request, runId, cancellationToken).ConfigureAwait(false);
+        if (initial.Status != DirectCommandStatus.Queued) return initial;
+
+        Task<DirectCommandResult>? completion;
+        lock (commandStateGate)
+        {
+            completion = directCommandEntries.TryGetValue(request.RequestId, out var entry)
+                ? entry.Completion.Task
+                : null;
+        }
+        if (completion is null)
+        {
+            return initial with
+            {
+                Status = DirectCommandStatus.Failed,
+                Message = "动作命令终态观察器不可用",
+                TimestampUtc = timeProvider.GetUtcNow()
+            };
+        }
+
+        try
+        {
+            return await completion.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            var workId = $"direct:{request.RequestId}";
+            activeSerialSession?.CancelQueuedWrite(workId, "动作程序停止前撤销尚未写入的点位");
+            // If the writer already took the item, it is no longer retractable.
+            // Wait for that atomic transport write to end before the runtime queues
+            // STOP and DISABLE, preserving a deterministic wire suffix.
+            await completion.ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    private async Task<DirectCommandResult> SendDirectCoreAsync(
+        DirectCommandRequest request,
+        string? actionRunId,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -280,6 +359,23 @@ public sealed class RobotGateway : IAsyncDisposable
                 return string.Equals(existing.Fingerprint, fingerprint, StringComparison.Ordinal)
                     ? existing.Result
                     : DirectResult(request, DirectCommandStatus.Rejected, CommandEvidence.None, parsedCommand.NormalizedLine, "requestId 已用于不同的直连请求");
+            }
+
+            if (actionRunId is not null
+                && !string.Equals(engineeringActionRunId, actionRunId, StringComparison.Ordinal))
+            {
+                return DirectResult(request, DirectCommandStatus.Rejected, CommandEvidence.None, parsedCommand.NormalizedLine, "动作程序已失去串口命令所有权");
+            }
+
+            if (engineeringActionRunId is not null
+                && actionRunId is null
+                && parsedCommand.Kind is not (DummyDirectCommandKind.QueryJointPositions
+                    or DummyDirectCommandKind.QueryMode
+                    or DummyDirectCommandKind.QueryEnable
+                    or DummyDirectCommandKind.Stop
+                    or DummyDirectCommandKind.Disable))
+            {
+                return DirectResult(request, DirectCommandStatus.Rejected, CommandEvidence.None, parsedCommand.NormalizedLine, "动作程序正在运行；仅允许查询、停止或去使能");
             }
 
             if (exclusiveCommandId is not null
@@ -847,6 +943,17 @@ public sealed class RobotGateway : IAsyncDisposable
                     CommandResultCode.CommandIdConflict,
                     CommandEvidence.None,
                     "commandId 已用于不同请求，拒绝复用"));
+            }
+
+            if (engineeringActionRunId is not null
+                && spec.Kind != RobotCommandKind.StopAndDisable)
+            {
+                return Task.FromResult(StoreImmediateResultLocked(
+                    spec,
+                    fingerprint,
+                    CommandStatus.Rejected,
+                    CommandResultCode.CommandInFlight,
+                    "动作程序正在运行；仅允许停止并去使能"));
             }
 
             if (exclusiveCommandId is not null)
@@ -2087,6 +2194,8 @@ public sealed class RobotGateway : IAsyncDisposable
             return;
         }
 
+        NotifySessionTerminated("串口轮询故障");
+
         RecordProtocolError("transportFault", SafeExceptionMessage(exception), sessionId);
         diagnostics.Record(new(
             "serial.polling.faulted",
@@ -2096,6 +2205,23 @@ public sealed class RobotGateway : IAsyncDisposable
             "Read-only polling stopped and the serial transport was released",
             exception));
         await transport.DisposeAsync().ConfigureAwait(false);
+    }
+
+    private void NotifySessionTerminated(string reason)
+    {
+        var handlers = SessionTerminated;
+        if (handlers is null) return;
+        foreach (Action<string> handler in handlers.GetInvocationList())
+        {
+            try
+            {
+                handler(reason);
+            }
+            catch
+            {
+                // A session observer must never prevent serial resource release.
+            }
+        }
     }
 
     private void ApplyObservedResponse(DummyResponse response)

@@ -10,7 +10,7 @@
 - 数据示波：关节反馈、目标与误差；静态阶段明确标记 `SHOWCASE`，配置网关后绝不以展示帧填补空缓冲。
 - 串口终端：协议帧查看、筛选、导出和离线格式校验；输入无需管理员解锁。Dummy 在本机 `engineering` 网关声明 direct capability 且已连接时可发送受限白名单；Aethor_robo 只使用共享 codec 生成/校验 CRC，adapter 接线前发送固定禁用。前端不直接访问串口。
 - 设备与模型：设备、URDF、关节映射、限位、协议能力和资源来源。
-- 动作编排：Phase 6A 支持版本化 JSON、点位编辑/排序、来源校验、显式本机保存、导入导出、受门控的实测单点采集和目标草稿预览；6B-S 只提供无生产接线的 C# 逐点执行内核，页面持续显示无执行路径；6B-H 实机接线未实现。
+- 动作编排：Phase 6A 支持版本化 JSON、点位编辑/排序、来源校验、自动本机保存、导入导出、受门控的实测单点采集和目标草稿预览；6B-S 只提供无生产接线的 C# 逐点执行内核，页面持续显示无执行路径；6B-H 实机接线未实现。
 
 ## 已锁定操作规则
 
@@ -24,7 +24,7 @@
 - 静态展示数据永远不能产生 `CONNECTED`、`ENABLED`、`COMMAND ACCEPTED` 或 `E-STOP SUCCEEDED`。
 - 允许的 Dummy 结构化模式仅为 1–3；详情以 [Dummy ASCII v1](protocols/dummy-ascii-v1.md) 为准。
 - 动作“暂停”不能伪装成固件队列暂停。首版必须采用诚实的逐点调度和确认语义。
-- 动作文档结构/限位合法不等于动作安全、路径安全或可执行；SHOWCASE 点位和人工草稿不得冒充实机示教或安全姿态。
+- 动作文档结构合法不等于动作安全、路径安全或当前硬件可执行；文档会按原值保留和预览六个有限设备角，当次网关/固件仍可明确拒绝命令。SHOWCASE 点位和人工草稿不得冒充实机示教或安全姿态。
 
 ## 受管 Profile 包边界
 
@@ -33,13 +33,15 @@
 - 包内路径按 Windows 文件系统语义拒绝穿越、绝对路径、ADS/保留名、尾随点/空格和大小写冲突；外部 URL、缺失资源、重复关节、DOF/索引/限位错误同样失败关闭。
 - `PACKAGE STRUCTURE VALID` 只证明 manifest/URDF 结构与 mesh 路径存在；当前前端不展开 STL 内容，也不代表已安装、已持久化、可连接或可控制。未来 C# Profile 安装服务必须重新验证原始字节并写入应用数据目录，不能复用前端判定作为授权。
 
-## Phase 6A / 6B-S 当前边界
+## Dummy 动作编排当前边界
 
-- `ActionProgramV1` 仅接受 `dummy-6dof`、`dummy-device-joints-v1` 六轴设备角、模式 1–3 和最多 256 个点位；详情以 [ActionProgram V1](../shared/contracts/action-program-v1.md) 为准。
+- `ActionProgramV1` 仅接受 `dummy-6dof`、`dummy-device-joints-v1` 的六个有限设备角、模式 1–3 和最多 256 个点位；不用 Profile/URDF 范围裁剪数值，详情以 [ActionProgram V1](../shared/contracts/action-program-v1.md) 为准。
 - 只有 connected、profile 匹配、source measured、valid 且六轴完整的当前反馈才能采集为 `measuredCapture`；静态展示只能产生 `showcaseExample`。
-- 本机动作库只保存显式确认过的文档 revision；草稿、当前选择和预览不持久化。导出不等于安装或设备审核。
-- C# `ActionProgramRunner` 只通过 fake command port 验证逐点、停止和 checkpoint 语义；没有 DI、REST/SignalR、真实 RobotGateway adapter、串口写入或前端运行态。运行按钮固定禁用。
-- 6B-S checkpoint 不是固件暂停，只允许同一 program revision、session 与计划指纹从最后确认点后恢复。Phase 5 Gate B 未关闭前不得增加 6B-H 生产路径。
+- 本机动作库对通过 Schema 的编辑做 350 ms 防抖自动保存；当前选择和预览标记不持久化。导出不等于安装或设备审核。
+- authored 文档可在显式 engineering 会话中运行；默认 20 deg/s，可选择单次或循环。前端提交不可变 revision 快照，C# 拥有循环、估算节拍、串口写入和停止；SHOWCASE 文档/点位不能运行。
+- engineering runner 只把 `sent + transportWritten` 当作调度证据，不等待队列号、`ok` 或到位。有限程序结束显示 `finishedUnconfirmed`；操作员停止取消未来点位并写入 `!STOP/!DISABLE`，两行都写入后显示 `stoppedUnconfirmed`。两者均不表示物理完成。
+- 运行前要求 Dummy session 和六轴 `#GETJPOS` 新鲜有效、电机已确认 enabled、全部点位模式与当前模式一致、速度不超过 engineering 上限。点位设备角不按旧 Profile/URDF 范围裁剪；固件若拒绝，只保留为协议观察，系统不改写点位也不自动重发。
+- 原 C# `ActionProgramRunner` 仍是未接线的反馈确认式内核。其 checkpoint 不是固件暂停，只允许同一 program revision、session 与计划指纹从最后确认点后恢复；它不能被 engineering 人工运行的估算等待替代。
 
 ## Phase 7A 当前边界
 

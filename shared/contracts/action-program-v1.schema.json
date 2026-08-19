@@ -27,6 +27,8 @@
     "createdAtUtc": { "type": "string", "format": "date-time" },
     "updatedAtUtc": { "type": "string", "format": "date-time" },
     "source": { "enum": ["authored", "showcaseExample"] },
+    "speedDegS": { "type": "number", "exclusiveMinimum": 0, "maximum": 100, "default": 20 },
+    "loopEnabled": { "type": "boolean", "default": false },
     "notes": { "type": "string", "maxLength": 2000 },
     "waypoints": {
       "type": "array",
@@ -55,15 +57,7 @@
           "type": "array",
           "minItems": 6,
           "maxItems": 6,
-          "prefixItems": [
-            { "type": "number", "minimum": -170, "maximum": 170 },
-            { "type": "number", "minimum": -75, "maximum": 90 },
-            { "type": "number", "minimum": 0, "maximum": 180 },
-            { "type": "number", "minimum": -180, "maximum": 180 },
-            { "type": "number", "minimum": -120, "maximum": 120 },
-            { "type": "number", "minimum": -720, "maximum": 720 }
-          ],
-          "items": false
+          "items": { "type": "number" }
         },
         "mode": { "enum": [1, 2, 3] },
         "postArrivalWait": {

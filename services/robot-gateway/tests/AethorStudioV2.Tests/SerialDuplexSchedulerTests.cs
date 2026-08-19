@@ -197,6 +197,28 @@ public sealed class SerialDuplexSchedulerTests
     }
 
     [Fact]
+    public async Task CancellingQueuedWorkPreventsItFromReachingTheTransport()
+    {
+        var transport = new FakeAsciiTransport((_, _) => [])
+        {
+            BlockWritesUntilClose = true
+        };
+        await transport.OpenAsync(CancellationToken.None);
+        var scheduler = CreateScheduler(transport);
+
+        var active = scheduler.QueueWrite(Request("active", "#GETJPOS\n", SerialWorkPriority.Telemetry));
+        await transport.WriteStarted.WaitAsync(TimeSpan.FromSeconds(1));
+        var motion = scheduler.QueueWrite(Request("motion", ">1,2,3,4,5,6,20\n", SerialWorkPriority.Interactive));
+
+        Assert.True(scheduler.CancelQueuedWrite("motion", "operator stop"));
+        Assert.Equal(SerialWriteOutcome.Cancelled, (await motion.Completion!).Outcome);
+        transport.ReleaseWrites();
+        Assert.Equal(SerialWriteOutcome.Written, (await active.Completion!).Outcome);
+        Assert.DoesNotContain(">1,2,3,4,5,6,20", transport.Writes);
+        await scheduler.DisposeAsync();
+    }
+
+    [Fact]
     public async Task FairScheduleLetsBackgroundWorkProgressUnderInteractiveLoad()
     {
         var transport = new FakeAsciiTransport((_, _) => [])

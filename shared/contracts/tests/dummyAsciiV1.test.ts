@@ -31,6 +31,12 @@ describe('Dummy ASCII v1 command formatter and whitelist', () => {
     expect(() => formatDummyCommand({ type: 'jointGroup', positionsDeg: [0, 1, 2, 3, 4, 5], speedDegS: 0 })).toThrow(/greater/);
   });
 
+  it('preserves finite joint values instead of rounding them before transport', () => {
+    expect(formatDummyCommand({
+      type: 'jointGroup', positionsDeg: [1e-16, 1.23456789012345, 0, 0, 0, 0], speedDegS: 20
+    })).toBe('>1e-16,1.23456789012345,0,0,0,0,20');
+  });
+
   it.each([
     '#CMDMODE 4', '#CMDMODE 5', '#RGBMODE 1', '#RGBCOLOR 1 2 3', '!CALIBRATION',
     '#SET_DCE_KP 1 2', '#REBOOT 1', '@0,0,0,0,0,0', '&0,0,0,0,0,0', '$0,0,0,0,0,0', '!NOTSTOP'

@@ -1,4 +1,5 @@
 import type {
+  ActionProgramRunSnapshotV1,
   CommandAuditRecord,
   CommandResult,
   DirectCommandResult,
@@ -26,6 +27,7 @@ interface GatewayRuntimeState {
   operatorProtocolFrames: ProtocolFrame[];
   commandHistory: CommandAuditRecord[];
   directCommandHistory: DirectCommandResult[];
+  actionProgramRun: ActionProgramRunSnapshotV1 | null;
   commandAuditStatus: CommandAuditStatus;
   commandAuditError: string | null;
   lastCommandResult: CommandResult | null;
@@ -50,6 +52,7 @@ interface GatewayRuntimeState {
   replaceCommandHistory: (history: CommandAuditRecord[]) => void;
   replaceDirectCommandHistory: (history: DirectCommandResult[]) => void;
   upsertDirectCommandResult: (result: DirectCommandResult) => void;
+  setActionProgramRun: (snapshot: ActionProgramRunSnapshotV1 | null) => void;
   setLastCommandResult: (result: CommandResult | null) => void;
   setTransportWarning: (warning: string | null) => void;
   setActivePortName: (portName: string | null) => void;
@@ -73,6 +76,7 @@ const initialRuntime = () => ({
   operatorProtocolFrames: [] as ProtocolFrame[],
   commandHistory: [] as CommandAuditRecord[],
   directCommandHistory: [] as DirectCommandResult[],
+  actionProgramRun: null as ActionProgramRunSnapshotV1 | null,
   commandAuditStatus: 'unavailable' as CommandAuditStatus,
   commandAuditError: null,
   lastCommandResult: null,
@@ -109,6 +113,7 @@ export const useGatewayRuntimeStore = create<GatewayRuntimeState>((set) => ({
           operatorProtocolFrames: [],
           commandHistory: [],
           directCommandHistory: [],
+          actionProgramRun: null,
           commandAuditStatus: 'unavailable',
           commandAuditError: null,
           activePortName
@@ -167,6 +172,18 @@ export const useGatewayRuntimeStore = create<GatewayRuntimeState>((set) => ({
       ? { directCommandHistory: mergeDirectCommandHistory(state.directCommandHistory, [result]) }
       : {}
   )),
+  setActionProgramRun: (actionProgramRun) => set((state) => {
+    // A null REST snapshot has no causal timestamp. It may have been requested
+    // before a newer POST/SignalR run event, so only session lifecycle resets
+    // are allowed to clear an observed run.
+    if (actionProgramRun === null) return {};
+    if (actionProgramRun.sessionId !== state.session.sessionId) return {};
+    if (state.actionProgramRun !== null
+      && Date.parse(actionProgramRun.updatedAtUtc) < Date.parse(state.actionProgramRun.updatedAtUtc)) {
+      return {};
+    }
+    return { actionProgramRun };
+  }),
   setLastCommandResult: (lastCommandResult) => set((state) => (
     lastCommandResult === null
       ? { lastCommandResult }

@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { DirectCommandResult } from '@aethor/contracts';
-import { formatDummyCommand } from '@aethor/contracts/dummy-ascii-v1';
+import { DEFAULT_DUMMY_JOINT_SPEED_DEG_S, formatDummyCommand } from '@aethor/contracts/dummy-ascii-v1';
 import { Hint } from '../../components/ui/Hint';
 import { SourceTag } from '../../components/ui/SourceTag';
 import type { SceneCapabilityState } from '../../components/visualization/sceneCapabilities';
@@ -70,7 +70,7 @@ export function DummyConsole() {
   const negotiatedSpeedLimit = engineeringDirect
     ? capabilities.engineeringJointSpeedMaxDegS
     : capabilities?.jointGroupSpeedLimitDegS ?? null;
-  const [speedDegS, setSpeedDegS] = useState(1);
+  const [speedDegS, setSpeedDegS] = useState(DEFAULT_DUMMY_JOINT_SPEED_DEG_S);
   const measuredFrame = jointState.profileId === dummyProfile.profileId
     && jointState.source === 'measured'
     && jointState.positionsDeg.length === dummyProfile.model.dof;
@@ -120,6 +120,7 @@ export function DummyConsole() {
     setSelectedJointId(dummyProfile.joints[0]!.jointId);
     setDirectResult(null);
     setDirectRequestId(null);
+    setSpeedDegS(DEFAULT_DUMMY_JOINT_SPEED_DEG_S);
     setCameraResetSignal((value) => value + 1);
   }, [session.connectionState]);
 

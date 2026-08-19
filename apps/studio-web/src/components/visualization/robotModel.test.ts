@@ -110,6 +110,10 @@ describe('target preview rendering', () => {
     });
 
     try {
+      aethorRoboProfile.joints.forEach((joint) => {
+        expect(models.actualJoints.get(joint.urdfJointName)?.ignoreLimits).toBe(true);
+        expect(models.targetJoints.get(joint.urdfJointName)?.ignoreLimits).toBe(true);
+      });
       expect(targetMaterials.size).toBe(2);
       expect(targetMeshes.get('joint-visual')?.material)
         .toBe(targetMeshes.get('joint-collision')?.material);

@@ -251,16 +251,16 @@ public sealed class ActionProgramRunnerTests
     }
 
     [Fact]
-    public async Task RejectsShowcaseAethorAndOutOfLimitPlansBeforePortOwnership()
+    public async Task RejectsShowcaseAethorAndNonFinitePlansBeforePortOwnership()
     {
         var port = new FakeActionProgramCommandPort();
         await using var runner = Runner(port);
         var showcase = Plan("showcase", Waypoint(1)) with { Source = ActionProgramSource.ShowcaseExample };
         var aethor = Plan("aethor", Waypoint(1)) with { ProfileId = "aethor-robo-dual-7dof" };
-        var invalidWaypoint = Waypoint(1) with { PositionsDeg = [180, 0, 0, 0, 0, 0] };
-        var invalidLimit = Plan("invalid-limit", invalidWaypoint);
+        var invalidWaypoint = Waypoint(1) with { PositionsDeg = [double.NaN, 0, 0, 0, 0, 0] };
+        var invalidFinite = Plan("invalid-finite", invalidWaypoint);
 
-        foreach (var plan in new[] { showcase, aethor, invalidLimit })
+        foreach (var plan in new[] { showcase, aethor, invalidFinite })
         {
             var handle = runner.Start(plan);
             Assert.False(handle.Accepted);
@@ -268,6 +268,49 @@ public sealed class ActionProgramRunnerTests
         }
 
         Assert.Empty(port.Calls);
+    }
+
+    [Fact]
+    public async Task ForwardsUnboundedFiniteDeviceAnglesWithoutMutation()
+    {
+        var port = new FakeActionProgramCommandPort();
+        await using var runner = Runner(port);
+        double[] positionsDeg = [181, 95, -45, 200, -150, 900];
+        var waypoint = Waypoint(1) with { PositionsDeg = positionsDeg };
+
+        var result = await runner.Start(Plan("unbounded-device-angle", waypoint)).Completion;
+
+        Assert.Equal(ActionProgramRunStatus.Completed, result.Status);
+        var command = Assert.Single(port.JointCommands);
+        Assert.Equal(positionsDeg, command.PositionsDeg);
+    }
+
+    [Fact]
+    public async Task SnapshotsDeviceAnglesBeforeAsynchronousExecutionStarts()
+    {
+        var modeEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseMode = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var port = new FakeActionProgramCommandPort
+        {
+            SetModeHandler = async (command, cancellationToken) =>
+            {
+                modeEntered.TrySetResult();
+                await releaseMode.Task.WaitAsync(cancellationToken);
+                return Confirmed(command.CommandId, command.SessionId, RobotCommandKind.SetMode);
+            }
+        };
+        await using var runner = Runner(port);
+        double[] positionsDeg = [181, 95, -45, 200, -150, 900];
+        var waypoint = Waypoint(1) with { PositionsDeg = positionsDeg };
+
+        var handle = runner.Start(Plan("snapshot-device-angles", waypoint));
+        await modeEntered.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        positionsDeg[2] = 45;
+        releaseMode.TrySetResult();
+        var result = await handle.Completion;
+
+        Assert.Equal(ActionProgramRunStatus.Completed, result.Status);
+        Assert.Equal(-45, Assert.Single(port.JointCommands).PositionsDeg[2]);
     }
 
     [Fact]
@@ -349,6 +392,7 @@ public sealed class ActionProgramRunnerTests
     private sealed class FakeActionProgramCommandPort : IActionProgramCommandPort
     {
         public ConcurrentQueue<string> Calls { get; } = new();
+        public ConcurrentQueue<JointGroupCommand> JointCommands { get; } = new();
         public Func<SetModeCommand, CancellationToken, Task<CommandResult>>? SetModeHandler { get; init; }
         public Func<JointGroupCommand, CancellationToken, Task<CommandResult>>? JointGroupHandler { get; init; }
         public Func<SimpleRobotCommand, CancellationToken, Task<CommandResult>>? StopHandler { get; init; }
@@ -368,6 +412,7 @@ public sealed class ActionProgramRunnerTests
                 command.CommandId.AsSpan(command.CommandId.IndexOf("-wp-", StringComparison.Ordinal) + 4, 3),
                 System.Globalization.CultureInfo.InvariantCulture);
             Calls.Enqueue($"joint:{index}");
+            JointCommands.Enqueue(command);
             return JointGroupHandler?.Invoke(command, cancellationToken)
                 ?? Task.FromResult(Confirmed(command.CommandId, command.SessionId, RobotCommandKind.JointGroup));
         }

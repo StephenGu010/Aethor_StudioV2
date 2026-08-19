@@ -14,6 +14,7 @@ export interface LoadedModels {
 
 export interface JointLike extends THREE.Object3D {
   axis?: THREE.Vector3;
+  ignoreLimits?: boolean;
   setJointValue: (value: number) => void;
 }
 
@@ -53,6 +54,8 @@ export function createLoadedModels(
   });
   resolveJointBindings(profile, actualJoints.keys());
   resolveJointBindings(profile, targetJoints.keys());
+  enableUnboundedDeviceAngleRendering(profile, actualJoints);
+  enableUnboundedDeviceAngleRendering(profile, targetJoints);
   return { actual: loadedRobot, target, actualJoints, targetJoints, actualMaterials };
 }
 
@@ -180,6 +183,16 @@ function collectJoints(root: THREE.Object3D): Map<string, JointLike> {
     if (typeof candidate.setJointValue === 'function') joints.set(child.name, candidate as JointLike);
   });
   return joints;
+}
+
+function enableUnboundedDeviceAngleRendering(
+  profile: RobotProfileManifestV1,
+  joints: Map<string, JointLike>
+) {
+  profile.joints.forEach((joint) => {
+    const modelJoint = joints.get(joint.urdfJointName);
+    if (modelJoint) modelJoint.ignoreLimits = true;
+  });
 }
 
 function isCollisionNode(object: THREE.Object3D, root: THREE.Object3D) {

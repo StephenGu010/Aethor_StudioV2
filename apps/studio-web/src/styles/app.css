@@ -1129,9 +1129,8 @@
 .actionToolbar h2 { margin-top: var(--space-1); overflow: hidden; font-size: var(--font-size-section); font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
 .actionToolbarButtons { display: flex; flex: 0 0 auto; gap: 6px; }
 .actionToolbarButtons button { display: inline-flex; min-height: 32px; align-items: center; gap: 6px; padding: 0 9px; color: #aab1b6; font-size: var(--font-size-caption); }
-.actionToolbarButtons .primaryAction { border-color: #bfc4c7; background: #dfe2e4; color: #111416; font-weight: 650; }
-.actionToolbarButtons .primaryAction:hover:not(:disabled) { background: #f1f3f4; }
-.actionToolbarButtons .primaryAction:disabled { border-color: #343a3f; background: #1b1f22; color: #666e74; }
+.actionAutoSaveBadge { display: inline-flex; min-height: 32px; align-items: center; gap: 5px; padding: 0 8px; border: 1px solid #30443a; color: #78ab88; font: var(--font-size-micro) var(--font-mono); white-space: nowrap; }
+.actionAutoSaveBadge.pending { border-color: #55472f; color: #c3a65c; }
 
 .actionEditorBody { display: grid; min-width: 0; min-height: 0; grid-template-columns: 210px minmax(0, 1fr); }
 .actionLibrary { display: flex; min-width: 0; min-height: 0; flex-direction: column; border-right: 1px solid var(--line-subtle); background: #0d1012; }
@@ -1215,7 +1214,16 @@
 .actionJointGrid label > span { display: flex; justify-content: space-between; font-family: var(--font-mono); }
 .actionJointGrid label small { color: #687178; font-weight: 400; }
 .actionJointGrid input { font-family: var(--font-mono); text-align: right; font-variant-numeric: tabular-nums; }
+.actionJointGrid input[readonly] { border-color: #2b3338; background: #0e1113; color: #91999f; cursor: default; }
+.actionJointGrid input[aria-invalid="true"] { border-color: #735d32; color: #d0ad5b; }
 .actionFieldPair { display: grid; grid-template-columns: .7fr 1.3fr; gap: 8px; }
+.actionExecutionDefaults { grid-template-columns: 1fr 1fr; }
+.actionNumberWithUnit { display: grid !important; align-items: center; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; }
+.actionNumberWithUnit small { color: #747e84; font: var(--font-size-micro) var(--font-mono); }
+.actionLoopSwitch > span:last-child { display: flex; min-height: 32px; align-items: center; justify-content: space-between; padding: 0 8px; border: 1px solid #343b40; background: #111417; }
+.actionLoopSwitch input { width: 31px; min-height: 17px; accent-color: #7da790; }
+.actionLoopSwitch strong { color: #87928b; font: var(--font-size-micro) var(--font-mono); }
+.actionFieldHelp { margin: -2px 0 0; color: #707a80; font-size: var(--font-size-micro); line-height: 1.5; }
 .actionSourceNotice { padding: 9px 10px; border: 1px solid #3b4247; background: #121619; }
 .actionSourceNotice strong,
 .actionSourceNotice span { display: block; }
@@ -1236,9 +1244,11 @@
 .actionSafetyNotice span { display: block; }
 .actionSafetyNotice strong { color: #cbb066; font: var(--font-size-micro) var(--font-mono); }
 .actionSafetyNotice span { margin-top: var(--space-1); color: #9b927c; font-size: var(--font-size-micro); line-height: 1.6; }
+.actionSafetyNotice.active { border-color: #6b5425; background: #201a0f; }
 .actionPrimaryArea { display: grid; gap: var(--space-2); margin-top: auto; padding: var(--space-4); border-top: 1px solid var(--line-subtle); }
 .actionPrimaryArea .hintAnchor { display: flex; }
 .actionPrimaryArea button { display: flex; min-height: 42px; align-items: center; justify-content: center; gap: 8px; opacity: 1 !important; }
+.actionPrimaryArea button.dangerAction { border-color: #6d3437; background: #2a1719; color: #f3c1c3; }
 .actionPrimaryArea small { color: #747c83; font-size: var(--font-size-micro); text-align: center; }
 
 @media (max-width: 1550px), (max-height: 840px) {

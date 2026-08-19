@@ -19,8 +19,8 @@ builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
 builder.Logging.AddFilter("Microsoft.Hosting.Lifetime", LogLevel.Information);
 builder.WebHost.ConfigureKestrel(options => options.ListenLocalhost(hostOptions.Port));
 
-builder.Services.Configure<JsonOptions>(options => ConfigureJson(options.SerializerOptions));
-builder.Services.AddSignalR().AddJsonProtocol(options => ConfigureJson(options.PayloadSerializerOptions));
+builder.Services.Configure<JsonOptions>(options => GatewayJson.Configure(options.SerializerOptions));
+builder.Services.AddSignalR().AddJsonProtocol(options => GatewayJson.Configure(options.PayloadSerializerOptions));
 builder.Services.AddCors(options => options.AddPolicy("development-loopback", policy =>
     policy.WithOrigins([.. hostOptions.DevelopmentOrigins])
         .WithMethods("GET", "POST")
@@ -61,7 +61,9 @@ builder.Services.AddSingleton<IAsciiTransportFactory>(_ => new SerialPortTranspo
     hostOptions.CommandPolicy == GatewayCommandPolicy.Engineering
         ? commandOptions.EngineeringJointSpeedMaxDegS
         : hostOptions.JointGroupSpeedLimitDegS));
-builder.Services.AddSingleton<IRobotGatewayEventSink, SignalRGatewayEventSink>();
+builder.Services.AddSingleton<SignalRGatewayEventSink>();
+builder.Services.AddSingleton<IRobotGatewayEventSink>(sp => sp.GetRequiredService<SignalRGatewayEventSink>());
+builder.Services.AddSingleton<IActionProgramRunEventSink>(sp => sp.GetRequiredService<SignalRGatewayEventSink>());
 builder.Services.AddSingleton<IGatewayDiagnostics, LoggerGatewayDiagnostics>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton(sp => new RobotGateway(
@@ -71,6 +73,10 @@ builder.Services.AddSingleton(sp => new RobotGateway(
     sp.GetRequiredService<IGatewayDiagnostics>(),
     sp.GetRequiredService<TimeProvider>(),
     commandOptions));
+builder.Services.AddSingleton(sp => new EngineeringActionProgramRuntime(
+    sp.GetRequiredService<RobotGateway>(),
+    sp.GetRequiredService<IActionProgramRunEventSink>(),
+    sp.GetRequiredService<TimeProvider>()));
 builder.Services.AddHostedService<GatewayHostedLifecycle>();
 
 var app = builder.Build();
@@ -156,6 +162,8 @@ api.MapGet("/engineering/direct-commands", (RobotGateway gateway, int? limit) =>
         return Problem(StatusCodes.Status400BadRequest, "Invalid direct command history query", exception.Message);
     }
 });
+api.MapGet("/engineering/action-program/run", (EngineeringActionProgramRuntime runtime) =>
+    Results.Ok(runtime.GetSnapshot()));
 api.MapPost("/session/connect", async (
     HttpContext context,
     RobotConnectRequest request,
@@ -198,7 +206,11 @@ api.MapPost("/session/connect", async (
         throw;
     }
 });
-api.MapPost("/session/disconnect", async (HttpContext context, RobotGateway gateway, CancellationToken cancellationToken) =>
+api.MapPost("/session/disconnect", async (
+    HttpContext context,
+    RobotGateway gateway,
+    EngineeringActionProgramRuntime actionRuntime,
+    CancellationToken cancellationToken) =>
 {
     const string operation = "disconnect";
     var operationId = ReadOperationId(context);
@@ -206,6 +218,10 @@ api.MapPost("/session/disconnect", async (HttpContext context, RobotGateway gate
     GatewayLog.SerialSessionStarted(app.Logger, operationId, operation);
     try
     {
+        if (actionRuntime.IsActive)
+        {
+            await actionRuntime.StopAsync("串口断开请求").ConfigureAwait(false);
+        }
         var snapshot = await gateway.DisconnectAsync(cancellationToken).ConfigureAwait(false);
         GatewayLog.SerialSessionCompleted(app.Logger, operationId, operation, snapshot.ConnectionState.ToString().ToLowerInvariant(), stopwatch.ElapsedMilliseconds);
         return Results.Ok(snapshot);
@@ -228,8 +244,15 @@ api.MapPost("/session/disconnect", async (HttpContext context, RobotGateway gate
 });
 api.MapPost("/commands/enable", async (SimpleRobotCommand command, RobotGateway gateway, CancellationToken cancellationToken) =>
     Results.Ok(await gateway.EnableAsync(command, cancellationToken).ConfigureAwait(false)));
-api.MapPost("/commands/stop-and-disable", async (SimpleRobotCommand command, RobotGateway gateway, CancellationToken cancellationToken) =>
-    Results.Ok(await gateway.StopAndDisableAsync(command, cancellationToken).ConfigureAwait(false)));
+api.MapPost("/commands/stop-and-disable", async (
+    SimpleRobotCommand command,
+    RobotGateway gateway,
+    EngineeringActionProgramRuntime actionRuntime,
+    CancellationToken cancellationToken) =>
+{
+    await StopActionProgramIfActiveAsync(actionRuntime, "结构化停止并去使能请求").ConfigureAwait(false);
+    return Results.Ok(await gateway.StopAndDisableAsync(command, cancellationToken).ConfigureAwait(false));
+});
 api.MapPost("/commands/home", async (SimpleRobotCommand command, RobotGateway gateway, CancellationToken cancellationToken) =>
     Results.Ok(await gateway.HomeAsync(command, cancellationToken).ConfigureAwait(false)));
 api.MapPost("/commands/reset", async (SimpleRobotCommand command, RobotGateway gateway, CancellationToken cancellationToken) =>
@@ -238,8 +261,36 @@ api.MapPost("/commands/set-mode", async (SetModeCommand command, RobotGateway ga
     Results.Ok(await gateway.SetModeAsync(command, cancellationToken).ConfigureAwait(false)));
 api.MapPost("/commands/joint-group", async (JointGroupCommand command, RobotGateway gateway, CancellationToken cancellationToken) =>
     Results.Ok(await gateway.SendJointGroupAsync(command, cancellationToken).ConfigureAwait(false)));
-api.MapPost("/engineering/direct-command", async (DirectCommandRequest command, RobotGateway gateway, CancellationToken cancellationToken) =>
-    Results.Ok(await gateway.SendDirectAsync(command, cancellationToken).ConfigureAwait(false)));
+api.MapPost("/engineering/direct-command", async (
+    DirectCommandRequest command,
+    RobotGateway gateway,
+    EngineeringActionProgramRuntime actionRuntime,
+    CancellationToken cancellationToken) =>
+{
+    if (command.Line?.Trim() is "!STOP" or "!DISABLE")
+    {
+        await StopActionProgramIfActiveAsync(actionRuntime, "串口终端停止请求").ConfigureAwait(false);
+    }
+    return Results.Ok(await gateway.SendDirectAsync(command, cancellationToken).ConfigureAwait(false));
+});
+api.MapPost("/engineering/action-program/run/start", (
+    ActionProgramRunStartRequest request,
+    EngineeringActionProgramRuntime runtime) =>
+{
+    try
+    {
+        return Results.Ok(runtime.Start(request).InitialSnapshot);
+    }
+    catch (GatewayConflictException exception)
+    {
+        return Problem(StatusCodes.Status409Conflict, "Action program start rejected", exception.Message);
+    }
+    catch (GatewayValidationException exception)
+    {
+        return Problem(StatusCodes.Status400BadRequest, "Invalid action program run", exception.Message);
+    }
+});
+api.MapPost("/engineering/action-program/run/stop", ActionProgramRunEndpoints.StopAsync);
 api.MapPost("/host/shutdown", (RobotGateway gateway, IHostApplicationLifetime lifetime, HttpContext context) =>
 {
     var session = gateway.GetSession();
@@ -265,19 +316,25 @@ static IResult Problem(int status, string title, string detail) => Results.Probl
     detail: detail,
     type: "https://aethor.local/problems/gateway-operation");
 
+static async Task StopActionProgramIfActiveAsync(EngineeringActionProgramRuntime runtime, string reason)
+{
+    if (!runtime.IsActive) return;
+    try
+    {
+        await runtime.StopAsync(reason).ConfigureAwait(false);
+    }
+    catch (GatewayConflictException)
+    {
+        // The run reached a terminal state between the observation and stop request.
+    }
+}
+
 static string ReadOperationId(HttpContext context)
 {
     var candidate = context.Request.Headers["X-Aethor-Operation"].FirstOrDefault();
     return Guid.TryParse(candidate, out var operationId)
         ? operationId.ToString("D")
         : context.TraceIdentifier;
-}
-
-static void ConfigureJson(JsonSerializerOptions options)
-{
-    options.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
-    options.DictionaryKeyPolicy = JsonNamingPolicy.CamelCase;
-    options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
 }
 
 public partial class Program;

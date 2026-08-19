@@ -43,6 +43,25 @@ public interface IActionProgramDelay
     Task DelayAsync(TimeSpan duration, CancellationToken cancellationToken);
 }
 
+public interface IEngineeringActionProgramCommandPort
+{
+    event Action<string>? SessionTerminated;
+    double MaximumSpeedDegS { get; }
+    RobotSessionSnapshot GetSession();
+    JointStateFrame GetJointState();
+    bool TryBeginActionRun(string runId, string sessionId);
+    void EndActionRun(string runId);
+    Task<DirectCommandResult> SendActionDirectAndAwaitTerminalAsync(
+        string runId,
+        DirectCommandRequest request,
+        CancellationToken cancellationToken);
+}
+
+public interface IActionProgramRunEventSink
+{
+    ValueTask PublishActionProgramRunAsync(ActionProgramRunSnapshot snapshot, CancellationToken cancellationToken);
+}
+
 public enum GatewayDiagnosticSeverity
 {
     Information,
@@ -86,4 +105,10 @@ public sealed class NullGatewayDiagnostics : IGatewayDiagnostics
     public void Record(GatewayDiagnosticEvent diagnosticEvent)
     {
     }
+}
+
+public sealed class NullActionProgramRunEventSink : IActionProgramRunEventSink
+{
+    public ValueTask PublishActionProgramRunAsync(ActionProgramRunSnapshot snapshot, CancellationToken cancellationToken) =>
+        ValueTask.CompletedTask;
 }

@@ -11,8 +11,8 @@ AethorStudioV2.Api
        <- AethorStudioV2.Infrastructure
 ```
 
-- `Domain`：v1.4 DTO、Dummy ASCII formatter/parser、固件设备角限位和命令状态枚举。Dummy 限位为 J1 `-170…170`、J2 `-75…90`、J3 `0…180`、J4 `-180…180`、J5 `-120…120`、J6 `-720…720`；网关不执行 URDF 偏置换算。
-- `Application`：`RobotGateway` 单一所有者、轮询、许可门、幂等、单在途命令、停止抢占、安全联锁和有界历史；另含无生产接线的 Phase 6B-S `ActionProgramRunner`。
+- `Domain`：v1.4 DTO、Dummy ASCII formatter/parser、固件设备角限位和命令状态枚举。Dummy 的监督控制限位为 J1 `-170…170`、J2 `-75…90`、J3 `0…180`、J4 `-180…180`、J5 `-120…120`、J6 `-720…720`；engineering direct/动作运行只校验六个有限设备角和固件帧长度，不套用这组旧范围。网关不执行 URDF 偏置换算。
+- `Application`：`RobotGateway` 单一所有者、轮询、许可门、幂等、单在途命令、停止抢占、安全联锁和有界历史；`EngineeringActionProgramRuntime` 负责人工确认模式的动作快照、循环、估算节拍和停止；`ActionProgramRunner` 保留为未来反馈确认式监督内核。
 - `Infrastructure`：Windows SerialPort adapter 和精确 payload policy；不接受任意 raw ASCII。
 - `Api`：loopback REST/SignalR、session token、精确 CORS 白名单和受控进程退出。
 - `Tests`：跨语言 vectors、fake serial、命令/生命周期/安全和 HTTP/SignalR 认证。
@@ -61,11 +61,15 @@ pnpm gateway:dev
 
 四项关节组配置必须同时存在或同时缺失；不得只配置速度。不要在当前 Phase 5 未完成状态下自行组合 `supervised + desktop` 配置连接 COM4。真实控制只能从 [Phase 5 监督式控制手册](../../docs/runbooks/phase-05-supervised-control-com4.md) 进入并重新记录现场授权。
 
-`engineering` 是本地开发调试策略，不是生产能力：它不需要前端管理员解锁，但仍由 C# 独占串口、校验单行可打印 ASCII、Dummy 白名单、session、限位、使能和模式。六轴速度 `0 < speed <= 100` 只来自固件输入范围，绝不是已验证安全速度。直连 HTTP 受理产生 `queued + gatewayAccepted`，物理 writer 成功后再通过结果历史与 SignalR 产生 `sent + transportWritten`；两者都不等待队列号、`ok` 或到位，操作者可以继续提交后续请求。若运动写入后至少 500 ms、至少 8 个位置回包均未变化且仍远离目标，网关将关节反馈标为 `stale` 并记录一次 `engineering.motion.feedback_frozen_suspected`；角度重新变化后自动恢复 `valid`。该诊断不阻止下一次人工目标，也不能判断实机是否运动。使用步骤见 [Dummy engineering 直连手册](../../docs/runbooks/dummy-engineering-direct.md)。
+`engineering` 是本地开发调试策略：它不需要前端管理员解锁，但仍由 C# 独占串口、校验单行可打印 ASCII、Dummy 白名单、session、有限六轴设备角、使能和模式。它不再套用旧 Profile/URDF 角度范围，也不会裁剪 `#GETJPOS` 或动作点位。六轴速度 `0 < speed <= 100` 只来自固件输入范围。直连 HTTP 受理产生 `queued + gatewayAccepted`，物理 writer 成功后再通过结果历史与 SignalR 产生 `sent + transportWritten`；两者都不等待队列号、`ok` 或到位，操作者可以继续提交后续请求。若运动写入后至少 500 ms、至少 8 个位置回包均未变化且仍远离目标，网关将关节反馈标为 `stale` 并记录一次 `engineering.motion.feedback_frozen_suspected`；角度重新变化后自动恢复 `valid`。该诊断不阻止下一次人工目标，也不能判断实机是否运动。使用步骤见 [Dummy engineering 直连手册](../../docs/runbooks/dummy-engineering-direct.md)。
+
+运动行按 ECMAScript `Number::toString` 的最短往返文本规范化，TS/C# 共用 conformance vectors；格式化后的 `>` 行最多 63 个 ASCII 字符，为固件 64-byte FIFO 项保留终止字节。停止动作程序时，尚未被 writer 取得的点位会从有界队列原子撤销；已开始的原子写入先收束，再排入 `!STOP` 和 `!DISABLE`。重复客户端 `runId` 不复用内部 direct request ID。
 
 ## 当前控制边界
 
-- `ActionProgramRunner` 当前只通过 fake `IActionProgramCommandPort` 验证逐点、停止、恢复、并发和超时语义；未注册 DI、未映射 API、未提供真实 `RobotGateway` adapter，也未改变前端运行按钮。它不是可用硬件能力。
+- `EngineeringActionProgramRuntime` 已注册到 engineering 网关并映射开始、停止和快照 API。它接收前端的不可变 authored revision，默认 20 deg/s，可单次或循环运行；逐点只要求 payload 达到 `transportWritten`，按最大关节角差/速度加附加等待推进，不等待 FIFO、`ok` 或到位。完成和停止分别使用 `finishedUnconfirmed/stoppedUnconfirmed`，`physicalCompletionConfirmed` 恒为 false。
+- 运行时同一时刻只持有一个动作快照；外部结构化停止、终端 `!STOP/!DISABLE`、断开和 dispose 会先取消未来点位及尚未写出的当前点位。停止运行尝试写入 `!STOP`、`!DISABLE`，任一步 transport 失败即返回 `failed`，但仍释放运行所有权。草稿编辑不会改变运行中的深快照。
+- 原 `ActionProgramRunner` 继续只通过 fake `IActionProgramCommandPort` 验证反馈确认、checkpoint 和恢复语义；没有生产 adapter。它与 engineering 人工运行是两种不同完成模型。
 
 - `enable`、`stopAndDisable`、`setMode` 和可选 `jointGroup` 已有类型化端点、能力协商和 fake-serial 证据；默认全部关闭。
 - HOME/RESET 端点仅保留稳定契约。固件在处理这两条命令时阻塞到动作结束，生产配置不宣告、不执行。

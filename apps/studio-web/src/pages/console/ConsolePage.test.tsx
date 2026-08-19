@@ -192,6 +192,7 @@ describe('Aethor_robo dual-arm console', () => {
     expect(screen.getByLabelText('J3 目标角度')).toHaveAttribute('min', '0');
     expect(screen.getByLabelText('J3 目标角度')).toHaveAttribute('max', '180');
     expect(screen.getByLabelText('J3 目标角度')).toHaveValue('108.6');
+    expect(screen.getByLabelText('Dummy 整组速度')).toHaveValue(20);
     expect(screen.queryByLabelText('L-J1 目标角度')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '下发整组关节角' })).toBeDisabled();
     expect(screen.getByText('Engineering direct gateway unavailable')).toBeInTheDocument();

@@ -1,4 +1,6 @@
 import type {
+  ActionProgramRunSnapshotV1,
+  ActionProgramRunStartRequestV1,
   CommandResult,
   DirectCommandRequest,
   DirectCommandResult,
@@ -69,6 +71,10 @@ export class StaticShowcaseSource implements RobotGatewayV1 {
     return [];
   }
 
+  async getActionProgramRun() {
+    return null;
+  }
+
   async enable(command: SimpleRobotCommand): Promise<CommandResult> {
     return unsupported(command, 'enable');
   }
@@ -104,6 +110,29 @@ export class StaticShowcaseSource implements RobotGatewayV1 {
       timestampUtc: new Date().toISOString()
     };
   }
+
+  async startActionProgram(request: ActionProgramRunStartRequestV1): Promise<ActionProgramRunSnapshotV1> {
+    return unsupportedActionRun(request, '静态展示源不能运行动作程序');
+  }
+
+  async stopActionProgram(): Promise<ActionProgramRunSnapshotV1> {
+    throw new Error('静态展示源没有正在运行的动作程序');
+  }
+}
+
+function unsupportedActionRun(
+  request: ActionProgramRunStartRequestV1,
+  message: string
+): ActionProgramRunSnapshotV1 {
+  const timestampUtc = new Date().toISOString();
+  return {
+    contractVersion: '1.0', runId: request.runId, programId: request.programId, revision: request.revision,
+    sessionId: request.sessionId, profileId: 'dummy-6dof', state: 'rejected', currentWaypointIndex: null,
+    waypointCount: request.waypoints.length, completedCycles: 0, loopEnabled: request.loopEnabled,
+    speedDegS: request.speedDegS, lastRequestId: null, lastEvidence: 'none',
+    physicalCompletionConfirmed: false, message, startedAtUtc: timestampUtc, updatedAtUtc: timestampUtc,
+    finishedAtUtc: timestampUtc
+  };
 }
 
 function unsupported(command: SimpleRobotCommand, commandKind: RobotCommandKind): CommandResult {

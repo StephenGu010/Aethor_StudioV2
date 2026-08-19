@@ -1,4 +1,6 @@
 import type {
+  ActionProgramRunSnapshotV1,
+  ActionProgramRunStartRequestV1,
   CommandResult,
   CommandAuditRecord,
   DirectCommandRequest,
@@ -39,6 +41,7 @@ export interface RobotGatewayTelemetryListener {
   onProtocolFrame?: (frame: ProtocolFrame) => void;
   onCommandResult?: (result: CommandResult) => void;
   onDirectCommandResult?: (result: DirectCommandResult) => void;
+  onActionProgramRun?: (snapshot: ActionProgramRunSnapshotV1) => void;
   onTransportError?: (incident: RobotGatewayTransportIncident) => void;
   onTransportRecovered?: () => void;
 }
@@ -58,6 +61,7 @@ export interface RobotGatewayV1 {
   getProtocolFrames(): Promise<ProtocolFrame[]>;
   getCommandHistory(): Promise<CommandAuditRecord[]>;
   getDirectCommandHistory(): Promise<DirectCommandResult[]>;
+  getActionProgramRun(): Promise<ActionProgramRunSnapshotV1 | null>;
   enable(command: SimpleRobotCommand): Promise<CommandResult>;
   stopAndDisable(command: SimpleRobotCommand): Promise<CommandResult>;
   home(command: SimpleRobotCommand): Promise<CommandResult>;
@@ -65,4 +69,6 @@ export interface RobotGatewayV1 {
   setMode(command: SetModeCommand): Promise<CommandResult>;
   sendJointGroup(command: JointGroupCommand): Promise<CommandResult>;
   sendDirectCommand(command: DirectCommandRequest): Promise<DirectCommandResult>;
+  startActionProgram(request: ActionProgramRunStartRequestV1): Promise<ActionProgramRunSnapshotV1>;
+  stopActionProgram(): Promise<ActionProgramRunSnapshotV1>;
 }

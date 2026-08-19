@@ -1,4 +1,4 @@
-import type { CommandAuditRecord, CommandEvidence, DirectCommandResult, DirectCommandStatus, ProtocolFrame, RobotGatewayCapabilitiesV1 } from '@aethor/contracts';
+import type { ActionProgramRunSnapshotV1, CommandAuditRecord, CommandEvidence, DirectCommandResult, DirectCommandStatus, ProtocolFrame, RobotGatewayCapabilitiesV1 } from '@aethor/contracts';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { dummyProfile } from '../profile/dummyProfile';
 import { useRobotSessionStore } from './useRobotSessionStore';
@@ -268,7 +268,69 @@ describe('gateway runtime store', () => {
     });
     expect(useGatewayRuntimeStore.getState().lastCommandResult).toBeNull();
   });
+
+  it('ignores stale action-run events and clears the run when the device session changes', () => {
+    useGatewayRuntimeStore.getState().setSession({
+      sessionId: 'session-action', profileId: 'dummy-6dof', connectionState: 'connected', motorState: 'enabled',
+      controlMode: 2, timestampUtc: '2026-08-19T00:00:00.000Z', source: 'measured', validity: 'valid'
+    });
+    useGatewayRuntimeStore.getState().setActionProgramRun(actionRunSnapshot(
+      'running', '2026-08-19T00:00:02.000Z'
+    ));
+    useGatewayRuntimeStore.getState().setActionProgramRun(actionRunSnapshot(
+      'starting', '2026-08-19T00:00:01.000Z'
+    ));
+
+    expect(useGatewayRuntimeStore.getState().actionProgramRun?.state).toBe('running');
+
+    useGatewayRuntimeStore.getState().setSession({
+      sessionId: 'session-next', profileId: 'dummy-6dof', connectionState: 'connected', motorState: 'unknown',
+      controlMode: null, timestampUtc: '2026-08-19T00:00:03.000Z', source: 'measured', validity: 'stale'
+    });
+    expect(useGatewayRuntimeStore.getState().actionProgramRun).toBeNull();
+  });
+
+  it('does not let a late empty REST snapshot erase a newer active run', () => {
+    useGatewayRuntimeStore.getState().setSession({
+      sessionId: 'session-action', profileId: 'dummy-6dof', connectionState: 'connected', motorState: 'enabled',
+      controlMode: 2, timestampUtc: '2026-08-19T00:00:00.000Z', source: 'measured', validity: 'valid'
+    });
+    useGatewayRuntimeStore.getState().setActionProgramRun(actionRunSnapshot(
+      'running', '2026-08-19T00:00:02.000Z'
+    ));
+
+    useGatewayRuntimeStore.getState().setActionProgramRun(null);
+
+    expect(useGatewayRuntimeStore.getState().actionProgramRun?.state).toBe('running');
+  });
 });
+
+function actionRunSnapshot(
+  state: ActionProgramRunSnapshotV1['state'],
+  updatedAtUtc: string
+): ActionProgramRunSnapshotV1 {
+  return {
+    contractVersion: '1.0',
+    runId: 'run-1',
+    programId: 'program-1',
+    revision: 1,
+    sessionId: 'session-action',
+    profileId: 'dummy-6dof',
+    state,
+    currentWaypointIndex: null,
+    waypointCount: 1,
+    completedCycles: 0,
+    loopEnabled: true,
+    speedDegS: 20,
+    lastRequestId: null,
+    lastEvidence: 'none',
+    physicalCompletionConfirmed: false,
+    message: state,
+    startedAtUtc: '2026-08-19T00:00:00.000Z',
+    updatedAtUtc,
+    finishedAtUtc: null
+  };
+}
 
 function auditForSession(
   commandId: string,
