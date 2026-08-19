@@ -200,6 +200,19 @@ describe('HttpRobotGateway boundary', () => {
     await expect(invalidGateway.getCommandHistory()).rejects.toMatchObject({ status: 502 });
   });
 
+  it('classifies an empty successful response as invalid gateway JSON instead of a transport outage', async () => {
+    const fetcher = vi.fn(async () => new Response('', {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    })) as unknown as typeof fetch;
+    const gateway = new HttpRobotGateway({ baseUrl: 'http://127.0.0.1:5127', sessionToken: token }, fetcher);
+
+    await expect(gateway.getActionProgramRun()).rejects.toMatchObject({
+      status: 502,
+      message: '网关响应不是有效 JSON'
+    });
+  });
+
   it('restores bounded direct history with queued and terminal write states', async () => {
     const history = [
       {

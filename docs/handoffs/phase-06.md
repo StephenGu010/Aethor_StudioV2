@@ -16,6 +16,7 @@ Dummy 六轴动作页已经从离线编辑器扩展为可用于桌面 engineerin
 - 新建程序默认 20 deg/s；程序可选择单次或循环。循环设置随文档保存。
 - 目标预览把六个设备角原样加载到 Dummy 幽灵模型，不发送串口；实体模型仍由实测反馈驱动。
 - authored 程序在 engineering 会话满足条件后可运行；SHOWCASE 程序和点位始终不可运行。
+- 桌面首次启动没有活动动作时，运行快照端点返回规范 JSON `null`；前端不再把 200 空响应误报成“无法访问本机机器人网关”。初始权威恢复失败会继续按有界节拍重试，恢复成功后再建立唯一 SignalR 通道，因此一次瞬态失败不会永久锁死本次 WebView 会话。
 
 ## 执行模型
 
@@ -95,6 +96,8 @@ API JSON 绑定与 Schema 同步拒绝未知字段、缺少的构造字段和数
 - 严格 HTTP JSON 绑定、停止/终态竞争、事件慢订阅合并、时钟回拨和空 REST 快照竞态；
 - SignalR/REST 契约校验、乱序事件拒绝和 session 切换清理；
 - Web、Gateway 与 Desktop Release 构建和桌面包同步。
+
+本轮最终结果为 contracts 131、frontend 257、gateway 178、desktop 118、legal inventory 6，共 690/690；三档 Playwright 63/63。disabled 与 engineering offline 两种包级 smoke 均验证空运行快照为 `application/json` 的 `null`、网关 ready、session offline、正常关闭，以及 `serialPortOpened=false/hardwareCommandSent=false`。
 
 最终测试数量和构建结果记录在本轮 `docs/CHANGELOG.md`。本轮软件验证没有打开 COM4，也没有发送查询、状态改变或运动命令。
 

@@ -4,6 +4,14 @@ namespace AethorStudioV2.Api;
 
 public static class ActionProgramRunEndpoints
 {
+    public static IResult GetSnapshot(EngineeringActionProgramRuntime runtime)
+    {
+        var snapshot = runtime.GetSnapshot();
+        return snapshot is null
+            ? Results.Text("null", "application/json", System.Text.Encoding.UTF8)
+            : Results.Json(snapshot);
+    }
+
     public static async Task<IResult> StopAsync(
         EngineeringActionProgramRuntime runtime,
         CancellationToken cancellationToken)

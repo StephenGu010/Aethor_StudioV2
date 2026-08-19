@@ -472,7 +472,14 @@ export class HttpRobotGateway implements RobotGatewayV1 {
           ? '网关会话令牌无效或已过期'
           : `网关请求失败（HTTP ${response.status}）`);
       }
-      const parsed = schema.safeParse(await response.json());
+      const body = await response.text();
+      let payload: unknown;
+      try {
+        payload = JSON.parse(body) as unknown;
+      } catch {
+        throw new GatewayHttpError(502, '网关响应不是有效 JSON');
+      }
+      const parsed = schema.safeParse(payload);
       if (!parsed.success) {
         throw new GatewayHttpError(502, '网关响应不符合 RobotGatewayV1 契约');
       }

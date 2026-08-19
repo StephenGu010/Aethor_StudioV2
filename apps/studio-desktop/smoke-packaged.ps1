@@ -304,6 +304,8 @@ try {
     $headers = @{ 'X-Aethor-Session' = $token; 'X-Aethor-Operation' = $operationId }
     $session = Invoke-RestMethod "$baseUrl/api/v1/session" -Headers $headers -TimeoutSec 2
     $capabilities = Invoke-RestMethod "$baseUrl/api/v1/gateway/capabilities" -Headers $headers -TimeoutSec 2
+    $actionProgramRun = Invoke-WebRequest "$baseUrl/api/v1/engineering/action-program/run" `
+        -Headers $headers -UseBasicParsing -TimeoutSec 2
     $serialPortsResponse = Invoke-RestMethod "$baseUrl/api/v1/serial/ports" -Headers $headers -TimeoutSec 2
     [object[]]$serialPorts = @(
         if ($serialPortsResponse.PSObject.Properties.Name -contains 'value') {
@@ -315,6 +317,11 @@ try {
     )
     if ($session.connectionState -ne 'offline' -or $session.motorState -ne 'unknown') {
         throw 'Packaged gateway did not start in the explicit offline state.'
+    }
+    if ($actionProgramRun.StatusCode -ne 200 -or
+        [string]$actionProgramRun.Headers['Content-Type'] -notlike 'application/json*' -or
+        $actionProgramRun.Content.Trim() -ne 'null') {
+        throw 'Packaged gateway did not serialize an empty action-program run as a JSON null document.'
     }
     if ($EngineeringOffline) {
         if ($capabilities.commandPolicy -ne 'engineering' -or
@@ -380,6 +387,7 @@ try {
         serialPortsEnumerated = $serialPorts.Count
         serialPortNames = @($serialPorts | ForEach-Object { [string]$_.portName })
         sessionState = 'offline'
+        emptyActionProgramRunJson = $true
         serialSessionProbeStatus = $invalidConnectStatus
         serialSessionProbeCorrelated = $sessionProbeCorrelated
         commandPolicy = [string]$capabilities.commandPolicy

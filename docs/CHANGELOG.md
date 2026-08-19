@@ -9,8 +9,9 @@
 - 停止现在会从串口调度器原子撤销尚未写出的当前点位；若 writer 已经取得该点位，则等待该次不可撤销写入收束后再排入 `!STOP → !DISABLE`，不会让旧运动点残留在停止链之后。客户端复用 `runId` 时，网关仍为每次执行生成独立 nonce，避免 direct 幂等缓存把旧的 `transportWritten` 当成本轮新写入。
 - Dummy 运动数值统一采用 ECMAScript `Number::toString` 的最短往返规范，TS/C# 对 `1e-16`、`1e-5`、高精度小数和 `1e20` 生成相同文本，并在接管串口前验证固件每项 64 bytes/最多 63 ASCII 字符。engineering 路径保留六个有限设备角原值且不应用旧关节范围；supervised 路径仍保留既有硬件限位门。
 - HTTP JSON 绑定拒绝缺少构造字段、未知字段和数字枚举；停止与有限运行终态竞争时返回 409 而不是 500。动作事件发布改为单在途、只保留最新待发快照；跨运行时间戳即使系统 UTC 回拨也保持单调。前端不会让晚到的空 REST 快照擦除已观察到的活动运行，session 更换仍会完整清理。
+- 修复 Windows 桌面首次启动时持续显示 `TELEMETRY DEGRADED` 的链路错误：没有活动运行时，`GET /engineering/action-program/run` 现在返回带 `application/json` 的字面量 `null`，不再返回 200 空响应体；HTTP adapter 将无效 JSON 区分为 502 契约错误，不再伪装成 status 0 网络中断；AppShell 初始权威恢复失败后按 250/1000/3000 ms 节拍继续恢复，成功后才建立唯一实时通道，卸载会取消等待。
 - 原 `ActionProgramRunner` 继续保留为未接线的 `feedbackConfirmed` 监督内核，未用固定等待弱化；Aethor_robo 仍不进入 Dummy 动作契约。
-- 最终全量验证：contracts 131、frontend 255、gateway 177、desktop 118、legal inventory 6，共 687/687；三档 Playwright 63/63；strict TypeScript、2658-module Web、Gateway/Desktop Release build 均通过，.NET 0 warning / 0 error。重新生成的 development-dirty 桌面包为 701 个文件，engineering offline smoke 验证 manifest 700 项、网关 ready、session offline、正常退出，只枚举到 COM1，`serialPortOpened=false/hardwareCommandSent=false`；桌面快捷方式已更新到该包并显式携带 `--engineering`。本轮没有打开 COM4，也没有发送查询、状态改变或运动命令。
+- 最终全量验证：contracts 131、frontend 257、gateway 178、desktop 118、legal inventory 6，共 690/690；三档 Playwright 63/63；strict TypeScript、2658-module Web、Gateway/Desktop Release build 均通过，.NET 0 warning / 0 error。Windows 包的 disabled 与 engineering offline smoke 均校验 700 项 manifest、701 个实际文件、空动作运行 JSON、网关 ready、session offline 和正常退出；只枚举 COM1/COM4，`serialPortOpened=false/hardwareCommandSent=false`。本轮没有打开 COM4，也没有发送查询、状态改变或运动命令。
 
 ## 2026-08-17 - Aethor_robo 固件 PRD 快照与协议基线同步（DONE）
 

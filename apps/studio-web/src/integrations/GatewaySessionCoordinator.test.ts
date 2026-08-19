@@ -127,6 +127,28 @@ describe('GatewaySessionCoordinator safety recovery', () => {
     await waitFor(() => expect(closeTelemetry).toHaveBeenCalledOnce());
   });
 
+  it('recovers from an initial authority read failure without reloading the application', async () => {
+    const session = coordinatorSession();
+    let actionRunReadCount = 0;
+    const getActionProgramRun = vi.fn(async () => {
+      actionRunReadCount += 1;
+      if (actionRunReadCount === 1) throw new Error('temporary action snapshot outage');
+      return null;
+    });
+    const openTelemetry = vi.fn(async () => async () => {});
+    const gateway = coordinatorGateway(session, { getActionProgramRun, openTelemetry });
+
+    const rendered = render(createElement(GatewaySessionCoordinator, { gateway }));
+
+    await waitFor(() => expect(openTelemetry).toHaveBeenCalledOnce());
+    expect(getActionProgramRun).toHaveBeenCalledTimes(2);
+    expect(useGatewayRuntimeStore.getState()).toMatchObject({
+      transportWarning: null,
+      session: { sessionId: session.sessionId, connectionState: 'connected' }
+    });
+    rendered.unmount();
+  });
+
   it('aligns the target draft once from the first trusted measured frame of a hardware session', async () => {
     const session = coordinatorSession();
     const measured = {

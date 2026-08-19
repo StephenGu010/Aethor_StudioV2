@@ -162,8 +162,7 @@ api.MapGet("/engineering/direct-commands", (RobotGateway gateway, int? limit) =>
         return Problem(StatusCodes.Status400BadRequest, "Invalid direct command history query", exception.Message);
     }
 });
-api.MapGet("/engineering/action-program/run", (EngineeringActionProgramRuntime runtime) =>
-    Results.Ok(runtime.GetSnapshot()));
+api.MapGet("/engineering/action-program/run", ActionProgramRunEndpoints.GetSnapshot);
 api.MapPost("/session/connect", async (
     HttpContext context,
     RobotConnectRequest request,

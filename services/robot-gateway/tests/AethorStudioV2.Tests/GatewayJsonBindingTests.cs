@@ -26,6 +26,20 @@ public sealed class GatewayJsonBindingTests
     }
 
     [Fact]
+    public async Task EmptyActionProgramRunSnapshotIsReturnedAsAJsonNullDocument()
+    {
+        await using var runtime = new EngineeringActionProgramRuntime(new EmptyEngineeringActionPort());
+        await using var app = await StartActionRunReadAppAsync(runtime);
+        using var client = CreateClient(app);
+
+        using var response = await client.GetAsync("/action-run");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
+        Assert.Equal("null", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
     public async Task MinimalHttpBindingAcceptsTheCompleteStringEnumRequest()
     {
         await using var app = await StartBindingAppAsync();
@@ -64,6 +78,18 @@ public sealed class GatewayJsonBindingTests
         builder.Services.Configure<JsonOptions>(options => GatewayJson.Configure(options.SerializerOptions));
         var app = builder.Build();
         app.MapPost("/run", (ActionProgramRunStartRequest request) => Results.Ok(request));
+        await app.StartAsync();
+        return app;
+    }
+
+    private static async Task<WebApplication> StartActionRunReadAppAsync(
+        EngineeringActionProgramRuntime runtime)
+    {
+        var builder = WebApplication.CreateSlimBuilder();
+        builder.WebHost.UseKestrel().UseUrls("http://127.0.0.1:0");
+        builder.Services.Configure<JsonOptions>(options => GatewayJson.Configure(options.SerializerOptions));
+        var app = builder.Build();
+        app.MapGet("/action-run", () => ActionProgramRunEndpoints.GetSnapshot(runtime));
         await app.StartAsync();
         return app;
     }

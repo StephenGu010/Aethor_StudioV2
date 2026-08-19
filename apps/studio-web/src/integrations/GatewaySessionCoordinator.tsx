@@ -7,6 +7,7 @@ import type { RobotGatewayV1 } from './robotGateway';
 
 const DEFAULT_TELEMETRY_STALL_THRESHOLD_MS = 1_500;
 const DEFAULT_TELEMETRY_FALLBACK_INTERVAL_MS = 1_000;
+const INITIAL_AUTHORITY_RETRY_DELAYS_MS = [250, 1_000, 3_000] as const;
 const TELEMETRY_FALLBACK_WARNING = '实时关节事件已停滞；当前以 REST 权威快照降级刷新';
 
 export function GatewaySessionCoordinator({
@@ -55,6 +56,8 @@ export function GatewaySessionCoordinator({
     let fallbackRefreshInFlight: Promise<void> | null = null;
     let nextFallbackRefreshAtMs = 0;
     let freshnessTimer: ReturnType<typeof window.setInterval> | undefined;
+    let initialAuthorityRetryTimer: ReturnType<typeof window.setTimeout> | undefined;
+    let wakeInitialAuthorityRetry: (() => void) | undefined;
     let closeTelemetry: (() => Promise<void>) | undefined;
 
     const clearTelemetryFallback = () => {
@@ -233,8 +236,24 @@ export function GatewaySessionCoordinator({
         }
       }, checkIntervalMs);
     };
+    const waitForInitialAuthorityRetry = (attempt: number) => new Promise<void>((resolve) => {
+      const delay = INITIAL_AUTHORITY_RETRY_DELAYS_MS[
+        Math.min(attempt, INITIAL_AUTHORITY_RETRY_DELAYS_MS.length - 1)
+      ];
+      wakeInitialAuthorityRetry = resolve;
+      initialAuthorityRetryTimer = window.setTimeout(() => {
+        initialAuthorityRetryTimer = undefined;
+        wakeInitialAuthorityRetry = undefined;
+        resolve();
+      }, delay);
+    });
     const start = async () => {
-      if (!await refreshAuthority()) return;
+      let initialAuthorityAttempt = 0;
+      while (active && !await refreshAuthority()) {
+        await waitForInitialAuthorityRetry(initialAuthorityAttempt);
+        initialAuthorityAttempt += 1;
+      }
+      if (!active) return;
 
       void refreshCommandHistory();
 
@@ -309,6 +328,8 @@ export function GatewaySessionCoordinator({
     return () => {
       active = false;
       if (freshnessTimer !== undefined) window.clearInterval(freshnessTimer);
+      if (initialAuthorityRetryTimer !== undefined) window.clearTimeout(initialAuthorityRetryTimer);
+      wakeInitialAuthorityRetry?.();
       if (closeTelemetry) void closeTelemetry();
     };
   }, [appendProtocolFrame, beginCommandAuditRefresh, failCommandAuditRefresh, gateway, markTelemetryDegraded, replaceCommandHistory, replaceDirectCommandHistory, replaceProtocolFrames, resetRuntime, setActionProgramRun, setCapabilities, setJointState, setLastCommandResult, setSession, setTransportWarning, telemetryFallbackIntervalMs, telemetryStallThresholdMs, upsertDirectCommandResult]);

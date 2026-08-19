@@ -40,6 +40,10 @@ gateway lifecycle. It is not a production installer or a signed release.
   to 20 deg/s, may run once or loop, and are paced by the C# gateway from an
   immutable revision snapshot. `FINISHED/STOPPED UNCONFIRMED` means serial
   transport writes completed; it does not claim measured arrival.
+- Empty action-run state is served as an explicit JSON `null` document. A
+  transient failure during initial REST authority recovery no longer leaves
+  the WebView session permanently degraded; recovery continues on a bounded
+  cadence and opens the single realtime channel only after authority returns.
 - Bounded frontend operation probes are captured from the WebView runtime only
   after strict field and terminal-state validation; ordinary console messages,
   expanded fields, and secret-bearing payloads are rejected.
